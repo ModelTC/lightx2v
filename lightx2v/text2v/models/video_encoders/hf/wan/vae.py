@@ -5,6 +5,7 @@ import torch
 import torch.cuda.amp as amp
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 from einops import rearrange
 
 __all__ = [
@@ -706,9 +707,11 @@ class WanVAE:
         vae_pth="cache/vae_step_411000.pth",
         dtype=torch.float,
         device="cuda",
+        parallel=False,
     ):
         self.dtype = dtype
         self.device = device
+        self.parallel = parallel
 
         mean = [
             -0.7571,
@@ -769,6 +772,70 @@ class WanVAE:
             self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0)
             for u in videos
         ]
+    
+    def decode_dist(self, zs, world_size, cur_rank, split_dim):
+        splited_total_len = zs.shape[split_dim]
+        splited_chunk_len = splited_total_len // world_size
+        padding_size = 1
+
+        if cur_rank == 0:
+            if split_dim == 2:
+                zs = zs[:,:,:splited_chunk_len+2*padding_size,:].contiguous()
+            elif split_dim == 3:
+                zs = zs[:,:,:,:splited_chunk_len+2*padding_size].contiguous()
+        elif cur_rank == world_size-1:
+            if split_dim == 2:
+                zs = zs[:,:,-(splited_chunk_len+2*padding_size):,:].contiguous()
+            elif split_dim == 3:
+                zs = zs[:,:,:,-(splited_chunk_len+2*padding_size):].contiguous()
+        else:
+            if split_dim == 2:
+                zs = zs[:,:,cur_rank*splited_chunk_len-padding_size:(cur_rank+1)*splited_chunk_len+padding_size,:].contiguous()
+            elif split_dim == 3:
+                zs = zs[:,:,:,cur_rank*splited_chunk_len-padding_size:(cur_rank+1)*splited_chunk_len+padding_size].contiguous()
+
+        images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
+
+        if cur_rank == 0:
+            if split_dim == 2:
+                images = images[:,:,:,:splited_chunk_len*8,:].contiguous()
+            elif split_dim == 3:
+                images = images[:,:,:,:,:splited_chunk_len*8].contiguous()
+        elif cur_rank == world_size-1:
+            if split_dim == 2:
+                images = images[:,:,:,-splited_chunk_len*8:,:].contiguous()
+            elif split_dim == 3:
+                images = images[:,:,:,:,-splited_chunk_len*8:].contiguous()
+        else:
+            if split_dim == 2:
+                images = images[:,:,:,8*padding_size:-8*padding_size,:].contiguous()
+            elif split_dim == 3:
+                images = images[:,:,:,:,8*padding_size:-8*padding_size].contiguous()
+
+        full_images = [torch.empty_like(images) for _ in range(world_size)]
+        dist.all_gather(full_images, images)
+
+        torch.cuda.synchronize()
+
+        images = torch.cat(full_images, dim=-1)
+
+        return images
+        
 
     def decode(self, zs, generator, args):
-        return self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
+        if self.parallel:
+            world_size = dist.get_world_size()
+            cur_rank = dist.get_rank()
+            height, width = zs.shape[2], zs.shape[3]
+            if width % world_size == 0:
+                split_dim = 3
+                images = self.decode_dist(zs, world_size, cur_rank, split_dim)
+            elif height % world_size == 0:
+                split_dim = 2
+                images = self.decode_dist(zs, world_size, cur_rank, split_dim)
+            else:
+                print("Fall back to naive decode mode")
+                images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
+        else:
+            images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
+        return images

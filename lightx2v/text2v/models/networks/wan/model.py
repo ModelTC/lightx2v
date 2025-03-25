@@ -14,6 +14,7 @@ from lightx2v.text2v.models.networks.wan.infer.transformer_infer import (
 )
 from lightx2v.text2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferFeatureCaching
 from safetensors import safe_open
+from lightx2v.attentions.distributed.ulysses.wrap import parallelize_wan
 
 
 class WanModel:
@@ -27,6 +28,9 @@ class WanModel:
         self._init_infer_class()
         self._init_weights()
         self._init_infer()
+
+        if config['parallel_attn']:
+            parallelize_wan(self)
 
     def _init_infer_class(self):
         self.pre_infer_class = WanPreInfer
