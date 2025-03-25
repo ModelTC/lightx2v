@@ -1,8 +1,8 @@
 import functools
 from lightx2v.attentions.distributed.ulysses.attn import ulysses_attn
-from lightx2v.attentions.distributed.utils.process import pre_process, post_process
 
 def parallelize_hunyuan(hunyuan_model):
+    from lightx2v.attentions.distributed.utils.hunyuan.processor import pre_process, post_process
     """将 Hunyuan 模型的推理过程并行化，使用 Ulysses 注意力机制。
 
     参数:
@@ -15,7 +15,7 @@ def parallelize_hunyuan(hunyuan_model):
     original_infer = hunyuan_model.infer
 
     @functools.wraps(hunyuan_model.__class__.infer)  # 保留原始推理方法的元信息
-    def new_infer(self, text_encoders_output, args):
+    def new_infer(self, text_encoders_output, image_encoder_output, args):
         """新的推理方法，处理输入并调用原始推理方法。
 
         参数:
@@ -39,8 +39,8 @@ def parallelize_hunyuan(hunyuan_model):
         )
 
         # 调用原始推理方法，获取输出
-        output = original_infer(
-            text_encoders_output, args
+        original_infer(
+            text_encoders_output, image_encoder_output, args
         )
 
         # 对输出进行后处理
@@ -58,3 +58,28 @@ def parallelize_hunyuan(hunyuan_model):
     # 将新的推理方法绑定到 Hunyuan 模型实例
     new_infer = new_infer.__get__(hunyuan_model)
     hunyuan_model.infer = new_infer  # 替换原始推理方法
+
+
+def parallelize_wan(wan_model):
+    from lightx2v.attentions.distributed.utils.wan.processor import pre_process, post_process
+    wan_model.transformer_infer.parallel_attention = ulysses_attn
+
+    original_infer = wan_model.transformer_infer.infer
+
+    @functools.wraps(wan_model.transformer_infer.__class__.infer)  # 保留原始推理方法的元信息
+    def new_infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+
+        x = pre_process(
+            x
+        )
+
+        x = original_infer(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+
+        x = post_process(
+            x
+        )
+
+        return x
+
+    new_infer = new_infer.__get__(wan_model.transformer_infer)
+    wan_model.transformer_infer.infer = new_infer  # 替换原始推理方法

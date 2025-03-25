@@ -55,7 +55,7 @@ def load_models(args, model_config):
         )
         text_encoders = [text_encoder]
         model = WanModel(args.model_path, model_config)
-        vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=torch.device("cuda"))
+        vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=torch.device("cuda"), parallel=args.parallel_vae)
         if args.task == 'i2v':
             image_encoder = CLIPModel(
                 dtype=torch.float16,
@@ -241,6 +241,7 @@ if __name__ == "__main__":
     parser.add_argument('--mm_config', default=None)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--parallel_attn', action='store_true')
+    parser.add_argument('--parallel_vae', action='store_true')
     parser.add_argument('--max_area', action='store_true')
     parser.add_argument('--vae_stride', default=(4, 8, 8))
     parser.add_argument('--patch_size', default=(1, 2, 2))
@@ -269,7 +270,8 @@ if __name__ == "__main__":
         "do_mm_calib": args.do_mm_calib,
         "cpu_offload": args.cpu_offload,
         "feature_caching": args.feature_caching,
-        "parallel_attn": args.parallel_attn
+        "parallel_attn": args.parallel_attn,
+        "parallel_vae": args.parallel_vae
     }
 
     if args.config_path is not None:
@@ -308,10 +310,11 @@ if __name__ == "__main__":
 
     images = run_vae(latents, generator, args)
 
-    if args.model_cls == "wan2.1":
-        cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
-    else:
-        save_videos_grid(images, args.save_video_path, fps=24)
+    if not args.parallel_attn or (args.parallel_attn and dist.get_rank() == 0):
+        if args.model_cls == "wan2.1":
+            cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
+        else:
+            save_videos_grid(images, args.save_video_path, fps=24)
 
     end_time = time.time()
     print(f"Total time: {end_time - start_time}")
