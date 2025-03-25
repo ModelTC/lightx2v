@@ -310,10 +310,11 @@ if __name__ == "__main__":
 
     images = run_vae(latents, generator, args)
 
-    if args.model_cls == "wan2.1":
-        cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
-    else:
-        save_videos_grid(images, args.save_video_path, fps=24)
+    if not args.parallel_attn or (args.parallel_attn and dist.get_rank() == 0):
+        if args.model_cls == "wan2.1":
+            cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
+        else:
+            save_videos_grid(images, args.save_video_path, fps=24)
 
     end_time = time.time()
     print(f"Total time: {end_time - start_time}")
