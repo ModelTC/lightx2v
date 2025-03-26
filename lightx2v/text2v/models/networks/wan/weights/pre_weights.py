@@ -1,5 +1,8 @@
 import torch
-
+from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, CONV3D_WEIGHT_REGISTER
+from lightx2v.common.ops.mm.mm_weight import MMWeightTemplate
+from lightx2v.common.ops.norm.layer_norm_weight import LNWeightTemplate
+from lightx2v.common.ops.conv.conv3d import Conv3dWeightTemplate
 
 class WanPreWeights:
     def __init__(self, config):
@@ -8,46 +11,49 @@ class WanPreWeights:
         self.patch_size = (1, 2, 2)
 
     def load_weights(self, weight_dict):
-        layers = {
-            "text_embedding": {"0": ["weight", "bias"], "2": ["weight", "bias"]},
-            "time_embedding": {"0": ["weight", "bias"], "2": ["weight", "bias"]},
-            "time_projection": {"1": ["weight", "bias"]},
-        }
+        # 1.1 加载weight
+        self.patch_embedding = CONV3D_WEIGHT_REGISTER["Default-BF16"]('patch_embedding.weight', 'patch_embedding.bias', stride=self.patch_size)
 
-        self.patch_embedding = (
-            torch.nn.Conv3d(
-                self.in_dim,
-                self.dim,
-                kernel_size=self.patch_size,
-                stride=self.patch_size,
-            )
-            .to(torch.bfloat16)
-            .cuda()
-        )
-        self.patch_embedding.weight.data.copy_(weight_dict["patch_embedding.weight"])
-        self.patch_embedding.bias.data.copy_(weight_dict["patch_embedding.bias"])
-        for module_name, sub_layers in layers.items():
-            for param_name, param_keys in sub_layers.items():
-                for key in param_keys:
-                    weight_path = f"{module_name}.{param_name}.{key}"
-                    setattr(
-                        self,
-                        f"{module_name}_{param_name}_{key}",
-                        weight_dict[weight_path],
-                    )
+        self.text_embedding_0 = MM_WEIGHT_REGISTER["Default"]('text_embedding.0.weight', 'text_embedding.0.bias')
+        self.text_embedding_2 = MM_WEIGHT_REGISTER["Default"]('text_embedding.2.weight', 'text_embedding.2.bias')
+        self.time_embedding_0 = MM_WEIGHT_REGISTER["Default"]('time_embedding.0.weight', 'time_embedding.0.bias')
+        self.time_embedding_2 = MM_WEIGHT_REGISTER["Default"]('time_embedding.2.weight', 'time_embedding.2.bias')
+        self.time_projection_1 = MM_WEIGHT_REGISTER["Default"]('time_projection.1.weight', 'time_projection.1.bias')
 
+        # 1.2 做成列表
+        self.weight_list = [
+            self.patch_embedding,
+            
+            self.text_embedding_0,
+            self.text_embedding_2,
+            self.time_embedding_0,
+            self.time_embedding_2,
+            self.time_projection_1,
+        ]
+
+        # 1.3 加载weight
         if 'img_emb.proj.0.weight' in weight_dict.keys():
-            MLP_layers = {
-                "proj_0_weight": "proj.0.weight",
-                "proj_0_bias": "proj.0.bias",
-                "proj_1_weight": "proj.1.weight",
-                "proj_1_bias": "proj.1.bias",
-                "proj_3_weight": "proj.3.weight",
-                "proj_3_bias": "proj.3.bias",
-                "proj_4_weight": "proj.4.weight",
-                "proj_4_bias": "proj.4.bias",
-            }
+            self.proj_0 = LN_WEIGHT_REGISTER["Default"]('img_emb.proj.0.weight', 'img_emb.proj.0.bias', eps=1e-5)
+            self.proj_1 = MM_WEIGHT_REGISTER["Default"]('img_emb.proj.1.weight', 'img_emb.proj.1.bias')
+            self.proj_3 = MM_WEIGHT_REGISTER["Default"]('img_emb.proj.3.weight', 'img_emb.proj.3.bias')
+            self.proj_4 = LN_WEIGHT_REGISTER["Default"]('img_emb.proj.4.weight', 'img_emb.proj.4.bias', eps=1e-5)
+            self.weight_list.append(self.proj_0)
+            self.weight_list.append(self.proj_1)
+            self.weight_list.append(self.proj_3)
+            self.weight_list.append(self.proj_4)
 
-            for layer_name, weight_keys in MLP_layers.items():
-                weight_path = f"img_emb.{weight_keys}"
-                setattr(self, layer_name, weight_dict[weight_path])
+        # 1.4 加载
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate) or isinstance(mm_weight, Conv3dWeightTemplate):
+                mm_weight.set_config(self.config['mm_config'])
+                mm_weight.load(weight_dict)
+
+    def to_cpu(self):
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate) or isinstance(mm_weight, Conv3dWeightTemplate):
+                mm_weight.to_cpu()
+
+    def to_cuda(self):
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate) or isinstance(mm_weight, Conv3dWeightTemplate):
+                mm_weight.to_cuda()

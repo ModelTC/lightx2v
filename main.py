@@ -48,18 +48,18 @@ def load_models(args, model_config):
         text_encoder = T5EncoderModel(
             text_len=model_config["text_len"],
             dtype=torch.bfloat16,
-            device=torch.device("cuda"),
+            device=init_device,
             checkpoint_path=os.path.join(args.model_path, "models_t5_umt5-xxl-enc-bf16.pth"),
             tokenizer_path=os.path.join(args.model_path, "google/umt5-xxl"),
             shard_fn=None,
         )
         text_encoders = [text_encoder]
         model = WanModel(args.model_path, model_config)
-        vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=torch.device("cuda"))
+        vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=init_device)
         if args.task == 'i2v':
             image_encoder = CLIPModel(
                 dtype=torch.float16,
-                device=torch.device("cuda"),
+                device=init_device,
                 checkpoint_path=os.path.join(args.model_path,
                                             "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"),
                 tokenizer_path=os.path.join(args.model_path, "xlm-roberta-large"))

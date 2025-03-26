@@ -28,6 +28,9 @@ class WanModel:
         self._init_weights()
         self._init_infer()
 
+        if self.config['cpu_offload']:
+            self.to_cpu()
+
     def _init_infer_class(self):
         self.pre_infer_class = WanPreInfer
         self.post_infer_class = WanPostInfer
@@ -80,6 +83,16 @@ class WanModel:
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
         self.transformer_infer.set_scheduler(scheduler)
+
+    def to_cpu(self):
+        self.pre_weight.to_cpu()
+        self.post_weight.to_cpu()
+        self.transformer_weights.to_cpu()
+
+    def to_cuda(self):
+        self.pre_weight.to_cuda()
+        self.post_weight.to_cuda()
+        self.transformer_weights.to_cuda()
 
     @torch.no_grad()
     def infer(self, text_encoders_output, image_encoder_output, args):
