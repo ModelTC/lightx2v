@@ -11,8 +11,8 @@ class WanPreWeights:
         self.patch_size = (1, 2, 2)
 
     def load_weights(self, weight_dict):
-        # 1.1 加载weight
-        self.patch_embedding = CONV3D_WEIGHT_REGISTER["Default-BF16"]('patch_embedding.weight', 'patch_embedding.bias', stride=self.patch_size)
+
+        self.patch_embedding = CONV3D_WEIGHT_REGISTER["Defaultt-Force-BF16"]('patch_embedding.weight', 'patch_embedding.bias', stride=self.patch_size)
 
         self.text_embedding_0 = MM_WEIGHT_REGISTER["Default"]('text_embedding.0.weight', 'text_embedding.0.bias')
         self.text_embedding_2 = MM_WEIGHT_REGISTER["Default"]('text_embedding.2.weight', 'text_embedding.2.bias')
@@ -20,7 +20,6 @@ class WanPreWeights:
         self.time_embedding_2 = MM_WEIGHT_REGISTER["Default"]('time_embedding.2.weight', 'time_embedding.2.bias')
         self.time_projection_1 = MM_WEIGHT_REGISTER["Default"]('time_projection.1.weight', 'time_projection.1.bias')
 
-        # 1.2 做成列表
         self.weight_list = [
             self.patch_embedding,
             
@@ -31,7 +30,6 @@ class WanPreWeights:
             self.time_projection_1,
         ]
 
-        # 1.3 加载weight
         if 'img_emb.proj.0.weight' in weight_dict.keys():
             self.proj_0 = LN_WEIGHT_REGISTER["Default"]('img_emb.proj.0.weight', 'img_emb.proj.0.bias', eps=1e-5)
             self.proj_1 = MM_WEIGHT_REGISTER["Default"]('img_emb.proj.1.weight', 'img_emb.proj.1.bias')
@@ -42,7 +40,6 @@ class WanPreWeights:
             self.weight_list.append(self.proj_3)
             self.weight_list.append(self.proj_4)
 
-        # 1.4 加载
         for mm_weight in self.weight_list:
             if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate) or isinstance(mm_weight, Conv3dWeightTemplate):
                 mm_weight.set_config(self.config['mm_config'])
