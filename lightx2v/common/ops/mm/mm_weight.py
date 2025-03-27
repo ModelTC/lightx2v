@@ -54,7 +54,7 @@ class MMWeight(MMWeightTemplate):
 
 
 @MM_WEIGHT_REGISTER('Default-Force-FP32')
-class MMWeight(MMWeight):
+class MMWeightForceFP32(MMWeight):
     def __init__(self, weight_name, bias_name):
         super().__init__(weight_name, bias_name)
 

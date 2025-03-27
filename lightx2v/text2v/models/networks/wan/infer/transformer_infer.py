@@ -1,5 +1,5 @@
 import torch
-from .utils import compute_freqs, apply_rotary_emb, rms_norm
+from .utils import compute_freqs, compute_freqs_dist, apply_rotary_emb, rms_norm
 from lightx2v.attentions import attention
 
 
@@ -12,6 +12,7 @@ class WanTransformerInfer:
         self.num_heads = config["num_heads"]
         self.head_dim = config["dim"] // config["num_heads"]
         self.window_size = config.get("window_size", (-1, -1))
+        self.parallel_attention = None
 
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
@@ -45,6 +46,7 @@ class WanTransformerInfer:
                 freqs,
                 context,
             )
+
         return x
 
     def infer_block(
@@ -69,23 +71,38 @@ class WanTransformerInfer:
 
         v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
 
-        freqs_i = compute_freqs(q.size(2) // 2, grid_sizes, freqs)
+        if not self.parallel_attention:
+            freqs_i = compute_freqs(q.size(2) // 2, grid_sizes, freqs)
+        else:
+            freqs_i = compute_freqs_dist(q.size(0), q.size(2) // 2, grid_sizes, freqs)
 
         q = apply_rotary_emb(q, freqs_i)
         k = apply_rotary_emb(k, freqs_i)
 
         cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q, k, k_lens=seq_lens)
 
-        attn_out = attention(
-            attention_type=self.attention_type,
-            q=q,
-            k=k,
-            v=v,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_k,
-            max_seqlen_q=lq,
-            max_seqlen_kv=lk,
-        )
+        if not self.parallel_attention:
+            attn_out = attention(
+                attention_type=self.attention_type,
+                q=q,
+                k=k,
+                v=v,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=lq,
+                max_seqlen_kv=lk,
+            )
+        else:
+            attn_out = self.parallel_attention(
+                    attention_type=self.attention_type,
+                    q=q,
+                    k=k,
+                    v=v,
+                    img_qkv_len=q.shape[0],
+                    cu_seqlens_qkv=cu_seqlens_q
+                    # cu_seqlens_qkv=cu_seqlens_qkv,
+                    # max_seqlen_qkv=max_seqlen_qkv,
+                )
         y = weights.self_attn_o.apply(attn_out)
 
         x = x + y * embed0[2].squeeze(0)

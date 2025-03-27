@@ -1,19 +1,15 @@
-#!/bin/bash
+model_path=/workspace/wan/Wan2.1-T2V-1.3B # H800-14
+config_path=/workspace/wan/Wan2.1-T2V-1.3B/config.json
 
-# model_path=/mnt/nvme1/yongyang/models/hy/ckpts # H800-13
-# model_path=/workspace/wan/Wan2.1-T2V-1.3B # H800-14
-# config_path=/workspace/wan/Wan2.1-T2V-1.3B/config.json
-model_path=/mnt/nvme0/yongyang/projects/wan/Wan2.1-T2V-1.3B # H800-14
-config_path=/mnt/nvme0/yongyang/projects/wan/Wan2.1-T2V-1.3B/config.json
 
-export CUDA_VISIBLE_DEVICES=0
-python main.py \
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+torchrun --nproc_per_node=4 main.py \
 --model_cls wan2.1 \
 --task t2v \
 --model_path $model_path \
 --prompt "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
 --infer_steps 50 \
---target_video_length 81 \
+--target_video_length 84 \
 --target_width  832 \
 --target_height 480 \
 --attention_type flash_attn2 \
@@ -22,5 +18,6 @@ python main.py \
 --config_path $config_path \
 --save_video_path ./output_lightx2v_seed42.mp4 \
 --sample_guide_scale 6 \
---sample_shift 8
-# --mm_config '{"mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Vllm", "weight_auto_quant": true}' 
+--sample_shift 8 \
+--parallel_attn \
+--parallel_vae
