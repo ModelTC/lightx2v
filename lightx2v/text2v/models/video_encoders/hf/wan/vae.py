@@ -768,11 +768,13 @@ class WanVAE:
         self.model = self.model.to("cpu")
         self.mean = self.mean.cpu()
         self.inv_std = self.inv_std.cpu()
+        self.scale = [self.mean, self.inv_std]
 
     def to_cuda(self):
         self.model = self.model.to("cuda")
         self.mean = self.mean.cuda()
         self.inv_std = self.inv_std.cuda()
+        self.scale = [self.mean, self.inv_std]
 
     def encode(self, videos):
         """
