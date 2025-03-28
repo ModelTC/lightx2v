@@ -11,6 +11,7 @@ class WanTransformerWeights:
             self.mm_type = 'Calib'
         else:
             self.mm_type = config['mm_config'].get('mm_type', 'Default') if config['mm_config'] else 'Default'
+        self.config = config
 
     def load_weights(self, weight_dict):
         self.blocks_weights = [

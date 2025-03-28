@@ -9,6 +9,7 @@ class WanPreWeights:
         self.in_dim = config["in_dim"]
         self.dim = config["dim"]
         self.patch_size = (1, 2, 2)
+        self.config = config
 
     def load_weights(self, weight_dict):
 
