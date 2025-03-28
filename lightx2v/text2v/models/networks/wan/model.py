@@ -72,7 +72,7 @@ class WanModel:
         weight_dict = self._load_ckpt()
         # init weights
         self.pre_weight = self.pre_weight_class(self.config)
-        self.post_weight = self.post_weight_class()
+        self.post_weight = self.post_weight_class(self.config)
         self.transformer_weights = self.transformer_weight_class(self.config)
         # load weights
         self.pre_weight.load_weights(weight_dict)

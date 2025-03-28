@@ -1,7 +1,6 @@
-from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, CONV3D_WEIGHT_REGISTER, RMSWeightTemplate
+from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER
 from lightx2v.common.ops.mm.mm_weight import MMWeightTemplate
 from lightx2v.common.ops.norm.layer_norm_weight import LNWeightTemplate
-from lightx2v.common.ops.conv.conv3d import Conv3dWeightTemplate
 
 
 class WanTransformerWeights:
@@ -82,13 +81,13 @@ class WanTransformerAttentionBlock:
             self.weight_list.append(self.cross_attn_norm_k_img_weight)
         
         for mm_weight in self.weight_list:
-            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, RMSWeightTemplate):
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate):
                 mm_weight.set_config(self.config['mm_config'])
                 mm_weight.load(weight_dict)
 
     def to_cpu(self):
         for mm_weight in self.weight_list:
-            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, RMSWeightTemplate):
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate):
                 mm_weight.to_cpu()
             else:
                 mm_weight.cpu()
