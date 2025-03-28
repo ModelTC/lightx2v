@@ -15,7 +15,7 @@ class WanTransformerWeights:
 
     def load_weights(self, weight_dict):
         self.blocks_weights = [
-            WanTransformerAttentionBlock(i, self.task, self.mm_type) for i in range(self.blocks_num)
+            WanTransformerAttentionBlock(i, self.task, self.mm_type, self.config) for i in range(self.blocks_num)
         ]
         for block in self.blocks_weights:
             block.load_weights(weight_dict)
@@ -30,7 +30,7 @@ class WanTransformerWeights:
 
 
 class WanTransformerAttentionBlock:
-    def __init__(self, block_index, task, mm_type):
+    def __init__(self, block_index, task, mm_type, config):
         self.block_index = block_index
         self.mm_type = mm_type
         self.task = task
@@ -96,7 +96,7 @@ class WanTransformerAttentionBlock:
 
     def to_cuda(self):
         for mm_weight in self.weight_list:
-            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, RMSWeightTemplate):
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate):
                 mm_weight.to_cuda()
             else:
                 mm_weight.cuda()
