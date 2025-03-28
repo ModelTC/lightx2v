@@ -34,6 +34,7 @@ class WanTransformerAttentionBlock:
         self.block_index = block_index
         self.mm_type = mm_type
         self.task = task
+        self.config = config
 
     def load_weights(self, weight_dict):
         # 1. 加载weight
