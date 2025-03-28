@@ -750,8 +750,8 @@ class WanVAE:
             1.9160,
         ]
         self.mean = torch.tensor(mean, dtype=dtype, device=device)
-        self.std = torch.tensor(std, dtype=dtype, device=device)
-        self.scale = [self.mean, 1.0 / self.std]
+        self.inv_std = 1.0 / torch.tensor(std, dtype=dtype, device=device)
+        self.scale = [self.mean, self.inv_std]
 
         # init model
         self.model = (
@@ -763,6 +763,18 @@ class WanVAE:
             .requires_grad_(False)
             .to(device)
         )
+
+    def to_cpu(self):
+        self.model = self.model.to("cpu")
+        self.mean = self.mean.cpu()
+        self.inv_std = self.inv_std.cpu()
+        self.scale = [self.mean, self.inv_std]
+
+    def to_cuda(self):
+        self.model = self.model.to("cuda")
+        self.mean = self.mean.cuda()
+        self.inv_std = self.inv_std.cuda()
+        self.scale = [self.mean, self.inv_std]
 
     def encode(self, videos):
         """
@@ -823,6 +835,9 @@ class WanVAE:
         
 
     def decode(self, zs, generator, args):
+        if args.cpu_offload:
+            self.to_cuda()
+
         if self.parallel:
             world_size = dist.get_world_size()
             cur_rank = dist.get_rank()
@@ -838,4 +853,9 @@ class WanVAE:
                 images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
         else:
             images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
+
+        if args.cpu_offload:
+            images = images.cpu().float()
+            self.to_cpu()
+
         return images

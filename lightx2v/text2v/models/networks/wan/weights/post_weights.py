@@ -1,11 +1,36 @@
+from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER
+from lightx2v.common.ops.mm.mm_weight import MMWeightTemplate
+
+
 class WanPostWeights:
-    def __init__(self):
-        pass
+    def __init__(self, config):
+        self.config = config
 
     def load_weights(self, weight_dict):
-        head_layers = {"head": ["head.weight", "head.bias", "modulation"]}
-        for param_name, param_keys in head_layers.items():
-            for key in param_keys:
-                weight_path = f"{param_name}.{key}"
-                key = key.split('.')
-                setattr(self, f"{param_name}_{key[-1]}", weight_dict[weight_path])
+
+        self.head = MM_WEIGHT_REGISTER["Default"]('head.head.weight','head.head.bias')
+        self.head_modulation = weight_dict['head.modulation']
+
+        self.weight_list = [
+            self.head,
+            self.head_modulation
+        ]
+
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate):
+                mm_weight.set_config(self.config['mm_config'])
+                mm_weight.load(weight_dict)
+
+    def to_cpu(self):
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate):
+                mm_weight.to_cpu()
+            else:
+                mm_weight.cpu()
+
+    def to_cuda(self):
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate):
+                mm_weight.to_cuda()
+            else:
+                mm_weight.cuda()

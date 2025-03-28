@@ -30,7 +30,7 @@ class WanPreInfer:
             x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
 
         # embeddings
-        x = [weights.patch_embedding(u.unsqueeze(0)) for u in x]
+        x = [weights.patch_embedding.apply(u.unsqueeze(0)) for u in x]
         grid_sizes = torch.stack(
             [torch.tensor(u.shape[2:], dtype=torch.long) for u in x]
         )
@@ -45,24 +45,12 @@ class WanPreInfer:
         )
 
         embed = sinusoidal_embedding_1d(self.freq_dim, t)
-        embed = torch.addmm(
-            weights.time_embedding_0_bias,
-            embed,
-            weights.time_embedding_0_weight.t(),
-        )
+        embed = weights.time_embedding_0.apply(embed)
         embed = torch.nn.functional.silu(embed)
-        embed = torch.addmm(
-            weights.time_embedding_2_bias,
-            embed,
-            weights.time_embedding_2_weight.t(),
-        )
+        embed = weights.time_embedding_2.apply(embed)
         embed0 = torch.nn.functional.silu(embed)
 
-        embed0 = torch.addmm(
-            weights.time_projection_1_bias,
-            embed0,
-            weights.time_projection_1_weight.t(),
-        ).unflatten(1, (6, self.dim))
+        embed0 = weights.time_projection_1.apply(embed0).unflatten(1, (6, self.dim))
 
         # text embeddings
         stacked = torch.stack(
@@ -71,45 +59,17 @@ class WanPreInfer:
                 for u in context
             ]
         )
-        out = torch.addmm(
-            weights.text_embedding_0_bias,
-            stacked.squeeze(0),
-            weights.text_embedding_0_weight.t(),
-        )
+        out = weights.text_embedding_0.apply(stacked.squeeze(0))
         out = torch.nn.functional.gelu(out, approximate="tanh")
-        context = torch.addmm(
-            weights.text_embedding_2_bias,
-            out,
-            weights.text_embedding_2_weight.t(),
-        )
+        context = weights.text_embedding_2.apply(out)
 
         if self.task == 'i2v':
-            context_clip = torch.nn.functional.layer_norm(
-                clip_fea,
-                normalized_shape=(clip_fea.shape[1],),
-                weight=weights.proj_0_weight,
-                bias=weights.proj_0_bias,
-                eps=1e-5,
-            )
-            context_clip = torch.addmm(
-                weights.proj_1_bias,
-                context_clip,
-                weights.proj_1_weight.t(),
-            )
+            context_clip = weights.proj_0.apply(clip_fea)
+            context_clip = weights.proj_1.apply(context_clip)
             context_clip = torch.nn.functional.gelu(context_clip, approximate="none")
-            context_clip = torch.addmm(
-                weights.proj_3_bias,
-                context_clip,
-                weights.proj_3_weight.t(),
-            )
-            context_clip = torch.nn.functional.layer_norm(
-                context_clip,
-                normalized_shape=(context_clip.shape[1],),
-                weight=weights.proj_4_weight,
-                bias=weights.proj_4_bias,
-                eps=1e-5,
-            )
-
+            context_clip = weights.proj_3.apply(context_clip)
+            context_clip = weights.proj_4.apply(context_clip)
+            
             context = torch.concat([context_clip, context], dim=0)
             
         return (

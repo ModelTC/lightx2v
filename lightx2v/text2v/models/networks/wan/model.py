@@ -32,6 +32,9 @@ class WanModel:
         if config['parallel_attn']:
             parallelize_wan(self)
 
+        if self.config['cpu_offload']:
+            self.to_cpu()
+
     def _init_infer_class(self):
         self.pre_infer_class = WanPreInfer
         self.post_infer_class = WanPostInfer
@@ -69,7 +72,7 @@ class WanModel:
         weight_dict = self._load_ckpt()
         # init weights
         self.pre_weight = self.pre_weight_class(self.config)
-        self.post_weight = self.post_weight_class()
+        self.post_weight = self.post_weight_class(self.config)
         self.transformer_weights = self.transformer_weight_class(self.config)
         # load weights
         self.pre_weight.load_weights(weight_dict)
@@ -84,6 +87,16 @@ class WanModel:
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
         self.transformer_infer.set_scheduler(scheduler)
+
+    def to_cpu(self):
+        self.pre_weight.to_cpu()
+        self.post_weight.to_cpu()
+        self.transformer_weights.to_cpu()
+
+    def to_cuda(self):
+        self.pre_weight.to_cuda()
+        self.post_weight.to_cuda()
+        self.transformer_weights.to_cuda()
 
     @torch.no_grad()
     def infer(self, text_encoders_output, image_encoder_output, args):

@@ -566,12 +566,25 @@ class T5EncoderModel:
             name=tokenizer_path, seq_len=text_len, clean="whitespace"
         )
 
+    def to_cpu(self):
+        self.model = self.model.to("cpu")
+
+    def to_cuda(self):
+        self.model = self.model.to("cuda")
+
     def infer(self, texts, args):
+        if args.cpu_offload:
+            self.to_cuda()
+
         ids, mask = self.tokenizer(texts, return_mask=True, add_special_tokens=True)
         ids = ids.cuda()
         mask = mask.cuda()
         seq_lens = mask.gt(0).sum(dim=1).long()
         context = self.model(ids, mask)
+
+        if args.cpu_offload:
+            self.to_cpu()
+
         return [u[:v] for u, v in zip(context, seq_lens)]
 
 
