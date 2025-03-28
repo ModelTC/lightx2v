@@ -7,7 +7,7 @@ class WanPostWeights:
         self.config = config
 
     def load_weights(self, weight_dict):
-        # 1. 加载weight
+
         self.head = MM_WEIGHT_REGISTER["Default"]('head.head.weight','head.head.bias')
         self.head_modulation = weight_dict['head.modulation']
 

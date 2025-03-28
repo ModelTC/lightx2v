@@ -7,11 +7,11 @@ class WanTransformerWeights:
     def __init__(self, config):
         self.blocks_num = config["num_layers"]
         self.task = config['task']
+        self.config = config
         if config['do_mm_calib']:
             self.mm_type = 'Calib'
         else:
             self.mm_type = config['mm_config'].get('mm_type', 'Default') if config['mm_config'] else 'Default'
-        self.config = config
 
     def load_weights(self, weight_dict):
         self.blocks_weights = [
@@ -37,7 +37,7 @@ class WanTransformerAttentionBlock:
         self.config = config
 
     def load_weights(self, weight_dict):
-        # 1. 加载weight
+
         self.self_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.self_attn.q.weight',f'blocks.{self.block_index}.self_attn.q.bias')
         self.self_attn_k = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.self_attn.k.weight',f'blocks.{self.block_index}.self_attn.k.bias')
         self.self_attn_v = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.self_attn.v.weight',f'blocks.{self.block_index}.self_attn.v.bias')
