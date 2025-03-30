@@ -14,7 +14,7 @@ class WanPostInfer:
             x, (x.shape[1],), None, None, 1e-6
         ).type_as(x)
         out = norm_out * (1 + e[1].squeeze(0)) + e[0].squeeze(0)
-        x = torch.addmm(weights.head_bias, out, weights.head_weight.t())
+        x = weights.head.apply(out)
         x = self.unpatchify(x, grid_sizes)
         return [u.float() for u in x]
 

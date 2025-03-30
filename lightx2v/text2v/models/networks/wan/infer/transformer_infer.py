@@ -107,13 +107,7 @@ class WanTransformerInfer:
 
         x = x + y * embed0[2].squeeze(0)
 
-        norm3_out = torch.nn.functional.layer_norm(
-            x,
-            normalized_shape=(x.shape[1],),
-            weight=weights.norm3_weight,
-            bias=weights.norm3_bias,
-            eps=1e-6,
-        )
+        norm3_out = weights.norm3.apply(x)
 
         if self.task == 'i2v':
             context_img = context[:257]

@@ -1,11 +1,13 @@
-from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER
+from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER
 from lightx2v.common.ops.mm.mm_weight import MMWeightTemplate
+from lightx2v.common.ops.norm.layer_norm_weight import LNWeightTemplate
 
 
 class WanTransformerWeights:
     def __init__(self, config):
         self.blocks_num = config["num_layers"]
         self.task = config['task']
+        self.config = config
         if config['do_mm_calib']:
             self.mm_type = 'Calib'
         else:
@@ -13,69 +15,88 @@ class WanTransformerWeights:
 
     def load_weights(self, weight_dict):
         self.blocks_weights = [
-            WanTransformerAttentionBlock(i, self.task, self.mm_type) for i in range(self.blocks_num)
+            WanTransformerAttentionBlock(i, self.task, self.mm_type, self.config) for i in range(self.blocks_num)
         ]
         for block in self.blocks_weights:
             block.load_weights(weight_dict)
 
+    def to_cpu(self):
+        for block in self.blocks_weights:
+            block.to_cpu()
+
+    def to_cuda(self):
+       for block in self.blocks_weights:
+            block.to_cuda()
+
+
 class WanTransformerAttentionBlock:
-    def __init__(self, block_index, task, mm_type):
+    def __init__(self, block_index, task, mm_type, config):
         self.block_index = block_index
         self.mm_type = mm_type
         self.task = task
+        self.config = config
 
     def load_weights(self, weight_dict):
-        if self.task == 't2v':
-            layers = {
-                "self_attn_q": ["self_attn.q.weight", "self_attn.q.bias"],
-                "self_attn_k": ["self_attn.k.weight", "self_attn.k.bias"],
-                "self_attn_v": ["self_attn.v.weight", "self_attn.v.bias"],
-                "self_attn_o": ["self_attn.o.weight", "self_attn.o.bias"],
-                "self_attn_norm_q_weight": "self_attn.norm_q.weight",
-                "self_attn_norm_k_weight": "self_attn.norm_k.weight",
-                "norm3_weight": "norm3.weight",
-                "norm3_bias": "norm3.bias",
-                "cross_attn_q": ["cross_attn.q.weight", "cross_attn.q.bias"],
-                "cross_attn_k": ["cross_attn.k.weight", "cross_attn.k.bias"],
-                "cross_attn_v": ["cross_attn.v.weight", "cross_attn.v.bias"],
-                "cross_attn_o": ["cross_attn.o.weight", "cross_attn.o.bias"],
-                "cross_attn_norm_q_weight": "cross_attn.norm_q.weight",
-                "cross_attn_norm_k_weight": "cross_attn.norm_k.weight",
-                "ffn_0": ["ffn.0.weight", "ffn.0.bias"],
-                "ffn_2": ["ffn.2.weight", "ffn.2.bias"],
-                "modulation": "modulation",
-            }
-        elif self.task == 'i2v':
-            layers = {
-                "self_attn_q": ["self_attn.q.weight", "self_attn.q.bias"],
-                "self_attn_k": ["self_attn.k.weight", "self_attn.k.bias"],
-                "self_attn_v": ["self_attn.v.weight", "self_attn.v.bias"],
-                "self_attn_o": ["self_attn.o.weight", "self_attn.o.bias"],
-                "self_attn_norm_q_weight": "self_attn.norm_q.weight",
-                "self_attn_norm_k_weight": "self_attn.norm_k.weight",
-                "norm3_weight": "norm3.weight",
-                "norm3_bias": "norm3.bias",
-                "cross_attn_q": ["cross_attn.q.weight", "cross_attn.q.bias"],
-                "cross_attn_k": ["cross_attn.k.weight", "cross_attn.k.bias"],
-                "cross_attn_v": ["cross_attn.v.weight", "cross_attn.v.bias"],
-                "cross_attn_o": ["cross_attn.o.weight", "cross_attn.o.bias"],
-                "cross_attn_norm_q_weight": "cross_attn.norm_q.weight",
-                "cross_attn_norm_k_weight": "cross_attn.norm_k.weight",
-                "cross_attn_k_img": ["cross_attn.k_img.weight", "cross_attn.k_img.bias"],
-                "cross_attn_v_img": ["cross_attn.v_img.weight", "cross_attn.v_img.bias"],
-                "cross_attn_norm_k_img_weight": "cross_attn.norm_k_img.weight",
-                "ffn_0": ["ffn.0.weight", "ffn.0.bias"],
-                "ffn_2": ["ffn.2.weight", "ffn.2.bias"],
-                "modulation": "modulation",
-            }
 
-        for layer_name, weight_keys in layers.items():
-            if isinstance(weight_keys, list):
-                weight_key, bias_key = weight_keys
-                weight_path = f"blocks.{self.block_index}.{weight_key}"
-                bias_path = f"blocks.{self.block_index}.{bias_key}"
-                setattr(self, layer_name, MM_WEIGHT_REGISTER[self.mm_type](weight_path, bias_path))
-                getattr(self, layer_name).load(weight_dict)
+        self.self_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.self_attn.q.weight',f'blocks.{self.block_index}.self_attn.q.bias')
+        self.self_attn_k = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.self_attn.k.weight',f'blocks.{self.block_index}.self_attn.k.bias')
+        self.self_attn_v = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.self_attn.v.weight',f'blocks.{self.block_index}.self_attn.v.bias')
+        self.self_attn_o = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.self_attn.o.weight',f'blocks.{self.block_index}.self_attn.o.bias')
+        self.self_attn_norm_q_weight = weight_dict[f'blocks.{self.block_index}.self_attn.norm_q.weight']
+        self.self_attn_norm_k_weight = weight_dict[f'blocks.{self.block_index}.self_attn.norm_k.weight']
+        self.norm3 = LN_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.norm3.weight',f'blocks.{self.block_index}.norm3.bias',eps = 1e-6)
+        self.cross_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.cross_attn.q.weight',f'blocks.{self.block_index}.cross_attn.q.bias')
+        self.cross_attn_k = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.cross_attn.k.weight',f'blocks.{self.block_index}.cross_attn.k.bias')
+        self.cross_attn_v = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.cross_attn.v.weight',f'blocks.{self.block_index}.cross_attn.v.bias')
+        self.cross_attn_o = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.cross_attn.o.weight',f'blocks.{self.block_index}.cross_attn.o.bias')
+        self.cross_attn_norm_q_weight = weight_dict[f'blocks.{self.block_index}.cross_attn.norm_q.weight']
+        self.cross_attn_norm_k_weight = weight_dict[f'blocks.{self.block_index}.cross_attn.norm_k.weight']
+        self.ffn_0 = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.ffn.0.weight',f'blocks.{self.block_index}.ffn.0.bias')
+        self.ffn_2 = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.ffn.2.weight',f'blocks.{self.block_index}.ffn.2.bias')
+        self.modulation = weight_dict[f'blocks.{self.block_index}.modulation']
+
+        self.weight_list = [
+            self.self_attn_q,
+            self.self_attn_k,
+            self.self_attn_v,
+            self.self_attn_o,
+            self.self_attn_norm_q_weight,
+            self.self_attn_norm_k_weight,
+            self.norm3,
+            self.cross_attn_q,
+            self.cross_attn_k,
+            self.cross_attn_v,
+            self.cross_attn_o,
+            self.cross_attn_norm_q_weight,
+            self.cross_attn_norm_k_weight,
+            self.ffn_0,
+            self.ffn_2,
+            self.modulation,
+        ]
+
+        if self.task == 'i2v':
+            self.cross_attn_k_img = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.cross_attn.k_img.weight',f'blocks.{self.block_index}.cross_attn.k_img.bias')
+            self.cross_attn_v_img = MM_WEIGHT_REGISTER[self.mm_type](f'blocks.{self.block_index}.cross_attn.v_img.weight',f'blocks.{self.block_index}.cross_attn.v_img.bias')
+            self.cross_attn_norm_k_img_weight = weight_dict[f'blocks.{self.block_index}.cross_attn.norm_k_img.weight']
+            self.weight_list.append(self.cross_attn_k_img)
+            self.weight_list.append(self.cross_attn_v_img)
+            self.weight_list.append(self.cross_attn_norm_k_img_weight)
+        
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate):
+                mm_weight.set_config(self.config['mm_config'])
+                mm_weight.load(weight_dict)
+
+    def to_cpu(self):
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate):
+                mm_weight.to_cpu()
             else:
-                weight_path = f"blocks.{self.block_index}.{weight_keys}"
-                setattr(self, layer_name, weight_dict[weight_path])
+                mm_weight.cpu()
+
+    def to_cuda(self):
+        for mm_weight in self.weight_list:
+            if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, LNWeightTemplate):
+                mm_weight.to_cuda()
+            else:
+                mm_weight.cuda()
