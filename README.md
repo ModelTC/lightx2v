@@ -1,23 +1,28 @@
-# lightx2v
+# LightX2V: Light Video Generation Inference Framework 
 
-这是一个视频生成推理框架
+<div align="center">
+  <picture>
+    <img alt="LightLLM" src="assets/img_lightx2v.jpg" width=75%>
+  </picture>
+</div>
+
+--------------------------------------------------------------------------------
 
 
-## 运行环境
+## START ENV
 
 ```
-# 内网镜像
-docker pull registry.cn-sh-01.sensecore.cn/devsft-ccr-2/video-gen:25031303
+docker pull registry.cn-sh-01.sensecore.cn/devsft-ccr-2/video-gen:25033101
 
 docker run --gpus all -itd --ipc=host --name [name] -v /mnt:/mnt --entrypoint /bin/bash [image id]
 ```
 
-## 运行方式
+## START RUN
 
 ```
 git clone https://gitlab.bj.sensetime.com/video-gen/lightx2v.git
 cd lightx2v
 
-# 修改运行脚本的参数
+# Modify the parameters of the running script
 bash run_hunyuan_t2v.sh
 ```
