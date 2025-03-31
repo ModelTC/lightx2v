@@ -53,14 +53,13 @@ def prepare_causal_attention_mask(n_frame: int, n_hw: int, dtype, device, batch_
     idx_arr = idx_arr > torch.zeros_like(idx_arr)
     for i in range(n_frame):
         for j in range(n_frame):
-            if idx_arr[i,j]:
+            if idx_arr[i, j]:
                 mask[i, j] = torch.zeros(n_hw, n_hw, dtype=dtype, device=device)
     # mask[idx_arr] = torch.zeros(n_hw, n_hw, dtype=dtype, device=device)
-    mask = mask.view(n_frame, -1, n_hw).transpose(1, 0).reshape(seq_len, -1).transpose(1,0)
+    mask = mask.view(n_frame, -1, n_hw).transpose(1, 0).reshape(seq_len, -1).transpose(1, 0)
     if batch_size is not None:
         mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
     return mask.to(device)
-
 
 
 class CausalConv3d(nn.Module):
@@ -76,13 +75,20 @@ class CausalConv3d(nn.Module):
         kernel_size: Union[int, Tuple[int, int, int]],
         stride: Union[int, Tuple[int, int, int]] = 1,
         dilation: Union[int, Tuple[int, int, int]] = 1,
-        pad_mode='replicate',
-        **kwargs
+        pad_mode="replicate",
+        **kwargs,
     ):
         super().__init__()
 
         self.pad_mode = pad_mode
-        padding = (kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size - 1, 0)  # W, H, T
+        padding = (
+            kernel_size // 2,
+            kernel_size // 2,
+            kernel_size // 2,
+            kernel_size // 2,
+            kernel_size - 1,
+            0,
+        )  # W, H, T
         self.time_causal_padding = padding
 
         self.conv = nn.Conv3d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation, **kwargs)
@@ -238,9 +244,7 @@ class DownsampleCausal3D(nn.Module):
             raise ValueError(f"unknown norm_type: {norm_type}")
 
         if use_conv:
-            conv = CausalConv3d(
-                self.channels, self.out_channels, kernel_size=kernel_size, stride=stride, bias=bias
-            )
+            conv = CausalConv3d(self.channels, self.out_channels, kernel_size=kernel_size, stride=stride, bias=bias)
         else:
             raise NotImplementedError
 
@@ -384,28 +388,18 @@ class ResnetBlockCausal3D(nn.Module):
             if hidden_states.shape[0] >= 64:
                 input_tensor = input_tensor.contiguous()
                 hidden_states = hidden_states.contiguous()
-            input_tensor = (
-                self.upsample(input_tensor, scale=scale)
-            )
-            hidden_states = (
-                self.upsample(hidden_states, scale=scale)
-            )
+            input_tensor = self.upsample(input_tensor, scale=scale)
+            hidden_states = self.upsample(hidden_states, scale=scale)
         elif self.downsample is not None:
-            input_tensor = (
-                self.downsample(input_tensor, scale=scale)
-            )
-            hidden_states = (
-                self.downsample(hidden_states, scale=scale)
-            )
+            input_tensor = self.downsample(input_tensor, scale=scale)
+            hidden_states = self.downsample(hidden_states, scale=scale)
 
         hidden_states = self.conv1(hidden_states)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
                 temb = self.nonlinearity(temb)
-            temb = (
-                self.time_emb_proj(temb, scale)[:, :, None, None]
-            )
+            temb = self.time_emb_proj(temb, scale)[:, :, None, None]
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
@@ -425,9 +419,7 @@ class ResnetBlockCausal3D(nn.Module):
         hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = (
-                self.conv_shortcut(input_tensor)
-            )
+            input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
@@ -464,9 +456,7 @@ def get_down_block3d(
 ):
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
-        logger.warn(
-            f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
-        )
+        logger.warn(f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}.")
         attention_head_dim = num_attention_heads
 
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
@@ -518,9 +508,7 @@ def get_up_block3d(
 ) -> nn.Module:
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
-        logger.warn(
-            f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
-        )
+        logger.warn(f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}.")
         attention_head_dim = num_attention_heads
 
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
@@ -588,9 +576,7 @@ class UNetMidBlockCausal3D(nn.Module):
         attentions = []
 
         if attention_head_dim is None:
-            logger.warn(
-                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
-            )
+            logger.warn(f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}.")
             attention_head_dim = in_channels
 
         for _ in range(num_layers):
@@ -637,9 +623,7 @@ class UNetMidBlockCausal3D(nn.Module):
             if attn is not None:
                 B, C, T, H, W = hidden_states.shape
                 hidden_states = rearrange(hidden_states, "b c f h w -> b (f h w) c")
-                attention_mask = prepare_causal_attention_mask(
-                    T, H * W, hidden_states.dtype, hidden_states.device, batch_size=B
-                )
+                attention_mask = prepare_causal_attention_mask(T, H * W, hidden_states.dtype, hidden_states.device, batch_size=B)
                 hidden_states = attn(hidden_states, temb=temb, attention_mask=attention_mask)
                 hidden_states = rearrange(hidden_states, "b (f h w) c -> b c f h w", f=T, h=H, w=W)
             hidden_states = resnet(hidden_states, temb)
@@ -771,7 +755,10 @@ class UpDecoderBlockCausal3D(nn.Module):
         self.resolution_idx = resolution_idx
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
     ) -> torch.FloatTensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)

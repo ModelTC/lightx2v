@@ -1,6 +1,5 @@
 import torch
 import sgl_kernel
-import torch.cuda.amp as amp
 import torch.distributed as dist
 
 
@@ -31,12 +30,7 @@ def compute_freqs(c, grid_sizes, freqs):
 def pad_freqs(original_tensor, target_len):
     seq_len, s1, s2 = original_tensor.shape
     pad_size = target_len - seq_len
-    padding_tensor = torch.ones(
-        pad_size,
-        s1,
-        s2,
-        dtype=original_tensor.dtype,
-        device=original_tensor.device)
+    padding_tensor = torch.ones(pad_size, s1, s2, dtype=original_tensor.dtype, device=original_tensor.device)
     padded_tensor = torch.cat([original_tensor, padding_tensor], dim=0)
     return padded_tensor
 
@@ -58,8 +52,7 @@ def compute_freqs_dist(s, c, grid_sizes, freqs):
 
     freqs_i = pad_freqs(freqs_i, s * world_size)
     s_per_rank = s
-    freqs_i_rank = freqs_i[(cur_rank * s_per_rank):((cur_rank + 1) *
-                                                       s_per_rank), :, :]
+    freqs_i_rank = freqs_i[(cur_rank * s_per_rank) : ((cur_rank + 1) * s_per_rank), :, :]
     return freqs_i_rank
 
 
@@ -67,9 +60,7 @@ def apply_rotary_emb(x, freqs_i):
     n = x.size(1)
     seq_len = freqs_i.size(0)
 
-    x_i = torch.view_as_complex(
-        x[:seq_len].to(torch.float64).reshape(seq_len, n, -1, 2)
-    )
+    x_i = torch.view_as_complex(x[:seq_len].to(torch.float64).reshape(seq_len, n, -1, 2))
     # Apply rotary embedding
     x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
     x_i = torch.cat([x_i, x[seq_len:]]).to(torch.bfloat16)
@@ -93,8 +84,6 @@ def sinusoidal_embedding_1d(dim, position):
     position = position.type(torch.float64)
 
     # calculation
-    sinusoid = torch.outer(
-        position, torch.pow(10000, -torch.arange(half).to(position).div(half))
-    )
+    sinusoid = torch.outer(position, torch.pow(10000, -torch.arange(half).to(position).div(half)))
     x = torch.cat([torch.cos(sinusoid), torch.sin(sinusoid)], dim=1).to(torch.bfloat16)
     return x

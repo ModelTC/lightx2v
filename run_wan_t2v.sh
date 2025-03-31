@@ -23,4 +23,4 @@ python main.py \
 --save_video_path ./output_lightx2v_seed42.mp4 \
 --sample_guide_scale 6 \
 --sample_shift 8
-# --mm_config '{"mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Vllm", "weight_auto_quant": true}' 
+# --mm_config '{"mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Vllm", "weight_auto_quant": true}'

@@ -3,7 +3,7 @@ import torch.distributed as dist
 
 
 def all2all_seq2head(input):
-    '''
+    """
     将输入张量从 [seq_len/N, heads, hidden_dims] 转换为 [seq_len, heads/N, hidden_dims] 的格式。
 
     参数:
@@ -11,9 +11,9 @@ def all2all_seq2head(input):
 
     返回:
         torch.Tensor: 转换后的输出张量，形状为 [seq_len, heads/N, hidden_dims]
-    '''
+    """
     # 确保输入是一个3D张量
-    assert (input.dim() == 3), f"input must be 3D tensor"
+    assert input.dim() == 3, "input must be 3D tensor"
 
     # 获取当前进程的世界大小
     world_size = dist.get_world_size()
@@ -43,7 +43,7 @@ def all2all_seq2head(input):
 
 
 def all2all_head2seq(input):
-    '''
+    """
     将输入张量从 [seq_len, heads/N, hidden_dims] 转换为 [seq_len/N, heads, hidden_dims] 的格式。
 
     参数:
@@ -51,9 +51,9 @@ def all2all_head2seq(input):
 
     返回:
         torch.Tensor: 转换后的输出张量，形状为 [seq_len/N, heads, hidden_dims]
-    '''
+    """
     # 确保输入是一个3D张量
-    assert (input.dim() == 3), f"input must be 3D tensor"
+    assert input.dim() == 3, "input must be 3D tensor"
 
     # 获取当前进程的世界大小
     world_size = dist.get_world_size()
@@ -84,4 +84,3 @@ def all2all_head2seq(input):
     output = output.transpose(0, 1).contiguous().reshape(shard_seq_len, heads, hidden_dims)
 
     return output  # 返回转换后的输出张量
-

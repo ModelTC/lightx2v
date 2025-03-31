@@ -1,8 +1,10 @@
 import functools
 from lightx2v.attentions.distributed.ulysses.attn import ulysses_attn
 
+
 def parallelize_hunyuan(hunyuan_model):
     from lightx2v.attentions.distributed.utils.hunyuan.processor import pre_process, post_process
+
     """将 Hunyuan 模型的推理过程并行化，使用 Ulysses 注意力机制。
 
     参数:
@@ -28,29 +30,25 @@ def parallelize_hunyuan(hunyuan_model):
         """
         # 保存原始的潜在模型输入和频率数据
         self.scheduler.ori_latents, self.scheduler.ori_freqs_cos, self.scheduler.ori_freqs_sin = (
-            self.scheduler.latents, 
-            self.scheduler.freqs_cos, 
-            self.scheduler.freqs_sin
-        )
-        
-        # 预处理输入数据以适应并行计算
-        self.scheduler.latents, self.scheduler.freqs_cos, self.scheduler.freqs_sin, split_dim = pre_process(
-            self.scheduler.latents, self.scheduler.freqs_cos, self.scheduler.freqs_sin
+            self.scheduler.latents,
+            self.scheduler.freqs_cos,
+            self.scheduler.freqs_sin,
         )
 
+        # 预处理输入数据以适应并行计算
+        self.scheduler.latents, self.scheduler.freqs_cos, self.scheduler.freqs_sin, split_dim = pre_process(self.scheduler.latents, self.scheduler.freqs_cos, self.scheduler.freqs_sin)
+
         # 调用原始推理方法，获取输出
-        original_infer(
-            text_encoders_output, image_encoder_output, args
-        )
+        original_infer(text_encoders_output, image_encoder_output, args)
 
         # 对输出进行后处理
         self.scheduler.noise_pred = post_process(self.scheduler.noise_pred, split_dim)
-        
+
         # 恢复原始的潜在模型输入和频率数据
         self.scheduler.latents, self.scheduler.freqs_cos, self.scheduler.freqs_sin = (
-            self.scheduler.ori_latents, 
-            self.scheduler.ori_freqs_cos, 
-            self.scheduler.ori_freqs_sin
+            self.scheduler.ori_latents,
+            self.scheduler.ori_freqs_cos,
+            self.scheduler.ori_freqs_sin,
         )
 
         # return combined_output  # 返回处理后的输出（当前被注释掉）
@@ -62,22 +60,18 @@ def parallelize_hunyuan(hunyuan_model):
 
 def parallelize_wan(wan_model):
     from lightx2v.attentions.distributed.utils.wan.processor import pre_process, post_process
+
     wan_model.transformer_infer.parallel_attention = ulysses_attn
 
     original_infer = wan_model.transformer_infer.infer
 
     @functools.wraps(wan_model.transformer_infer.__class__.infer)  # 保留原始推理方法的元信息
     def new_infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
-
-        x = pre_process(
-            x
-        )
+        x = pre_process(x)
 
         x = original_infer(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
 
-        x = post_process(
-            x
-        )
+        x = post_process(x)
 
         return x
 

@@ -26,7 +26,7 @@ class Conv3dWeightTemplate(metaclass=ABCMeta):
             self.config = config
 
 
-@CONV3D_WEIGHT_REGISTER('Default')
+@CONV3D_WEIGHT_REGISTER("Default")
 class Conv3dWeight(Conv3dWeightTemplate):
     def __init__(self, weight_name, bias_name, stride=1, padding=0, dilation=1, groups=1):
         super().__init__(weight_name, bias_name, stride, padding, dilation, groups)
@@ -43,7 +43,7 @@ class Conv3dWeight(Conv3dWeightTemplate):
             stride=self.stride,
             padding=self.padding,
             dilation=self.dilation,
-            groups=self.groups
+            groups=self.groups,
         )
         return input_tensor
 
@@ -58,7 +58,7 @@ class Conv3dWeight(Conv3dWeightTemplate):
             self.bias = self.bias.cuda()
 
 
-@CONV3D_WEIGHT_REGISTER('Defaultt-Force-BF16')
+@CONV3D_WEIGHT_REGISTER("Defaultt-Force-BF16")
 class Conv3dWeightForceBF16(Conv3dWeight):
     def __init__(self, weight_name, bias_name, stride=1, padding=0, dilation=1, groups=1):
         super().__init__(weight_name, bias_name, stride, padding, dilation, groups)

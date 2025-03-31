@@ -26,7 +26,7 @@ class Conv2dWeightTemplate(metaclass=ABCMeta):
             self.config = config
 
 
-@CONV2D_WEIGHT_REGISTER('Default')
+@CONV2D_WEIGHT_REGISTER("Default")
 class Conv2dWeight(Conv2dWeightTemplate):
     def __init__(self, weight_name, bias_name, stride=1, padding=0, dilation=1, groups=1):
         super().__init__(weight_name, bias_name, stride, padding, dilation, groups)
@@ -43,7 +43,7 @@ class Conv2dWeight(Conv2dWeightTemplate):
             stride=self.stride,
             padding=self.padding,
             dilation=self.dilation,
-            groups=self.groups
+            groups=self.groups,
         )
         return input_tensor
 

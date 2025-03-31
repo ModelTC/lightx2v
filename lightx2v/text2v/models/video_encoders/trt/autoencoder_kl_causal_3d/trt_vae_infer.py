@@ -100,18 +100,18 @@ class HyVaeTrtModelInfer(nn.Module):
         device = batch.device
         dtype = batch.dtype
         batch = batch.cpu().numpy()
+
         def get_output_shape(shp):
             b, c, t, h, w = shp
-            out = (b, 3, 4*(t-1)+1, h*8, w*8)
+            out = (b, 3, 4 * (t - 1) + 1, h * 8, w * 8)
             return out
+
         shp_dict = {"inp": batch.shape, "out": get_output_shape(batch.shape)}
         self.alloc(shp_dict)
         output = np.zeros(*self.output_spec())
 
         # Process I/O and execute the network
-        common.memcpy_host_to_device(
-            self.inputs[0]["allocation"], np.ascontiguousarray(batch)
-        )
+        common.memcpy_host_to_device(self.inputs[0]["allocation"], np.ascontiguousarray(batch))
         self.context.execute_v2(self.allocations)
         common.memcpy_device_to_host(output, self.outputs[0]["allocation"])
         output = torch.from_numpy(output).to(device).type(dtype)
@@ -122,19 +122,19 @@ class HyVaeTrtModelInfer(nn.Module):
         logger.info("Start to do VAE onnx exporting.")
         device = next(decoder.parameters())[0].device
         example_inp = torch.rand(1, 16, 17, 32, 32).to(device).type(next(decoder.parameters())[0].dtype)
-        out_path = str(Path(str(model_dir))/"vae_decoder.onnx")
+        out_path = str(Path(str(model_dir)) / "vae_decoder.onnx")
         torch.onnx.export(
             decoder.eval().half(),
             example_inp.half(),
             out_path,
-            input_names=['inp'],
-            output_names=['out'],
+            input_names=["inp"],
+            output_names=["out"],
             opset_version=14,
             dynamic_axes={
                 "inp": {1: "c1", 2: "c2", 3: "c3", 4: "c4"},
-                "out": {1: "c1", 2: "c2", 3: "c3", 4: "c4"}
-                }
-            )
+                "out": {1: "c1", 2: "c2", 3: "c3", 4: "c4"},
+            },
+        )
         # onnx_ori = onnx.load(out_path)
         os.system(f"onnxsim {out_path} {out_path}")
         # onnx_opt, check = simplify(onnx_ori)

@@ -2,7 +2,7 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 
 
-class TextEncoderHFLlamaModel():
+class TextEncoderHFLlamaModel:
     def __init__(self, model_path, device):
         self.device = device
         self.model_path = model_path
@@ -55,8 +55,8 @@ class TextEncoderHFLlamaModel():
             output_hidden_states=True,
         )
 
-        last_hidden_state = outputs.hidden_states[-(self.hidden_state_skip_layer + 1)][:, self.crop_start:]        
-        attention_mask = tokens["attention_mask"][:, self.crop_start:]
+        last_hidden_state = outputs.hidden_states[-(self.hidden_state_skip_layer + 1)][:, self.crop_start :]
+        attention_mask = tokens["attention_mask"][:, self.crop_start :]
         if args.cpu_offload:
             self.to_cpu()
         return last_hidden_state, attention_mask
@@ -64,6 +64,6 @@ class TextEncoderHFLlamaModel():
 
 if __name__ == "__main__":
     model = TextEncoderHFLlamaModel("/mnt/nvme0/yongyang/projects/hy/HunyuanVideo/ckpts/text_encoder", torch.device("cuda"))
-    text = 'A cat walks on the grass, realistic style.'
+    text = "A cat walks on the grass, realistic style."
     outputs = model.infer(text)
     print(outputs)

@@ -2,7 +2,6 @@
 import logging
 
 import torch
-import torch.cuda.amp as amp
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
@@ -44,7 +43,6 @@ class CausalConv3d(nn.Conv3d):
 
 
 class RMS_norm(nn.Module):
-
     def __init__(self, dim, channel_first=True, images=True, bias=False):
         super().__init__()
         broadcastable_dims = (1, 1, 1) if not images else (1, 1)
@@ -56,16 +54,10 @@ class RMS_norm(nn.Module):
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
     def forward(self, x):
-        return (
-            F.normalize(x, dim=(1 if self.channel_first else -1))
-            * self.scale
-            * self.gamma
-            + self.bias
-        )
+        return F.normalize(x, dim=(1 if self.channel_first else -1)) * self.scale * self.gamma + self.bias
 
 
 class Upsample(nn.Upsample):
-
     def forward(self, x):
         """
         Fix bfloat16 support for nearest neighbor interpolation.
@@ -74,7 +66,6 @@ class Upsample(nn.Upsample):
 
 
 class Resample(nn.Module):
-
     def __init__(self, dim, mode):
         assert mode in (
             "none",
@@ -101,16 +92,10 @@ class Resample(nn.Module):
             self.time_conv = CausalConv3d(dim, dim * 2, (3, 1, 1), padding=(1, 0, 0))
 
         elif mode == "downsample2d":
-            self.resample = nn.Sequential(
-                nn.ZeroPad2d((0, 1, 0, 1)), nn.Conv2d(dim, dim, 3, stride=(2, 2))
-            )
+            self.resample = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.Conv2d(dim, dim, 3, stride=(2, 2)))
         elif mode == "downsample3d":
-            self.resample = nn.Sequential(
-                nn.ZeroPad2d((0, 1, 0, 1)), nn.Conv2d(dim, dim, 3, stride=(2, 2))
-            )
-            self.time_conv = CausalConv3d(
-                dim, dim, (3, 1, 1), stride=(2, 1, 1), padding=(0, 0, 0)
-            )
+            self.resample = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.Conv2d(dim, dim, 3, stride=(2, 2)))
+            self.time_conv = CausalConv3d(dim, dim, (3, 1, 1), stride=(2, 1, 1), padding=(0, 0, 0))
 
         else:
             self.resample = nn.Identity()
@@ -124,28 +109,17 @@ class Resample(nn.Module):
                     feat_cache[idx] = "Rep"
                     feat_idx[0] += 1
                 else:
-
                     cache_x = x[:, :, -CACHE_T:, :, :].clone()
-                    if (
-                        cache_x.shape[2] < 2
-                        and feat_cache[idx] is not None
-                        and feat_cache[idx] != "Rep"
-                    ):
+                    if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx] != "Rep":
                         # cache last frame of last two chunk
                         cache_x = torch.cat(
                             [
-                                feat_cache[idx][:, :, -1, :, :]
-                                .unsqueeze(2)
-                                .to(cache_x.device),
+                                feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
                                 cache_x,
                             ],
                             dim=2,
                         )
-                    if (
-                        cache_x.shape[2] < 2
-                        and feat_cache[idx] is not None
-                        and feat_cache[idx] == "Rep"
-                    ):
+                    if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx] == "Rep":
                         cache_x = torch.cat(
                             [torch.zeros_like(cache_x).to(cache_x.device), cache_x],
                             dim=2,
@@ -172,15 +146,12 @@ class Resample(nn.Module):
                     feat_cache[idx] = x.clone()
                     feat_idx[0] += 1
                 else:
-
                     cache_x = x[:, :, -1:, :, :].clone()
                     # if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx]!='Rep':
                     #     # cache last frame of last two chunk
                     #     cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
 
-                    x = self.time_conv(
-                        torch.cat([feat_cache[idx][:, :, -1:, :, :], x], 2)
-                    )
+                    x = self.time_conv(torch.cat([feat_cache[idx][:, :, -1:, :, :], x], 2))
                     feat_cache[idx] = cache_x
                     feat_idx[0] += 1
         return x
@@ -210,7 +181,6 @@ class Resample(nn.Module):
 
 
 class ResidualBlock(nn.Module):
-
     def __init__(self, in_dim, out_dim, dropout=0.0):
         super().__init__()
         self.in_dim = in_dim
@@ -226,9 +196,7 @@ class ResidualBlock(nn.Module):
             nn.Dropout(dropout),
             CausalConv3d(out_dim, out_dim, 3, padding=1),
         )
-        self.shortcut = (
-            CausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
-        )
+        self.shortcut = CausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
 
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         h = self.shortcut(x)
@@ -240,9 +208,7 @@ class ResidualBlock(nn.Module):
                     # cache last frame of last two chunk
                     cache_x = torch.cat(
                         [
-                            feat_cache[idx][:, :, -1, :, :]
-                            .unsqueeze(2)
-                            .to(cache_x.device),
+                            feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
                             cache_x,
                         ],
                         dim=2,
@@ -278,13 +244,7 @@ class AttentionBlock(nn.Module):
         x = rearrange(x, "b c t h w -> (b t) c h w")
         x = self.norm(x)
         # compute query, key, value
-        q, k, v = (
-            self.to_qkv(x)
-            .reshape(b * t, 1, c * 3, -1)
-            .permute(0, 1, 3, 2)
-            .contiguous()
-            .chunk(3, dim=-1)
-        )
+        q, k, v = self.to_qkv(x).reshape(b * t, 1, c * 3, -1).permute(0, 1, 3, 2).contiguous().chunk(3, dim=-1)
 
         # apply attention
         x = F.scaled_dot_product_attention(
@@ -301,7 +261,6 @@ class AttentionBlock(nn.Module):
 
 
 class Encoder3d(nn.Module):
-
     def __init__(
         self,
         dim=128,
@@ -400,9 +359,7 @@ class Encoder3d(nn.Module):
                     # cache last frame of last two chunk
                     cache_x = torch.cat(
                         [
-                            feat_cache[idx][:, :, -1, :, :]
-                            .unsqueeze(2)
-                            .to(cache_x.device),
+                            feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
                             cache_x,
                         ],
                         dim=2,
@@ -416,7 +373,6 @@ class Encoder3d(nn.Module):
 
 
 class Decoder3d(nn.Module):
-
     def __init__(
         self,
         dim=128,
@@ -518,9 +474,7 @@ class Decoder3d(nn.Module):
                     # cache last frame of last two chunk
                     cache_x = torch.cat(
                         [
-                            feat_cache[idx][:, :, -1, :, :]
-                            .unsqueeze(2)
-                            .to(cache_x.device),
+                            feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
                             cache_x,
                         ],
                         dim=2,
@@ -542,7 +496,6 @@ def count_conv3d(model):
 
 
 class WanVAE_(nn.Module):
-
     def __init__(
         self,
         dim=128,
@@ -613,9 +566,7 @@ class WanVAE_(nn.Module):
                 out = torch.cat([out, out_], 2)
         mu, log_var = self.conv1(out).chunk(2, dim=1)
         if isinstance(scale[0], torch.Tensor):
-            mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(
-                1, self.z_dim, 1, 1, 1
-            )
+            mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
         else:
             mu = (mu - scale[0]) * scale[1]
         self.clear_cache()
@@ -625,9 +576,7 @@ class WanVAE_(nn.Module):
         self.clear_cache()
         # z: [b,c,t,h,w]
         if isinstance(scale[0], torch.Tensor):
-            z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(
-                1, self.z_dim, 1, 1, 1
-            )
+            z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(1, self.z_dim, 1, 1, 1)
         else:
             z = z / scale[1] + scale[0]
         iter_ = z.shape[2]
@@ -700,7 +649,6 @@ def _video_vae(pretrained_path=None, z_dim=None, device="cpu", **kwargs):
 
 
 class WanVAE:
-
     def __init__(
         self,
         z_dim=16,
@@ -780,11 +728,8 @@ class WanVAE:
         """
         videos: A list of videos each with shape [C, T, H, W].
         """
-        return [
-            self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0)
-            for u in videos
-        ]
-    
+        return [self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0) for u in videos]
+
     def decode_dist(self, zs, world_size, cur_rank, split_dim):
         splited_total_len = zs.shape[split_dim]
         splited_chunk_len = splited_total_len // world_size
@@ -792,37 +737,47 @@ class WanVAE:
 
         if cur_rank == 0:
             if split_dim == 2:
-                zs = zs[:,:,:splited_chunk_len+2*padding_size,:].contiguous()
+                zs = zs[:, :, : splited_chunk_len + 2 * padding_size, :].contiguous()
             elif split_dim == 3:
-                zs = zs[:,:,:,:splited_chunk_len+2*padding_size].contiguous()
-        elif cur_rank == world_size-1:
+                zs = zs[:, :, :, : splited_chunk_len + 2 * padding_size].contiguous()
+        elif cur_rank == world_size - 1:
             if split_dim == 2:
-                zs = zs[:,:,-(splited_chunk_len+2*padding_size):,:].contiguous()
+                zs = zs[:, :, -(splited_chunk_len + 2 * padding_size) :, :].contiguous()
             elif split_dim == 3:
-                zs = zs[:,:,:,-(splited_chunk_len+2*padding_size):].contiguous()
+                zs = zs[:, :, :, -(splited_chunk_len + 2 * padding_size) :].contiguous()
         else:
             if split_dim == 2:
-                zs = zs[:,:,cur_rank*splited_chunk_len-padding_size:(cur_rank+1)*splited_chunk_len+padding_size,:].contiguous()
+                zs = zs[
+                    :,
+                    :,
+                    cur_rank * splited_chunk_len - padding_size : (cur_rank + 1) * splited_chunk_len + padding_size,
+                    :,
+                ].contiguous()
             elif split_dim == 3:
-                zs = zs[:,:,:,cur_rank*splited_chunk_len-padding_size:(cur_rank+1)*splited_chunk_len+padding_size].contiguous()
+                zs = zs[
+                    :,
+                    :,
+                    :,
+                    cur_rank * splited_chunk_len - padding_size : (cur_rank + 1) * splited_chunk_len + padding_size,
+                ].contiguous()
 
         images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
 
         if cur_rank == 0:
             if split_dim == 2:
-                images = images[:,:,:,:splited_chunk_len*8,:].contiguous()
+                images = images[:, :, :, : splited_chunk_len * 8, :].contiguous()
             elif split_dim == 3:
-                images = images[:,:,:,:,:splited_chunk_len*8].contiguous()
-        elif cur_rank == world_size-1:
+                images = images[:, :, :, :, : splited_chunk_len * 8].contiguous()
+        elif cur_rank == world_size - 1:
             if split_dim == 2:
-                images = images[:,:,:,-splited_chunk_len*8:,:].contiguous()
+                images = images[:, :, :, -splited_chunk_len * 8 :, :].contiguous()
             elif split_dim == 3:
-                images = images[:,:,:,:,-splited_chunk_len*8:].contiguous()
+                images = images[:, :, :, :, -splited_chunk_len * 8 :].contiguous()
         else:
             if split_dim == 2:
-                images = images[:,:,:,8*padding_size:-8*padding_size,:].contiguous()
+                images = images[:, :, :, 8 * padding_size : -8 * padding_size, :].contiguous()
             elif split_dim == 3:
-                images = images[:,:,:,:,8*padding_size:-8*padding_size].contiguous()
+                images = images[:, :, :, :, 8 * padding_size : -8 * padding_size].contiguous()
 
         full_images = [torch.empty_like(images) for _ in range(world_size)]
         dist.all_gather(full_images, images)
@@ -832,7 +787,6 @@ class WanVAE:
         images = torch.cat(full_images, dim=-1)
 
         return images
-        
 
     def decode(self, zs, generator, args):
         if args.cpu_offload:

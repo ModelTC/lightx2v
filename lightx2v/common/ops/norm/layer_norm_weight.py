@@ -35,7 +35,7 @@ class LNWeightTemplate(metaclass=ABCMeta):
             self.bias = self.bias.cuda()
 
 
-@LN_WEIGHT_REGISTER('Default')
+@LN_WEIGHT_REGISTER("Default")
 class LNWeight(LNWeightTemplate):
     def __init__(self, weight_name, bias_name, eps=1e-6):
         super().__init__(weight_name, bias_name, eps)

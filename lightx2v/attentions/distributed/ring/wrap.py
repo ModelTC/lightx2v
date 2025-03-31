@@ -16,7 +16,17 @@ def parallelize_hunyuan(hunyuan_model):
     original_infer = hunyuan_model.infer
 
     @functools.wraps(hunyuan_model.__class__.infer)  # 保留原始推理方法的元信息
-    def new_infer(self, latent_model_input, t_expand, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance):
+    def new_infer(
+        self,
+        latent_model_input,
+        t_expand,
+        text_states,
+        text_mask,
+        text_states_2,
+        freqs_cos,
+        freqs_sin,
+        guidance,
+    ):
         """新的推理方法，处理输入并调用原始推理方法。
 
         参数:
@@ -34,13 +44,18 @@ def parallelize_hunyuan(hunyuan_model):
             combined_output: 经过后处理的输出结果
         """
         # 预处理输入数据
-        latent_model_input, freqs_cos, freqs_sin, split_dim = pre_process(
-            latent_model_input, freqs_cos, freqs_sin
-        )
+        latent_model_input, freqs_cos, freqs_sin, split_dim = pre_process(latent_model_input, freqs_cos, freqs_sin)
 
         # 调用原始推理方法，获取输出
         output = original_infer(
-            latent_model_input, t_expand, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance
+            latent_model_input,
+            t_expand,
+            text_states,
+            text_mask,
+            text_states_2,
+            freqs_cos,
+            freqs_sin,
+            guidance,
         )
 
         # 对输出进行后处理

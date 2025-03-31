@@ -2,7 +2,7 @@ import torch
 from transformers import CLIPTextModel, AutoTokenizer
 
 
-class TextEncoderHFClipModel():
+class TextEncoderHFClipModel:
     def __init__(self, model_path, device):
         self.device = device
         self.model_path = model_path
@@ -51,6 +51,6 @@ class TextEncoderHFClipModel():
 
 if __name__ == "__main__":
     model = TextEncoderHFClipModel("/mnt/nvme0/yongyang/projects/hy/HunyuanVideo/ckpts/text_encoder_2", torch.device("cuda"))
-    text = 'A cat walks on the grass, realistic style.'
+    text = "A cat walks on the grass, realistic style."
     outputs = model.infer(text)
     print(outputs)
