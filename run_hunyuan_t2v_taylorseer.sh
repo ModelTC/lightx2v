@@ -16,4 +16,4 @@ python main.py \
 --cpu_offload \
 --feature_caching TaylorSeer \
 --save_video_path ./output_lightx2v_offload_TaylorSeer.mp4 \
-# --mm_config '{"mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm", "weight_auto_quant": true}' 
+# --mm_config '{"mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm", "weight_auto_quant": true}'

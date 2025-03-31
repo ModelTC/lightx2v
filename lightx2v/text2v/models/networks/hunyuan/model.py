@@ -2,11 +2,16 @@ import os
 import torch
 from lightx2v.text2v.models.networks.hunyuan.weights.pre_weights import HunyuanPreWeights
 from lightx2v.text2v.models.networks.hunyuan.weights.post_weights import HunyuanPostWeights
-from lightx2v.text2v.models.networks.hunyuan.weights.transformer_weights import HunyuanTransformerWeights
+from lightx2v.text2v.models.networks.hunyuan.weights.transformer_weights import (
+    HunyuanTransformerWeights,
+)
 from lightx2v.text2v.models.networks.hunyuan.infer.pre_infer import HunyuanPreInfer
 from lightx2v.text2v.models.networks.hunyuan.infer.post_infer import HunyuanPostInfer
 from lightx2v.text2v.models.networks.hunyuan.infer.transformer_infer import HunyuanTransformerInfer
-from lightx2v.text2v.models.networks.hunyuan.infer.feature_caching.transformer_infer import HunyuanTransformerInferFeatureCaching
+from lightx2v.text2v.models.networks.hunyuan.infer.feature_caching.transformer_infer import (
+    HunyuanTransformerInferFeatureCaching,
+)
+
 # from lightx2v.core.distributed.partial_heads_attn.wrap import parallelize_hunyuan
 from lightx2v.attentions.distributed.ulysses.wrap import parallelize_hunyuan
 
@@ -23,24 +28,28 @@ class HunyuanModel:
         self._init_weights()
         self._init_infer()
 
-        if self.config['parallel_attn']:
+        if self.config["parallel_attn"]:
             parallelize_hunyuan(self)
-        
-        if self.config['cpu_offload']:
+
+        if self.config["cpu_offload"]:
             self.to_cpu()
 
     def _init_infer_class(self):
         self.pre_infer_class = HunyuanPreInfer
         self.post_infer_class = HunyuanPostInfer
-        if self.config['feature_caching'] == "NoCaching":
+        if self.config["feature_caching"] == "NoCaching":
             self.transformer_infer_class = HunyuanTransformerInfer
-        elif self.config['feature_caching'] == "TaylorSeer":
+        elif self.config["feature_caching"] == "TaylorSeer":
             self.transformer_infer_class = HunyuanTransformerInferFeatureCaching
         else:
-            raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")
+            raise NotImplementedError(
+                f"Unsupported feature_caching type: {self.config['feature_caching']}"
+            )
 
     def _load_ckpt(self):
-        ckpt_path = os.path.join(self.model_path, "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt")
+        ckpt_path = os.path.join(
+            self.model_path, "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt"
+        )
         weight_dict = torch.load(ckpt_path, map_location="cuda", weights_only=True)["module"]
         return weight_dict
 
@@ -87,9 +96,7 @@ class HunyuanModel:
             self.scheduler.freqs_sin,
             self.scheduler.guidance,
         )
-        img, vec = self.transformer_infer.infer(
-            self.transformer_weights, *pre_infer_out
-        )
+        img, vec = self.transformer_infer.infer(self.transformer_weights, *pre_infer_out)
         self.scheduler.noise_pred = self.post_infer.infer(
             self.post_weight, img, vec, self.scheduler.latents.shape
         )

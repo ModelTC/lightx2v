@@ -35,11 +35,13 @@ class LNWeightTemplate(metaclass=ABCMeta):
             self.bias = self.bias.cuda()
 
 
-@LN_WEIGHT_REGISTER('Default')
+@LN_WEIGHT_REGISTER("Default")
 class LNWeight(LNWeightTemplate):
     def __init__(self, weight_name, bias_name, eps=1e-6):
         super().__init__(weight_name, bias_name, eps)
 
     def apply(self, input_tensor):
-        input_tensor = torch.nn.functional.layer_norm(input_tensor, (input_tensor.shape[1],), self.weight, self.bias, self.eps)
+        input_tensor = torch.nn.functional.layer_norm(
+            input_tensor, (input_tensor.shape[1],), self.weight, self.bias, self.eps
+        )
         return input_tensor

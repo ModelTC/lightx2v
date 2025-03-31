@@ -8,20 +8,20 @@ class BaseQuantizer(object):
         self.sym = symmetric
         self.granularity = granularity
         self.kwargs = kwargs
-        if self.granularity == 'per_group':
-            self.group_size = self.kwargs['group_size']
-        self.calib_algo = self.kwargs.get('calib_algo', 'minmax')
+        if self.granularity == "per_group":
+            self.group_size = self.kwargs["group_size"]
+        self.calib_algo = self.kwargs.get("calib_algo", "minmax")
 
     def get_tensor_range(self, tensor):
-        if self.calib_algo == 'minmax':
+        if self.calib_algo == "minmax":
             return self.get_minmax_range(tensor)
-        elif self.calib_algo == 'mse':
+        elif self.calib_algo == "mse":
             return self.get_mse_range(tensor)
         else:
-            raise ValueError(f'Unsupported calibration algorithm: {self.calib_algo}')
+            raise ValueError(f"Unsupported calibration algorithm: {self.calib_algo}")
 
     def get_minmax_range(self, tensor):
-        if self.granularity == 'per_tensor':
+        if self.granularity == "per_tensor":
             max_val = torch.max(tensor)
             min_val = torch.min(tensor)
         else:
@@ -47,7 +47,7 @@ class BaseQuantizer(object):
         return scales, zeros, qmax, qmin
 
     def reshape_tensor(self, tensor, allow_padding=False):
-        if self.granularity == 'per_group':
+        if self.granularity == "per_group":
             t = tensor.reshape(-1, self.group_size)
         else:
             t = tensor
@@ -79,7 +79,7 @@ class BaseQuantizer(object):
         tensor, scales, zeros, qmax, qmin = self.get_tensor_qparams(tensor)
         tensor = self.quant(tensor, scales, zeros, qmax, qmin)
         tensor = self.restore_tensor(tensor, org_shape)
-        if self.sym == True:
+        if self.sym:
             zeros = None
         return tensor, scales, zeros
 
@@ -87,9 +87,9 @@ class BaseQuantizer(object):
 class IntegerQuantizer(BaseQuantizer):
     def __init__(self, bit, symmetric, granularity, **kwargs):
         super().__init__(bit, symmetric, granularity, **kwargs)
-        if 'int_range' in self.kwargs:
-            self.qmin = self.kwargs['int_range'][0]
-            self.qmax = self.kwargs['int_range'][1]
+        if "int_range" in self.kwargs:
+            self.qmin = self.kwargs["int_range"][0]
+            self.qmax = self.kwargs["int_range"][1]
         else:
             if self.sym:
                 self.qmin = -(2 ** (self.bit - 1))
@@ -110,7 +110,14 @@ class IntegerQuantizer(BaseQuantizer):
         tensor = (tensor - zeros) * scales
         return tensor
 
-    def quant_dequant(self, tensor, scales, zeros, qmax, qmin,):
+    def quant_dequant(
+        self,
+        tensor,
+        scales,
+        zeros,
+        qmax,
+        qmin,
+    ):
         tensor = self.quant(tensor, scales, zeros, qmax, qmin)
         tensor = self.dequant(tensor, scales, zeros)
         return tensor
@@ -119,19 +126,19 @@ class IntegerQuantizer(BaseQuantizer):
 class FloatQuantizer(BaseQuantizer):
     def __init__(self, bit, symmetric, granularity, **kwargs):
         super().__init__(bit, symmetric, granularity, **kwargs)
-        assert self.bit in ['e4m3', 'e5m2'], f'Unsupported bit configuration: {self.bit}'
-        assert self.sym == True
-        
-        if self.bit == 'e4m3':
+        assert self.bit in ["e4m3", "e5m2"], f"Unsupported bit configuration: {self.bit}"
+        assert self.sym, "Only symmetric quantization is supported for float quantization"
+
+        if self.bit == "e4m3":
             self.e_bits = 4
             self.m_bits = 3
             self.fp_dtype = torch.float8_e4m3fn
-        elif self.bit == 'e5m2':
+        elif self.bit == "e5m2":
             self.e_bits = 5
             self.m_bits = 2
             self.fp_dtype = torch.float8_e5m2
         else:
-            raise ValueError(f'Unsupported bit configuration: {self.bit}')
+            raise ValueError(f"Unsupported bit configuration: {self.bit}")
 
         finfo = torch.finfo(self.fp_dtype)
         self.qmin, self.qmax = finfo.min, finfo.max
@@ -141,12 +148,10 @@ class FloatQuantizer(BaseQuantizer):
 
     def quant(self, tensor, scales, zeros, qmax, qmin):
         scaled_tensor = tensor / scales + zeros
-        scaled_tensor = torch.clip(
-                    scaled_tensor, self.qmin.cuda(), self.qmax.cuda()
-                )
+        scaled_tensor = torch.clip(scaled_tensor, self.qmin.cuda(), self.qmax.cuda())
         org_dtype = scaled_tensor.dtype
         q_tensor = float_quantize(
-            scaled_tensor.float(), self.e_bits, self.m_bits, rounding='nearest'
+            scaled_tensor.float(), self.e_bits, self.m_bits, rounding="nearest"
         )
         q_tensor.to(org_dtype)
         return q_tensor
@@ -161,25 +166,29 @@ class FloatQuantizer(BaseQuantizer):
         return tensor
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     weight = torch.randn(4096, 4096, dtype=torch.bfloat16).cuda()
-    quantizer = IntegerQuantizer(4, False, 'per_group', group_size=128)
+    quantizer = IntegerQuantizer(4, False, "per_group", group_size=128)
     q_weight = quantizer.fake_quant_tensor(weight)
     print(weight)
     print(q_weight)
-    print(f"cosine = {torch.cosine_similarity(weight.view(1, -1).to(torch.float64), q_weight.view(1, -1).to(torch.float64))}")
-    
+    print(
+        f"cosine = {torch.cosine_similarity(weight.view(1, -1).to(torch.float64), q_weight.view(1, -1).to(torch.float64))}"
+    )
+
     realq_weight, scales, zeros = quantizer.real_quant_tensor(weight)
     print(f"realq_weight = {realq_weight}, {realq_weight.shape}")
     print(f"scales = {scales}, {scales.shape}")
     print(f"zeros = {zeros}, {zeros.shape}")
 
     weight = torch.randn(8192, 4096, dtype=torch.bfloat16).cuda()
-    quantizer = FloatQuantizer('e4m3', True, 'per_channel')
+    quantizer = FloatQuantizer("e4m3", True, "per_channel")
     q_weight = quantizer.fake_quant_tensor(weight)
     print(weight)
     print(q_weight)
-    print(f"cosine = {torch.cosine_similarity(weight.view(1, -1).to(torch.float64), q_weight.view(1, -1).to(torch.float64))}")
+    print(
+        f"cosine = {torch.cosine_similarity(weight.view(1, -1).to(torch.float64), q_weight.view(1, -1).to(torch.float64))}"
+    )
 
     realq_weight, scales, zeros = quantizer.real_quant_tensor(weight)
     print(f"realq_weight = {realq_weight}, {realq_weight.shape}")

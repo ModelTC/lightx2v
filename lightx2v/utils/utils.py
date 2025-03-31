@@ -7,8 +7,6 @@ import numpy as np
 import imageio
 import random
 
-import os
-
 
 def seed_all(seed):
     random.seed(seed)

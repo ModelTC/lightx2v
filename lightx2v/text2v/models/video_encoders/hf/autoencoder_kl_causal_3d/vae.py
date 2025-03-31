@@ -106,7 +106,9 @@ class EncoderCausal3D(nn.Module):
         )
 
         # out
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[-1], num_groups=norm_num_groups, eps=1e-6)
+        self.conv_norm_out = nn.GroupNorm(
+            num_channels=block_out_channels[-1], num_groups=norm_num_groups, eps=1e-6
+        )
         self.conv_act = nn.SiLU()
 
         conv_out_channels = 2 * out_channels if double_z else out_channels
@@ -218,7 +220,9 @@ class DecoderCausal3D(nn.Module):
         if norm_type == "spatial":
             self.conv_norm_out = SpatialNorm(block_out_channels[0], temb_channels)
         else:
-            self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
+            self.conv_norm_out = nn.GroupNorm(
+                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6
+            )
         self.conv_act = nn.SiLU()
         self.conv_out = CausalConv3d(block_out_channels[0], out_channels, kernel_size=3)
 
@@ -270,7 +274,9 @@ class DecoderCausal3D(nn.Module):
 
                 # up
                 for up_block in self.up_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block), sample, latent_embeds
+                    )
         else:
             # middle
             sample = self.mid_block(sample, latent_embeds)
@@ -346,8 +352,7 @@ class DiagonalGaussianDistribution(object):
             return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
         return 0.5 * torch.sum(
-            logtwopi + self.logvar +
-            torch.pow(sample - self.mean, 2) / self.var,
+            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
             dim=dims,
         )
 

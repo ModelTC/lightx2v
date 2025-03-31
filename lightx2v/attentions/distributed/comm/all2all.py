@@ -3,7 +3,7 @@ import torch.distributed as dist
 
 
 def all2all_seq2head(input):
-    '''
+    """
     将输入张量从 [seq_len/N, heads, hidden_dims] 转换为 [seq_len, heads/N, hidden_dims] 的格式。
 
     参数:
@@ -11,9 +11,9 @@ def all2all_seq2head(input):
 
     返回:
         torch.Tensor: 转换后的输出张量，形状为 [seq_len, heads/N, hidden_dims]
-    '''
+    """
     # 确保输入是一个3D张量
-    assert (input.dim() == 3), f"input must be 3D tensor"
+    assert input.dim() == 3, "input must be 3D tensor"
 
     # 获取当前进程的世界大小
     world_size = dist.get_world_size()
@@ -25,7 +25,9 @@ def all2all_seq2head(input):
 
     # 重塑输入张量以便进行 all-to-all 操作
     input_t = (
-        input.reshape(shard_seq_len, world_size, shard_heads, hidden_dims)  # 重塑为 [shard_seq_len, world_size, shard_heads, hidden_dims]
+        input.reshape(
+            shard_seq_len, world_size, shard_heads, hidden_dims
+        )  # 重塑为 [shard_seq_len, world_size, shard_heads, hidden_dims]
         .transpose(0, 1)  # 转置以便进行 all-to-all 操作
         .contiguous()  # 确保内存连续
     )
@@ -43,7 +45,7 @@ def all2all_seq2head(input):
 
 
 def all2all_head2seq(input):
-    '''
+    """
     将输入张量从 [seq_len, heads/N, hidden_dims] 转换为 [seq_len/N, heads, hidden_dims] 的格式。
 
     参数:
@@ -51,9 +53,9 @@ def all2all_head2seq(input):
 
     返回:
         torch.Tensor: 转换后的输出张量，形状为 [seq_len/N, heads, hidden_dims]
-    '''
+    """
     # 确保输入是一个3D张量
-    assert (input.dim() == 3), f"input must be 3D tensor"
+    assert input.dim() == 3, "input must be 3D tensor"
 
     # 获取当前进程的世界大小
     world_size = dist.get_world_size()
@@ -65,10 +67,14 @@ def all2all_head2seq(input):
 
     # 重塑输入张量以便进行 all-to-all 操作
     input_t = (
-        input.reshape(world_size, shard_seq_len, shard_heads, hidden_dims)  # 重塑为 [world_size, shard_seq_len, shard_heads, hidden_dims]
+        input.reshape(
+            world_size, shard_seq_len, shard_heads, hidden_dims
+        )  # 重塑为 [world_size, shard_seq_len, shard_heads, hidden_dims]
         .transpose(1, 2)  # 转置以便进行 all-to-all 操作
         .contiguous()  # 确保内存连续
-        .reshape(world_size, shard_heads, shard_seq_len, hidden_dims)  # 再次重塑为 [world_size, shard_heads, shard_seq_len, hidden_dims]
+        .reshape(
+            world_size, shard_heads, shard_seq_len, hidden_dims
+        )  # 再次重塑为 [world_size, shard_heads, shard_seq_len, hidden_dims]
     )
 
     # 创建一个与输入张量相同形状的输出张量
@@ -84,4 +90,3 @@ def all2all_head2seq(input):
     output = output.transpose(0, 1).contiguous().reshape(shard_seq_len, heads, hidden_dims)
 
     return output  # 返回转换后的输出张量
-

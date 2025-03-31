@@ -2,7 +2,7 @@ import torch
 from transformers import CLIPTextModel, AutoTokenizer
 
 
-class TextEncoderHFClipModel():
+class TextEncoderHFClipModel:
     def __init__(self, model_path, device):
         self.device = device
         self.model_path = model_path
@@ -13,7 +13,9 @@ class TextEncoderHFClipModel():
         self.max_length = 77
 
     def load(self):
-        self.model = CLIPTextModel.from_pretrained(self.model_path).to(torch.float16).to(self.device)
+        self.model = (
+            CLIPTextModel.from_pretrained(self.model_path).to(torch.float16).to(self.device)
+        )
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, padding_side="right")
 
     def to_cpu(self):
@@ -50,7 +52,9 @@ class TextEncoderHFClipModel():
 
 
 if __name__ == "__main__":
-    model = TextEncoderHFClipModel("/mnt/nvme0/yongyang/projects/hy/HunyuanVideo/ckpts/text_encoder_2", torch.device("cuda"))
-    text = 'A cat walks on the grass, realistic style.'
+    model = TextEncoderHFClipModel(
+        "/mnt/nvme0/yongyang/projects/hy/HunyuanVideo/ckpts/text_encoder_2", torch.device("cuda")
+    )
+    text = "A cat walks on the grass, realistic style."
     outputs = model.infer(text)
     print(outputs)

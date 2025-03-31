@@ -5,8 +5,12 @@ import argparse
 import torch
 from loguru import logger
 
-from lightx2v.text2v.models.video_encoders.hf.autoencoder_kl_causal_3d.autoencoder_kl_causal_3d import AutoencoderKLCausal3D
-from lightx2v.text2v.models.video_encoders.trt.autoencoder_kl_causal_3d.trt_vae_infer import HyVaeTrtModelInfer
+from lightx2v.text2v.models.video_encoders.hf.autoencoder_kl_causal_3d.autoencoder_kl_causal_3d import (
+    AutoencoderKLCausal3D,
+)
+from lightx2v.text2v.models.video_encoders.trt.autoencoder_kl_causal_3d.trt_vae_infer import (
+    HyVaeTrtModelInfer,
+)
 
 
 def parse_args():
@@ -18,12 +22,16 @@ def parse_args():
 
 
 def convert_vae_trt_engine(args):
-    vae_path = os.path.join(args.model_path, 'hunyuan-video-t2v-720p/vae')
+    vae_path = os.path.join(args.model_path, "hunyuan-video-t2v-720p/vae")
     assert Path(vae_path).exists(), f"{vae_path} not exists."
     config = AutoencoderKLCausal3D.load_config(vae_path)
     model = AutoencoderKLCausal3D.from_config(config)
-    assert Path(os.path.join(vae_path, 'pytorch_model.pt')).exists(), f"{os.path.join(vae_path, 'pytorch_model.pt')} not exists."
-    ckpt = torch.load(os.path.join(vae_path, 'pytorch_model.pt'), map_location='cpu', weights_only=True)
+    assert Path(os.path.join(vae_path, "pytorch_model.pt")).exists(), (
+        f"{os.path.join(vae_path, 'pytorch_model.pt')} not exists."
+    )
+    ckpt = torch.load(
+        os.path.join(vae_path, "pytorch_model.pt"), map_location="cpu", weights_only=True
+    )
     model.load_state_dict(ckpt)
     model = model.to(dtype=args.dtype, device=args.device)
     onnx_path = HyVaeTrtModelInfer.export_to_onnx(model.decoder, vae_path)

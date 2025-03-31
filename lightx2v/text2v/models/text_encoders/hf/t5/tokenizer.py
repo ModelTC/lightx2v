@@ -36,7 +36,6 @@ def canonicalize(text, keep_punctuation_exact_string=None):
 
 
 class HuggingfaceTokenizer:
-
     def __init__(self, name, seq_len=None, clean=None, **kwargs):
         assert clean in (None, "whitespace", "lower", "canonicalize")
         self.name = name

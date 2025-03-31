@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import torch
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 from lightx2v.text2v.models.schedulers.scheduler import BaseScheduler
 
 
@@ -20,7 +20,7 @@ class WanScheduler(BaseScheduler):
         self.generator = torch.Generator(device=self.device)
         self.generator.manual_seed(self.args.seed)
         self.prepare_latents(self.args.target_shape, dtype=torch.float32)
-        
+
         if self.args.task in ["t2v"]:
             self.seq_len = math.ceil(
                 (self.args.target_shape[2] * self.args.target_shape[3])
@@ -28,12 +28,14 @@ class WanScheduler(BaseScheduler):
                 * self.args.target_shape[1]
             )
         elif self.args.task in ["i2v"]:
-            self.seq_len = ((self.args.target_video_length- 1) // self.args.vae_stride[0] + 1) * args.lat_h * args.lat_w // (
-                args.patch_size[1] * args.patch_size[2])
+            self.seq_len = (
+                ((self.args.target_video_length - 1) // self.args.vae_stride[0] + 1)
+                * args.lat_h
+                * args.lat_w
+                // (args.patch_size[1] * args.patch_size[2])
+            )
 
-        alphas = np.linspace(1, 1 / self.num_train_timesteps, self.num_train_timesteps)[
-            ::-1
-        ].copy()
+        alphas = np.linspace(1, 1 / self.num_train_timesteps, self.num_train_timesteps)[::-1].copy()
         sigmas = 1.0 - alphas
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32)
 
@@ -71,9 +73,7 @@ class WanScheduler(BaseScheduler):
         mu: Optional[Union[float, None]] = None,
         shift: Optional[Union[float, None]] = None,
     ):
-        sigmas = np.linspace(self.sigma_max, self.sigma_min, infer_steps + 1).copy()[
-            :-1
-        ]
+        sigmas = np.linspace(self.sigma_max, self.sigma_min, infer_steps + 1).copy()[:-1]
 
         if shift is None:
             shift = self.shift
@@ -85,9 +85,7 @@ class WanScheduler(BaseScheduler):
         sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(timesteps).to(
-            device=device, dtype=torch.int64
-        )
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         assert len(self.timesteps) == self.infer_steps
         self.model_outputs = [
@@ -108,7 +106,6 @@ class WanScheduler(BaseScheduler):
         sample: torch.Tensor = None,
         **kwargs,
     ) -> torch.Tensor:
-
         timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
         if sample is None:
             if len(args) > 1:
@@ -222,7 +219,6 @@ class WanScheduler(BaseScheduler):
         order: int = None,
         **kwargs,
     ) -> torch.Tensor:
-
         this_timestep = args[0] if len(args) > 0 else kwargs.pop("this_timestep", None)
         if last_sample is None:
             if len(args) > 1:
@@ -342,13 +338,9 @@ class WanScheduler(BaseScheduler):
         self.model_outputs[-1] = model_output_convert
         self.timestep_list[-1] = timestep
 
-        this_order = min(
-            self.solver_order, len(self.timesteps) - self.step_index
-        )
+        this_order = min(self.solver_order, len(self.timesteps) - self.step_index)
 
-        self.this_order = min(
-            this_order, self.lower_order_nums + 1
-        )  # warmup for multistep
+        self.this_order = min(this_order, self.lower_order_nums + 1)  # warmup for multistep
         assert self.this_order > 0
 
         self.last_sample = sample

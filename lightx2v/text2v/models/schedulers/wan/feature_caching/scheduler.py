@@ -1,4 +1,3 @@
-import torch
 from ..scheduler import WanScheduler
 
 

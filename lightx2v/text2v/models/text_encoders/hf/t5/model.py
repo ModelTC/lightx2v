@@ -39,28 +39,19 @@ def init_weights(m):
         nn.init.normal_(m.v.weight, std=m.dim**-0.5)
         nn.init.normal_(m.o.weight, std=(m.num_heads * m.dim_attn) ** -0.5)
     elif isinstance(m, T5RelativeEmbedding):
-        nn.init.normal_(
-            m.embedding.weight, std=(2 * m.num_buckets * m.num_heads) ** -0.5
-        )
+        nn.init.normal_(m.embedding.weight, std=(2 * m.num_buckets * m.num_heads) ** -0.5)
 
 
 class GELU(nn.Module):
-
     def forward(self, x):
         return (
             0.5
             * x
-            * (
-                1.0
-                + torch.tanh(
-                    math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))
-                )
-            )
+            * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))))
         )
 
 
 class T5LayerNorm(nn.Module):
-
     def __init__(self, dim, eps=1e-6):
         super(T5LayerNorm, self).__init__()
         self.dim = dim
@@ -75,7 +66,6 @@ class T5LayerNorm(nn.Module):
 
 
 class T5Attention(nn.Module):
-
     def __init__(self, dim, dim_attn, num_heads, dropout=0.1):
         assert dim_attn % num_heads == 0
         super(T5Attention, self).__init__()
@@ -128,7 +118,6 @@ class T5Attention(nn.Module):
 
 
 class T5FeedForward(nn.Module):
-
     def __init__(self, dim, dim_ffn, dropout=0.1):
         super(T5FeedForward, self).__init__()
         self.dim = dim
@@ -149,7 +138,6 @@ class T5FeedForward(nn.Module):
 
 
 class T5SelfAttention(nn.Module):
-
     def __init__(
         self,
         dim,
@@ -174,9 +162,7 @@ class T5SelfAttention(nn.Module):
         self.norm2 = T5LayerNorm(dim)
         self.ffn = T5FeedForward(dim, dim_ffn, dropout)
         self.pos_embedding = (
-            None
-            if shared_pos
-            else T5RelativeEmbedding(num_buckets, num_heads, bidirectional=True)
+            None if shared_pos else T5RelativeEmbedding(num_buckets, num_heads, bidirectional=True)
         )
 
     def forward(self, x, mask=None, pos_bias=None):
@@ -187,7 +173,6 @@ class T5SelfAttention(nn.Module):
 
 
 class T5CrossAttention(nn.Module):
-
     def __init__(
         self,
         dim,
@@ -214,26 +199,20 @@ class T5CrossAttention(nn.Module):
         self.norm3 = T5LayerNorm(dim)
         self.ffn = T5FeedForward(dim, dim_ffn, dropout)
         self.pos_embedding = (
-            None
-            if shared_pos
-            else T5RelativeEmbedding(num_buckets, num_heads, bidirectional=False)
+            None if shared_pos else T5RelativeEmbedding(num_buckets, num_heads, bidirectional=False)
         )
 
-    def forward(
-        self, x, mask=None, encoder_states=None, encoder_mask=None, pos_bias=None
-    ):
+    def forward(self, x, mask=None, encoder_states=None, encoder_mask=None, pos_bias=None):
         e = pos_bias if self.shared_pos else self.pos_embedding(x.size(1), x.size(1))
         x = fp16_clamp(x + self.self_attn(self.norm1(x), mask=mask, pos_bias=e))
         x = fp16_clamp(
-            x
-            + self.cross_attn(self.norm2(x), context=encoder_states, mask=encoder_mask)
+            x + self.cross_attn(self.norm2(x), context=encoder_states, mask=encoder_mask)
         )
         x = fp16_clamp(x + self.ffn(self.norm3(x)))
         return x
 
 
 class T5RelativeEmbedding(nn.Module):
-
     def __init__(self, num_buckets, num_heads, bidirectional, max_dist=128):
         super(T5RelativeEmbedding, self).__init__()
         self.num_buckets = num_buckets
@@ -277,15 +256,12 @@ class T5RelativeEmbedding(nn.Module):
                 * (num_buckets - max_exact)
             ).long()
         )
-        rel_pos_large = torch.min(
-            rel_pos_large, torch.full_like(rel_pos_large, num_buckets - 1)
-        )
+        rel_pos_large = torch.min(rel_pos_large, torch.full_like(rel_pos_large, num_buckets - 1))
         rel_buckets += torch.where(rel_pos < max_exact, rel_pos, rel_pos_large)
         return rel_buckets
 
 
 class T5Encoder(nn.Module):
-
     def __init__(
         self,
         vocab,
@@ -312,16 +288,12 @@ class T5Encoder(nn.Module):
             vocab if isinstance(vocab, nn.Embedding) else nn.Embedding(vocab, dim)
         )
         self.pos_embedding = (
-            T5RelativeEmbedding(num_buckets, num_heads, bidirectional=True)
-            if shared_pos
-            else None
+            T5RelativeEmbedding(num_buckets, num_heads, bidirectional=True) if shared_pos else None
         )
         self.dropout = nn.Dropout(dropout)
         self.blocks = nn.ModuleList(
             [
-                T5SelfAttention(
-                    dim, dim_attn, dim_ffn, num_heads, num_buckets, shared_pos, dropout
-                )
+                T5SelfAttention(dim, dim_attn, dim_ffn, num_heads, num_buckets, shared_pos, dropout)
                 for _ in range(num_layers)
             ]
         )
@@ -342,7 +314,6 @@ class T5Encoder(nn.Module):
 
 
 class T5Decoder(nn.Module):
-
     def __init__(
         self,
         vocab,
@@ -369,9 +340,7 @@ class T5Decoder(nn.Module):
             vocab if isinstance(vocab, nn.Embedding) else nn.Embedding(vocab, dim)
         )
         self.pos_embedding = (
-            T5RelativeEmbedding(num_buckets, num_heads, bidirectional=False)
-            if shared_pos
-            else None
+            T5RelativeEmbedding(num_buckets, num_heads, bidirectional=False) if shared_pos else None
         )
         self.dropout = nn.Dropout(dropout)
         self.blocks = nn.ModuleList(
@@ -408,7 +377,6 @@ class T5Decoder(nn.Module):
 
 
 class T5Model(nn.Module):
-
     def __init__(
         self,
         vocab_size,
@@ -530,7 +498,6 @@ def umt5_xxl(**kwargs):
 
 
 class T5EncoderModel:
-
     def __init__(
         self,
         text_len,
@@ -548,9 +515,7 @@ class T5EncoderModel:
 
         # init model
         model = (
-            umt5_xxl(
-                encoder_only=True, return_tokenizer=False, dtype=dtype, device=device
-            )
+            umt5_xxl(encoder_only=True, return_tokenizer=False, dtype=dtype, device=device)
             .eval()
             .requires_grad_(False)
         )
