@@ -1,12 +1,15 @@
 #!/bin/bash
 
+lightx2v_path=/mtc/yongyang/projects/lightx2v
+export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
+
 export CUDA_VISIBLE_DEVICES=2
 
-# model_path=/mnt/nvme1/yongyang/models/hy/ckpts # H800-13
-model_path=/mnt/nvme0/yongyang/projects/wan/Wan2.1-I2V-14B-480P # H800-14
-config_path=/mnt/nvme0/yongyang/projects/wan/Wan2.1-I2V-14B-480P/config.json
+model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-I2V-14B-480P
+config_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-I2V-14B-480P/config.json
 
-python main.py \
+
+python ${lightx2v_path}/lightx2v/__main__.py \
 --model_cls wan2.1 \
 --task i2v \
 --model_path $model_path \
@@ -22,7 +25,7 @@ python main.py \
 --save_video_path ./output_lightx2v_seed42_fp8_base.mp4 \
 --sample_guide_scale 5 \
 --sample_shift 5 \
---image_path ./i2v_input.JPG \
+--image_path ${lightx2v_path}/assets/inputs/imgs/img_0.jpg \
 --mm_config '{"mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Vllm", "weight_auto_quant": true}' \
 # --feature_caching Tea \
 # --use_ret_steps \

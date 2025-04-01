@@ -1,11 +1,14 @@
 #!/bin/bash
 
-# model_path=/mnt/nvme1/yongyang/models/hy/ckpts # H800-13
-# model_path=/mnt/nvme0/yongyang/projects/hy/HunyuanVideo/ckpts # H800-14
-model_path=/workspace/ckpts_link # H800-14
+lightx2v_path=/mtc/yongyang/projects/lightx2v
+export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
 
 export CUDA_VISIBLE_DEVICES=2
-python main.py \
+
+model_path=/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/t2v
+
+
+python ${lightx2v_path}/lightx2v/__main__.py \
 --model_cls hunyuan \
 --model_path $model_path \
 --prompt "A cat walks on the grass, realistic style." \

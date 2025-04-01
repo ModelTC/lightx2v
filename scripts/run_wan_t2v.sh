@@ -1,10 +1,15 @@
 #!/bin/bash
 
-model_path=/workspace/wan/Wan2.1-T2V-1.3B # H800-14
-config_path=/workspace/wan/Wan2.1-T2V-1.3B/config.json
+lightx2v_path=/mtc/yongyang/projects/lightx2v
+export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
 
-export CUDA_VISIBLE_DEVICES=0
-python ../main.py \
+export CUDA_VISIBLE_DEVICES=2
+
+model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B
+config_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B/config.json
+
+
+python ${lightx2v_path}/lightx2v/__main__.py \
 --model_cls wan2.1 \
 --task t2v \
 --model_path $model_path \
