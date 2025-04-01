@@ -4,14 +4,6 @@ import torch.cuda.amp as amp
 import torch.distributed as dist
 
 
-def rms_norm(x, weight, eps):
-    x = x.contiguous()
-    orig_shape = x.shape
-    x = x.view(-1, orig_shape[-1])
-    x = sgl_kernel.rmsnorm(x, weight, eps).view(orig_shape)
-    return x
-
-
 def compute_freqs(c, grid_sizes, freqs):
     freqs = freqs.split([c - 2 * (c // 3), c // 3, c // 3], dim=1)
     f, h, w = grid_sizes[0].tolist()
