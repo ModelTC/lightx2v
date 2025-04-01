@@ -16,41 +16,58 @@ class WanSchedulerFeatureCaching(WanScheduler):
         self.previous_residual_odd = None
         self.use_ret_steps = self.args.use_ret_steps
 
-        if self.use_ret_steps:
-            if self.args.target_width == 480 or self.args.target_height == 480:
-                self.coefficients = [
-                    2.57151496e05,
-                    -3.54229917e04,
-                    1.40286849e03,
-                    -1.35890334e01,
-                    1.32517977e-01,
-                ]
-            if self.args.target_width == 720 or self.args.target_height == 720:
-                self.coefficients = [
-                    8.10705460e03,
-                    2.13393892e03,
-                    -3.72934672e02,
-                    1.66203073e01,
-                    -4.17769401e-02,
-                ]
-            self.ret_steps = 5 * 2
-            self.cutoff_steps = self.args.infer_steps * 2
-        else:
-            if self.args.target_width == 480 or self.args.target_height == 480:
-                self.coefficients = [
-                    -3.02331670e02,
-                    2.23948934e02,
-                    -5.25463970e01,
-                    5.87348440e00,
-                    -2.01973289e-01,
-                ]
-            if self.args.target_width == 720 or self.args.target_height == 720:
-                self.coefficients = [
-                    -114.36346466,
-                    65.26524496,
-                    -18.82220707,
-                    4.91518089,
-                    -0.23412683,
-                ]
-            self.ret_steps = 1 * 2
-            self.cutoff_steps = self.args.infer_steps * 2 - 2
+        if self.args.task == 'i2v':
+            if self.use_ret_steps:
+                if self.args.target_width == 480 or self.args.target_height == 480:
+                    self.coefficients = [
+                        2.57151496e05,
+                        -3.54229917e04,
+                        1.40286849e03,
+                        -1.35890334e01,
+                        1.32517977e-01,
+                    ]
+                if self.args.target_width == 720 or self.args.target_height == 720:
+                    self.coefficients = [
+                        8.10705460e03,
+                        2.13393892e03,
+                        -3.72934672e02,
+                        1.66203073e01,
+                        -4.17769401e-02,
+                    ]
+                self.ret_steps = 5 * 2
+                self.cutoff_steps = self.args.infer_steps * 2
+            else:
+                if self.args.target_width == 480 or self.args.target_height == 480:
+                    self.coefficients = [
+                        -3.02331670e02,
+                        2.23948934e02,
+                        -5.25463970e01,
+                        5.87348440e00,
+                        -2.01973289e-01,
+                    ]
+                if self.args.target_width == 720 or self.args.target_height == 720:
+                    self.coefficients = [
+                        -114.36346466,
+                        65.26524496,
+                        -18.82220707,
+                        4.91518089,
+                        -0.23412683,
+                    ]
+                self.ret_steps = 1 * 2
+                self.cutoff_steps = self.args.infer_steps * 2 - 2
+
+        elif self.args.task == 't2v':
+            if self.use_ret_steps:
+                if '1.3B' in self.args.model_path:
+                    self.coefficients = [-5.21862437e+04, 9.23041404e+03, -5.28275948e+02, 1.36987616e+01, -4.99875664e-02]
+                if '14B' in self.args.model_path:
+                    self.coefficients = [-3.03318725e+05, 4.90537029e+04, -2.65530556e+03, 5.87365115e+01, -3.15583525e-01]
+                self.ret_steps = 5 * 2
+                self.cutoff_steps = self.args.infer_steps * 2
+            else:
+                if '1.3B' in self.args.model_path:
+                    self.coefficients = [2.39676752e+03, -1.31110545e+03,  2.01331979e+02, -8.29855975e+00, 1.37887774e-01]
+                if '14B' in self.args.model_path:
+                    self.coefficients = [-5784.54975374,  5449.50911966, -1811.16591783,   256.27178429, -13.02252404]
+                self.ret_steps = 1 * 2
+                self.cutoff_steps = self.args.infer_steps * 2 - 2

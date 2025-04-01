@@ -4,7 +4,7 @@ model_path=/workspace/ckpts_link # H800-14
 
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-torchrun --nproc_per_node=4 main.py \
+torchrun --nproc_per_node=4 ../main.py \
 --model_cls hunyuan \
 --model_path $model_path \
 --prompt "A cat walks on the grass, realistic style." \

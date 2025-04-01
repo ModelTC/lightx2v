@@ -21,7 +21,7 @@ docker run --gpus all -itd --ipc=host --name [name] -v /mnt:/mnt --entrypoint /b
 
 ```
 git clone https://gitlab.bj.sensetime.com/video-gen/lightx2v.git
-cd lightx2v
+cd lightx2v/scripts
 
 # Modify the parameters of the running script
 bash run_hunyuan_t2v.sh

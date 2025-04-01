@@ -1,5 +1,5 @@
 import torch
-from .utils import compute_freqs, compute_freqs_dist, apply_rotary_emb, rms_norm
+from .utils import compute_freqs, compute_freqs_dist, apply_rotary_emb
 from lightx2v.attentions import attention
 
 
@@ -60,15 +60,8 @@ class WanTransformerInfer:
         norm1_out = (norm1_out * (1 + embed0[1]) + embed0[0]).squeeze(0)
 
         s, n, d = *norm1_out.shape[:1], self.num_heads, self.head_dim
-
-        q = rms_norm(
-            weights.self_attn_q.apply(norm1_out), weights.self_attn_norm_q_weight, 1e-6
-        ).view(s, n, d)
-
-        k = rms_norm(
-            weights.self_attn_k.apply(norm1_out), weights.self_attn_norm_k_weight, 1e-6
-        ).view(s, n, d)
-
+        q = weights.self_attn_norm_q.apply(weights.self_attn_q.apply(norm1_out)).view(s, n, d)
+        k = weights.self_attn_norm_k.apply(weights.self_attn_k.apply(norm1_out)).view(s, n, d)
         v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
 
         if not self.parallel_attention:
@@ -114,21 +107,12 @@ class WanTransformerInfer:
             context = context[257:]
 
         n, d = self.num_heads, self.head_dim
-
-        q = rms_norm(
-            weights.cross_attn_q.apply(norm3_out), weights.cross_attn_norm_q_weight, 1e-6
-        ).view(-1, n, d)
-
-        k = rms_norm(
-            weights.cross_attn_k.apply(context), weights.cross_attn_norm_k_weight, 1e-6
-        ).view(-1, n, d)
-
+        q = weights.cross_attn_norm_q.apply(weights.cross_attn_q.apply(norm3_out)).view(-1, n, d)
+        k = weights.cross_attn_norm_k.apply(weights.cross_attn_k.apply(context)).view(-1, n, d)
         v = weights.cross_attn_v.apply(context).view(-1, n, d)
 
         if self.task == 'i2v':
-            k_img = rms_norm(
-                weights.cross_attn_k_img.apply(context_img), weights.cross_attn_norm_k_img_weight, 1e-6
-            ).view(-1, n, d)
+            k_img = weights.cross_attn_norm_k_img.apply(weights.cross_attn_k_img.apply(context_img)).view(-1, n, d)
             v_img = weights.cross_attn_v_img.apply(context_img).view(-1, n, d)
             
             cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(
