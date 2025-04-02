@@ -1,7 +1,7 @@
 import torch
 
 
-class HunyuanPostInfer():
+class HunyuanPostInfer:
     def __init__(self):
         pass
 
@@ -19,7 +19,7 @@ class HunyuanPostInfer():
             oh // patch_size[1],
             ow // patch_size[2],
         )
-        
+
         c = 16
         pt, ph, pw = patch_size
 

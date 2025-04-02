@@ -13,40 +13,31 @@ class WanTransformerInferFeatureCaching(WanTransformerInfer):
         # teacache
         if self.scheduler.cnt % 2 == 0:  # even -> conditon
             self.scheduler.is_even = True
-            if (
-                self.scheduler.cnt < self.scheduler.ret_steps
-                or self.scheduler.cnt >= self.scheduler.cutoff_steps
-            ):
+            if self.scheduler.cnt < self.scheduler.ret_steps or self.scheduler.cnt >= self.scheduler.cutoff_steps:
                 should_calc_even = True
                 self.scheduler.accumulated_rel_l1_distance_even = 0
             else:
                 rescale_func = np.poly1d(self.scheduler.coefficients)
                 self.scheduler.accumulated_rel_l1_distance_even += rescale_func(
-                    (
-                        (modulated_inp - self.scheduler.previous_e0_even).abs().mean()
-                        / self.scheduler.previous_e0_even.abs().mean()
-                    )
-                    .cpu()
-                    .item()
+                    ((modulated_inp - self.scheduler.previous_e0_even).abs().mean() / self.scheduler.previous_e0_even.abs().mean()).cpu().item()
                 )
-                if (
-                    self.scheduler.accumulated_rel_l1_distance_even
-                    < self.scheduler.teacache_thresh
-                ):
+                if self.scheduler.accumulated_rel_l1_distance_even < self.scheduler.teacache_thresh:
                     should_calc_even = False
                 else:
                     should_calc_even = True
                     self.scheduler.accumulated_rel_l1_distance_even = 0
             self.scheduler.previous_e0_even = modulated_inp.clone()
 
-        else: # odd -> unconditon
+        else:  # odd -> unconditon
             self.scheduler.is_even = False
             if self.scheduler.cnt < self.scheduler.ret_steps or self.scheduler.cnt >= self.scheduler.cutoff_steps:
-                    should_calc_odd = True
-                    self.scheduler.accumulated_rel_l1_distance_odd = 0
-            else: 
+                should_calc_odd = True
+                self.scheduler.accumulated_rel_l1_distance_odd = 0
+            else:
                 rescale_func = np.poly1d(self.scheduler.coefficients)
-                self.scheduler.accumulated_rel_l1_distance_odd += rescale_func(((modulated_inp-self.scheduler.previous_e0_odd).abs().mean() / self.scheduler.previous_e0_odd.abs().mean()).cpu().item())
+                self.scheduler.accumulated_rel_l1_distance_odd += rescale_func(
+                    ((modulated_inp - self.scheduler.previous_e0_odd).abs().mean() / self.scheduler.previous_e0_odd.abs().mean()).cpu().item()
+                )
                 if self.scheduler.accumulated_rel_l1_distance_odd < self.scheduler.teacache_thresh:
                     should_calc_odd = False
                 else:

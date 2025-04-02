@@ -66,12 +66,7 @@ def cache_video(
             # preprocess
             tensor = tensor.clamp(min(value_range), max(value_range))
             tensor = torch.stack(
-                [
-                    torchvision.utils.make_grid(
-                        u, nrow=nrow, normalize=normalize, value_range=value_range
-                    )
-                    for u in tensor.unbind(2)
-                ],
+                [torchvision.utils.make_grid(u, nrow=nrow, normalize=normalize, value_range=value_range) for u in tensor.unbind(2)],
                 dim=1,
             ).permute(1, 2, 3, 0)
             tensor = (tensor * 255).type(torch.uint8).cpu()

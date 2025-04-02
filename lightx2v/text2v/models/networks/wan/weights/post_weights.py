@@ -7,18 +7,14 @@ class WanPostWeights:
         self.config = config
 
     def load_weights(self, weight_dict):
+        self.head = MM_WEIGHT_REGISTER["Default"]("head.head.weight", "head.head.bias")
+        self.head_modulation = weight_dict["head.modulation"]
 
-        self.head = MM_WEIGHT_REGISTER["Default"]('head.head.weight','head.head.bias')
-        self.head_modulation = weight_dict['head.modulation']
-
-        self.weight_list = [
-            self.head,
-            self.head_modulation
-        ]
+        self.weight_list = [self.head, self.head_modulation]
 
         for mm_weight in self.weight_list:
             if isinstance(mm_weight, MMWeightTemplate):
-                mm_weight.set_config(self.config['mm_config'])
+                mm_weight.set_config(self.config["mm_config"])
                 mm_weight.load(weight_dict)
 
     def to_cpu(self):

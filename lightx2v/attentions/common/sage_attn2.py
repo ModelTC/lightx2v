@@ -1,4 +1,5 @@
 import torch
+
 try:
     from sageattention import sageattn
 except ImportError:

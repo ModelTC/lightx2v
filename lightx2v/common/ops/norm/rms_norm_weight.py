@@ -28,7 +28,7 @@ class RMSWeightTemplate(metaclass=ABCMeta):
         self.weight = self.weight.cuda()
 
 
-@RMS_WEIGHT_REGISTER('Default')
+@RMS_WEIGHT_REGISTER("Default")
 class RMSWeight(RMSWeightTemplate):
     def __init__(self, weight_name, eps=1e-6):
         super().__init__(weight_name, eps)
@@ -39,7 +39,7 @@ class RMSWeight(RMSWeightTemplate):
         return input_tensor
 
 
-@RMS_WEIGHT_REGISTER('FP32')
+@RMS_WEIGHT_REGISTER("FP32")
 class RMSWeightFP32(RMSWeight):
     def __init__(self, weight_name, eps=1e-6):
         super().__init__(weight_name, eps)
@@ -52,7 +52,7 @@ class RMSWeightFP32(RMSWeight):
         return input_tensor
 
 
-@RMS_WEIGHT_REGISTER('sgl-kernel')
+@RMS_WEIGHT_REGISTER("sgl-kernel")
 class RMSWeightSgl(RMSWeight):
     def __init__(self, weight_name, eps=1e-6):
         super().__init__(weight_name, eps)

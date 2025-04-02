@@ -66,10 +66,7 @@ class EncoderCausal3D(nn.Module):
 
             if time_compression_ratio == 4:
                 add_spatial_downsample = bool(i < num_spatial_downsample_layers)
-                add_time_downsample = bool(
-                    i >= (len(block_out_channels) - 1 - num_time_downsample_layers)
-                    and not is_final_block
-                )
+                add_time_downsample = bool(i >= (len(block_out_channels) - 1 - num_time_downsample_layers) and not is_final_block)
             else:
                 raise ValueError(f"Unsupported time_compression_ratio: {time_compression_ratio}.")
 
@@ -186,10 +183,7 @@ class DecoderCausal3D(nn.Module):
 
             if time_compression_ratio == 4:
                 add_spatial_upsample = bool(i < num_spatial_upsample_layers)
-                add_time_upsample = bool(
-                    i >= len(block_out_channels) - 1 - num_time_upsample_layers
-                    and not is_final_block
-                )
+                add_time_upsample = bool(i >= len(block_out_channels) - 1 - num_time_upsample_layers and not is_final_block)
             else:
                 raise ValueError(f"Unsupported time_compression_ratio: {time_compression_ratio}.")
 
@@ -263,9 +257,7 @@ class DecoderCausal3D(nn.Module):
                     )
             else:
                 # middle
-                sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, latent_embeds
-                )
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample, latent_embeds)
                 sample = sample.to(upscale_dtype)
 
                 # up
@@ -306,9 +298,7 @@ class DiagonalGaussianDistribution(object):
         self.std = torch.exp(0.5 * self.logvar)
         self.var = torch.exp(self.logvar)
         if self.deterministic:
-            self.var = self.std = torch.zeros_like(
-                self.mean, device=self.parameters.device, dtype=self.parameters.dtype
-            )
+            self.var = self.std = torch.zeros_like(self.mean, device=self.parameters.device, dtype=self.parameters.dtype)
 
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
         # make sure sample is on the same device as the parameters and has same dtype
@@ -333,11 +323,7 @@ class DiagonalGaussianDistribution(object):
                 )
             else:
                 return 0.5 * torch.sum(
-                    torch.pow(self.mean - other.mean, 2) / other.var
-                    + self.var / other.var
-                    - 1.0
-                    - self.logvar
-                    + other.logvar,
+                    torch.pow(self.mean - other.mean, 2) / other.var + self.var / other.var - 1.0 - self.logvar + other.logvar,
                     dim=reduce_dim,
                 )
 
@@ -346,8 +332,7 @@ class DiagonalGaussianDistribution(object):
             return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
         return 0.5 * torch.sum(
-            logtwopi + self.logvar +
-            torch.pow(sample - self.mean, 2) / self.var,
+            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
             dim=dims,
         )
 

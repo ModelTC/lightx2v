@@ -22,6 +22,7 @@ import numpy as np
 import tensorrt as trt
 from cuda import cuda, cudart
 
+
 def check_cuda_err(err):
     if isinstance(err, cuda.CUresult):
         if err != cuda.CUresult.CUDA_SUCCESS:
@@ -31,6 +32,7 @@ def check_cuda_err(err):
             raise RuntimeError("Cuda Runtime Error: {}".format(err))
     else:
         raise RuntimeError("Unknown error type: {}".format(err))
+
 
 def cuda_call(call):
     err, res = call[0], call[1:]
@@ -42,6 +44,7 @@ def cuda_call(call):
 
 class HostDeviceMem:
     """Pair of host and device memory, where the host memory is wrapped in a numpy array"""
+
     def __init__(self, size: int, dtype: Optional[np.dtype] = None):
         dtype = dtype or np.dtype(np.uint8)
         nbytes = size * dtype.itemsize
@@ -60,13 +63,11 @@ class HostDeviceMem:
     def host(self, data: Union[np.ndarray, bytes]):
         if isinstance(data, np.ndarray):
             if data.size > self.host.size:
-                raise ValueError(
-                    f"Tried to fit an array of size {data.size} into host memory of size {self.host.size}"
-                )
-            np.copyto(self.host[:data.size], data.flat, casting='safe')
+                raise ValueError(f"Tried to fit an array of size {data.size} into host memory of size {self.host.size}")
+            np.copyto(self.host[: data.size], data.flat, casting="safe")
         else:
             assert self.host.dtype == np.uint8
-            self.host[:self.nbytes] = np.frombuffer(data, dtype=np.uint8)
+            self.host[: self.nbytes] = np.frombuffer(data, dtype=np.uint8)
 
     @property
     def device(self) -> int:
@@ -101,8 +102,7 @@ def allocate_buffers(engine: trt.ICudaEngine, profile_idx: Optional[int] = None)
         shape = engine.get_tensor_shape(binding) if profile_idx is None else engine.get_tensor_profile_shape(binding, profile_idx)[-1]
         shape_valid = np.all([s >= 0 for s in shape])
         if not shape_valid and profile_idx is None:
-            raise ValueError(f"Binding {binding} has dynamic shape, " +\
-                "but no profile was specified.")
+            raise ValueError(f"Binding {binding} has dynamic shape, " + "but no profile was specified.")
         size = trt.volume(shape)
         trt_type = engine.get_tensor_dtype(binding)
 
@@ -110,7 +110,7 @@ def allocate_buffers(engine: trt.ICudaEngine, profile_idx: Optional[int] = None)
         try:
             dtype = np.dtype(trt.nptype(trt_type))
             bindingMemory = HostDeviceMem(size, dtype)
-        except TypeError: # no numpy support: create a byte array instead (BF16, FP8, INT4)
+        except TypeError:  # no numpy support: create a byte array instead (BF16, FP8, INT4)
             size = int(size * trt_type.itemsize)
             bindingMemory = HostDeviceMem(size)
 
@@ -136,6 +136,7 @@ def free_buffers(inputs: List[HostDeviceMem], outputs: List[HostDeviceMem], stre
 def memcpy_host_to_device(device_ptr: int, host_arr: np.ndarray):
     nbytes = host_arr.size * host_arr.itemsize
     cuda_call(cudart.cudaMemcpy(device_ptr, host_arr, nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice))
+
 
 # Wrapper for cudaMemcpy which infers copy size and does error checking
 def memcpy_device_to_host(host_arr: np.ndarray, device_ptr: int):
@@ -163,6 +164,7 @@ def _do_inference_base(inputs, outputs, stream, execute_async_func):
 def do_inference(context, engine, bindings, inputs, outputs, stream):
     def execute_async_func():
         context.execute_async_v3(stream_handle=stream)
+
     # Setup context tensor address.
     num_io = engine.num_io_tensors
     for i in range(num_io):
