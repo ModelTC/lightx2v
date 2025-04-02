@@ -118,6 +118,8 @@ def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"
     # 获取当前进程的排名和全局进程数
     cur_rank = dist.get_rank()
     world_size = dist.get_world_size()
+    
+    shard_seqlen = img_qkv_len
 
     if RING_COMM is None:
         init_ring_comm()
@@ -163,9 +165,10 @@ def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"
             k = next_k
             v = next_v
 
-    if cur_rank == 0:
-        import pdb; pdb.set_trace()
-    import time; time.sleep(999)
-    attn = out.squeeze(0)
+    attn = out.to(torch.bfloat16).squeeze(0).reshape(shard_seqlen, -1)
+    
+    # if cur_rank == 0:
+    #     import pdb; pdb.set_trace()
+    # import time; time.sleep(999)
 
     return attn

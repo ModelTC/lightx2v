@@ -14,7 +14,8 @@ from lightx2v.text2v.models.networks.wan.infer.transformer_infer import (
 )
 from lightx2v.text2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferFeatureCaching
 from safetensors import safe_open
-from lightx2v.attentions.distributed.ulysses.wrap import parallelize_wan
+# from lightx2v.attentions.distributed.ulysses.wrap import parallelize_wan
+from lightx2v.attentions.distributed.ring.wrap import parallelize_wan
 
 
 class WanModel:

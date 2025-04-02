@@ -6,7 +6,7 @@
 model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B # H800-14
 config_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B/config.json
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 python main.py \
 --model_cls wan2.1 \
 --task t2v \
