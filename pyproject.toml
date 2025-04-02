@@ -1,0 +1,12 @@
+[tool.ruff]
+exclude = [".git", ".mypy_cache", ".ruff_cache", ".venv", "dist"]
+target-version = "py311"
+line-length = 200
+indent-width = 4
+lint.ignore =["F"]
+
+
+[tool.ruff.format]
+line-ending = "lf"
+quote-style = "double"
+indent-style = "space"
