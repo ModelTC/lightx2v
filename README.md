@@ -8,21 +8,28 @@
 
 --------------------------------------------------------------------------------
 
-## Prepare Environment
+## Fast Start Up
+
+```shell
+git clone https://github.com/ModelTC/lightx2v.git lightx2v && cd lightx2v
+
+conda create -n lightx2v python=3.11 && conda activate lightx2v
+pip install -r requirements.txt
+
+# download flash attention and install
+git clone https://github.com/Dao-AILab/flash-attention.git --recursive
+cd flash-attention && python setup.py install
+# or FA3, cd flash-attention/hopper && python setup.py install
+
+# modify the parameters of the running script
+bash scripts/run_hunyuan_t2v.sh
+```
+
+## Docker Image
 
 ```shell
 docker pull registry.cn-sh-01.sensecore.cn/devsft-ccr-2/video-gen:25033101
 docker run --gpus all -itd --ipc=host --name [name] -v /mnt:/mnt --entrypoint /bin/bash [image id]
-```
-
-## Fast Start
-
-```shell
-git clone https://github.com/ModelTC/lightx2v.git
-cd lightx2v
-
-# Modify the parameters of the running script
-bash run_hunyuan_t2v.sh
 ```
 
 ## Contribute
@@ -35,7 +42,7 @@ We have prepared a `pre-commit` hook to enforce consistent code formatting acros
     pip install ruff pre-commit
 ```
 
-2. Then, run the following command:
+2. Then, run the following command before commit:
 
 ```shell
     pre-commit run --all-files
