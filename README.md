@@ -18,8 +18,8 @@ pip install -r requirements.txt
 
 # download flash attention and install
 git clone https://github.com/Dao-AILab/flash-attention.git --recursive
-cd flash-attention && python setup.py install
-# or FA3, cd flash-attention/hopper && python setup.py install
+cd flash-attention && pip install -v -e .
+# for FA3, cd flash-attention/hopper && pip install -v -e .
 
 # modify the parameters of the running script
 bash scripts/run_hunyuan_t2v.sh

@@ -1,0 +1,48 @@
+name: lint
+
+on:
+  pull_request:
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install pre-commit hook
+        run: |
+          pip install pre-commit ruff
+
+      - name: Check pre-commit config file
+        run: |
+          if [ ! -f ".pre-commit-config.yaml" ]; then
+            echo "Error: .pre-commit-config.yaml not found."
+            exit 1
+          fi
+
+      - name: Linting
+        run: |
+          echo "Running pre-commit on all files..."
+          pre-commit run --all-files || {
+            echo "Linting failed. Please check the above output for details."
+            exit 1
+          }
