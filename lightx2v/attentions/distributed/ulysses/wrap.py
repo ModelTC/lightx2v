@@ -1,5 +1,6 @@
 import functools
 from lightx2v.attentions.distributed.ulysses.attn import ulysses_attn
+from lightx2v.attentions.distributed.ring.attn import ring_attn
 
 def parallelize_hunyuan(hunyuan_model):
     from lightx2v.attentions.distributed.utils.hunyuan.processor import pre_process, post_process
@@ -62,7 +63,7 @@ def parallelize_hunyuan(hunyuan_model):
 
 def parallelize_wan(wan_model):
     from lightx2v.attentions.distributed.utils.wan.processor import pre_process, post_process
-    wan_model.transformer_infer.parallel_attention = ulysses_attn
+    wan_model.transformer_infer.parallel_attention = ring_attn
 
     original_infer = wan_model.transformer_infer.infer
 

@@ -3,8 +3,8 @@
 # model_path=/mnt/nvme1/yongyang/models/hy/ckpts # H800-13
 # model_path=/workspace/wan/Wan2.1-T2V-1.3B # H800-14
 # config_path=/workspace/wan/Wan2.1-T2V-1.3B/config.json
-model_path=/mnt/nvme0/yongyang/projects/wan/Wan2.1-T2V-1.3B # H800-14
-config_path=/mnt/nvme0/yongyang/projects/wan/Wan2.1-T2V-1.3B/config.json
+model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B # H800-14
+config_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B/config.json
 
 export CUDA_VISIBLE_DEVICES=0
 python main.py \
