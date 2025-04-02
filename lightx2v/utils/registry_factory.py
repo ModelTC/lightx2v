@@ -11,14 +11,14 @@ class Register(dict):
 
     def register(self, target, key=None):
         if not callable(target):
-            raise Exception(f'Error: {target} must be callable!')
-        
+            raise Exception(f"Error: {target} must be callable!")
+
         if key is None:
             key = target.__name__
-            
+
         if key in self._dict:
-            raise Exception(f'{key} already exists.')
-            
+            raise Exception(f"{key} already exists.")
+
         self[key] = target
         return target
 

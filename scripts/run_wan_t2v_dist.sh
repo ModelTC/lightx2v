@@ -1,9 +1,15 @@
-model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B # H800-14
+#!/bin/bash
+
+lightx2v_path=/mtc/yongyang/projects/lightx2v
+export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
+
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B
 config_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B/config.json
 
 
-export CUDA_VISIBLE_DEVICES=1,2
-torchrun --nproc_per_node=2 main.py \
+torchrun --nproc_per_node=4 ${lightx2v_path}/lightx2v/__main__.py \
 --model_cls wan2.1 \
 --task t2v \
 --model_path $model_path \

@@ -101,7 +101,7 @@ def ring_attn_sub(q, k, v,
 
 
 def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"):
-    '''
+    """
     执行 Ulysses 注意力机制，结合图像和文本的查询、键和值。
 
     参数:
@@ -114,7 +114,7 @@ def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"
 
     返回:
         torch.Tensor: 计算得到的注意力结果
-    '''
+    """
     # 获取当前进程的排名和全局进程数
     cur_rank = dist.get_rank()
     world_size = dist.get_world_size()
