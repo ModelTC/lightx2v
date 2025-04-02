@@ -29,10 +29,10 @@ class WanModel:
         self._init_weights()
         self._init_infer()
 
-        if config['parallel_attn']:
+        if config["parallel_attn"]:
             parallelize_wan(self)
 
-        if self.config['cpu_offload']:
+        if self.config["cpu_offload"]:
             self.to_cpu()
 
     def _init_infer_class(self):
@@ -43,15 +43,11 @@ class WanModel:
         elif self.config["feature_caching"] == "Tea":
             self.transformer_infer_class = WanTransformerInferFeatureCaching
         else:
-            raise NotImplementedError(
-                f"Unsupported feature_caching type: {self.config['feature_caching']}"
-            )
+            raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")
 
     def _load_safetensor_to_dict(self, file_path):
         with safe_open(file_path, framework="pt") as f:
-            tensor_dict = {
-                key: f.get_tensor(key).to(torch.bfloat16).cuda() for key in f.keys()
-            }
+            tensor_dict = {key: f.get_tensor(key).to(torch.bfloat16).cuda() for key in f.keys()}
         return tensor_dict
 
     def _load_ckpt(self):
@@ -59,9 +55,7 @@ class WanModel:
         safetensors_files = glob.glob(safetensors_pattern)
 
         if not safetensors_files:
-            raise FileNotFoundError(
-                f"No .safetensors files found in directory: {self.model_path}"
-            )
+            raise FileNotFoundError(f"No .safetensors files found in directory: {self.model_path}")
         weight_dict = {}
         for file_path in safetensors_files:
             file_weights = self._load_safetensor_to_dict(file_path)
@@ -100,7 +94,6 @@ class WanModel:
 
     @torch.no_grad()
     def infer(self, text_encoders_output, image_encoder_output, args):
-
         timestep = torch.stack([self.scheduler.timesteps[self.scheduler.step_index]])
 
         embed, grid_sizes, pre_infer_out = self.pre_infer.infer(
@@ -112,12 +105,8 @@ class WanModel:
             image_encoder_output["clip_encoder_out"],
             [image_encoder_output["vae_encode_out"]],
         )
-        x = self.transformer_infer.infer(
-            self.transformer_weights, grid_sizes, embed, *pre_infer_out
-        )
-        noise_pred_cond = self.post_infer.infer(
-            self.post_weight, x, embed, grid_sizes
-        )[0]
+        x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+        noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
         if self.config["feature_caching"] == "Tea":
             self.scheduler.cnt += 1
@@ -133,18 +122,12 @@ class WanModel:
             image_encoder_output["clip_encoder_out"],
             [image_encoder_output["vae_encode_out"]],
         )
-        x = self.transformer_infer.infer(
-            self.transformer_weights, grid_sizes, embed, *pre_infer_out
-        )
-        noise_pred_uncond = self.post_infer.infer(
-            self.post_weight, x, embed, grid_sizes
-        )[0]
+        x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+        noise_pred_uncond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
         if self.config["feature_caching"] == "Tea":
             self.scheduler.cnt += 1
             if self.scheduler.cnt >= self.scheduler.num_steps:
                 self.scheduler.cnt = 0
 
-        self.scheduler.noise_pred = noise_pred_uncond + args.sample_guide_scale * (
-            noise_pred_cond - noise_pred_uncond
-        )
+        self.scheduler.noise_pred = noise_pred_uncond + args.sample_guide_scale * (noise_pred_cond - noise_pred_uncond)

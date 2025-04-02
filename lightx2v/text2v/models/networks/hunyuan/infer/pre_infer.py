@@ -4,7 +4,7 @@ from einops import rearrange
 from lightx2v.attentions import attention
 
 
-class HunyuanPreInfer():
+class HunyuanPreInfer:
     def __init__(self):
         self.heads_num = 24
 
@@ -30,10 +30,9 @@ class HunyuanPreInfer():
             s2 = (i + 1) * max_len
             cu_seqlens_qkv[2 * i + 1] = s1
             cu_seqlens_qkv[2 * i + 2] = s2
-        
+
         max_seqlen_qkv = img_seq_len + txt_seq_len
         return img_out[0], infer_text_out, vec, cu_seqlens_qkv, max_seqlen_qkv, (freqs_cos, freqs_sin)
-
 
     def infer_time_in(self, weights, t):
         freqs = torch.exp(-math.log(10000) * torch.arange(start=0, end=128, dtype=torch.float32) / 128).to(device=t.device)
@@ -56,27 +55,24 @@ class HunyuanPreInfer():
         out = weights.txt_in_t_embedder_mlp_0.apply(embedding)
         out = torch.nn.functional.silu(out)
         timestep_aware_representations = weights.txt_in_t_embedder_mlp_2.apply(out)
-        
+
         mask_float = text_mask.float().unsqueeze(-1).to(torch.bfloat16)  # [b, s1, 1]
         context_aware_representations = (text_states * mask_float).sum(dim=1) / mask_float.sum(dim=1)
         context_aware_representations = context_aware_representations
-        
+
         out = weights.txt_in_c_embedder_linear_1.apply(context_aware_representations)
         out = torch.nn.functional.silu(out)
         context_aware_representations = weights.txt_in_c_embedder_linear_2.apply(out)
         c = timestep_aware_representations + context_aware_representations
-        
+
         txt_in_input_embed = weights.txt_in_input_embedder.apply(text_states[0])
-        
+
         batch_size = text_mask.shape[0]
         seq_len = text_mask.shape[1]
-        self_attn_mask_1 = text_mask.view(batch_size, 1, 1, seq_len).repeat(
-            1, 1, seq_len, 1
-        )
+        self_attn_mask_1 = text_mask.view(batch_size, 1, 1, seq_len).repeat(1, 1, seq_len, 1)
         self_attn_mask_2 = self_attn_mask_1.transpose(2, 3)
         self_attn_mask = (self_attn_mask_1 & self_attn_mask_2).bool()
         self_attn_mask[:, :, :, 0] = True
-
 
         cx = torch.nn.functional.silu(c)
         cx = weights.txt_in_individual_token_refiner_blocks_0_adaLN_modulation_1.apply(cx)
@@ -93,7 +89,6 @@ class HunyuanPreInfer():
         out = torch.nn.functional.silu(out)
         out = weights.txt_in_individual_token_refiner_blocks_0_mlp_fc2.apply(out)
         txt_in_input_embed = out_1 + out * gate_mlp
-
 
         cx = torch.nn.functional.silu(c)
         cx = weights.txt_in_individual_token_refiner_blocks_1_adaLN_modulation_1.apply(cx)

@@ -16,7 +16,7 @@ class WanSchedulerFeatureCaching(WanScheduler):
         self.previous_residual_odd = None
         self.use_ret_steps = self.args.use_ret_steps
 
-        if self.args.task == 'i2v':
+        if self.args.task == "i2v":
             if self.use_ret_steps:
                 if self.args.target_width == 480 or self.args.target_height == 480:
                     self.coefficients = [
@@ -56,18 +56,18 @@ class WanSchedulerFeatureCaching(WanScheduler):
                 self.ret_steps = 1 * 2
                 self.cutoff_steps = self.args.infer_steps * 2 - 2
 
-        elif self.args.task == 't2v':
+        elif self.args.task == "t2v":
             if self.use_ret_steps:
-                if '1.3B' in self.args.model_path:
-                    self.coefficients = [-5.21862437e+04, 9.23041404e+03, -5.28275948e+02, 1.36987616e+01, -4.99875664e-02]
-                if '14B' in self.args.model_path:
-                    self.coefficients = [-3.03318725e+05, 4.90537029e+04, -2.65530556e+03, 5.87365115e+01, -3.15583525e-01]
+                if "1.3B" in self.args.model_path:
+                    self.coefficients = [-5.21862437e04, 9.23041404e03, -5.28275948e02, 1.36987616e01, -4.99875664e-02]
+                if "14B" in self.args.model_path:
+                    self.coefficients = [-3.03318725e05, 4.90537029e04, -2.65530556e03, 5.87365115e01, -3.15583525e-01]
                 self.ret_steps = 5 * 2
                 self.cutoff_steps = self.args.infer_steps * 2
             else:
-                if '1.3B' in self.args.model_path:
-                    self.coefficients = [2.39676752e+03, -1.31110545e+03,  2.01331979e+02, -8.29855975e+00, 1.37887774e-01]
-                if '14B' in self.args.model_path:
-                    self.coefficients = [-5784.54975374,  5449.50911966, -1811.16591783,   256.27178429, -13.02252404]
+                if "1.3B" in self.args.model_path:
+                    self.coefficients = [2.39676752e03, -1.31110545e03, 2.01331979e02, -8.29855975e00, 1.37887774e-01]
+                if "14B" in self.args.model_path:
+                    self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
                 self.ret_steps = 1 * 2
                 self.cutoff_steps = self.args.infer_steps * 2 - 2

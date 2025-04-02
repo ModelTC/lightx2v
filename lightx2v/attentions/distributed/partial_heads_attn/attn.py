@@ -9,14 +9,14 @@ def partial_heads_attn(attention_type, q, k, v, cu_seqlens_qkv, max_seqlen_qkv):
     world_size = dist.get_world_size()
     num_chunk_heads = int(num_heads / dist.get_world_size())
 
-    if cur_rank == world_size-1:
-        q = q[:, num_chunk_heads*cur_rank:, :]
-        k = k[:, num_chunk_heads*cur_rank:, :]
-        v = v[:, num_chunk_heads*cur_rank:, :]
+    if cur_rank == world_size - 1:
+        q = q[:, num_chunk_heads * cur_rank :, :]
+        k = k[:, num_chunk_heads * cur_rank :, :]
+        v = v[:, num_chunk_heads * cur_rank :, :]
     else:
-        q = q[:, num_chunk_heads*cur_rank:num_chunk_heads*(cur_rank+1), :]
-        k = k[:, num_chunk_heads*cur_rank:num_chunk_heads*(cur_rank+1), :]
-        v = v[:, num_chunk_heads*cur_rank:num_chunk_heads*(cur_rank+1), :]
+        q = q[:, num_chunk_heads * cur_rank : num_chunk_heads * (cur_rank + 1), :]
+        k = k[:, num_chunk_heads * cur_rank : num_chunk_heads * (cur_rank + 1), :]
+        v = v[:, num_chunk_heads * cur_rank : num_chunk_heads * (cur_rank + 1), :]
 
     output = attention(
         attention_type=attention_type,

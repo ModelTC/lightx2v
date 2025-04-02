@@ -41,26 +41,26 @@ class HunyuanTransformerDoubleBlock:
         self.weight_list = []
 
     def load_weights(self, weight_dict):
-        if self.config['do_mm_calib']:
-            mm_type = 'Calib'
+        if self.config["do_mm_calib"]:
+            mm_type = "Calib"
         else:
-            mm_type = self.config['mm_config'].get('mm_type', 'Default') if self.config['mm_config'] else 'Default'
+            mm_type = self.config["mm_config"].get("mm_type", "Default") if self.config["mm_config"] else "Default"
 
-        self.img_mod = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.img_mod.linear.weight', f'double_blocks.{self.block_index}.img_mod.linear.bias')
-        self.img_attn_qkv = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.img_attn_qkv.weight', f'double_blocks.{self.block_index}.img_attn_qkv.bias')
-        self.img_attn_q_norm = RMS_WEIGHT_REGISTER['sgl-kernel'](f'double_blocks.{self.block_index}.img_attn_q_norm.weight', eps=1e-6)
-        self.img_attn_k_norm = RMS_WEIGHT_REGISTER['sgl-kernel'](f'double_blocks.{self.block_index}.img_attn_k_norm.weight', eps=1e-6)
-        self.img_attn_proj = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.img_attn_proj.weight', f'double_blocks.{self.block_index}.img_attn_proj.bias')
-        self.img_mlp_fc1 = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.img_mlp.fc1.weight', f'double_blocks.{self.block_index}.img_mlp.fc1.bias')
-        self.img_mlp_fc2 = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.img_mlp.fc2.weight', f'double_blocks.{self.block_index}.img_mlp.fc2.bias')
+        self.img_mod = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.img_mod.linear.weight", f"double_blocks.{self.block_index}.img_mod.linear.bias")
+        self.img_attn_qkv = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.img_attn_qkv.weight", f"double_blocks.{self.block_index}.img_attn_qkv.bias")
+        self.img_attn_q_norm = RMS_WEIGHT_REGISTER["sgl-kernel"](f"double_blocks.{self.block_index}.img_attn_q_norm.weight", eps=1e-6)
+        self.img_attn_k_norm = RMS_WEIGHT_REGISTER["sgl-kernel"](f"double_blocks.{self.block_index}.img_attn_k_norm.weight", eps=1e-6)
+        self.img_attn_proj = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.img_attn_proj.weight", f"double_blocks.{self.block_index}.img_attn_proj.bias")
+        self.img_mlp_fc1 = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.img_mlp.fc1.weight", f"double_blocks.{self.block_index}.img_mlp.fc1.bias")
+        self.img_mlp_fc2 = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.img_mlp.fc2.weight", f"double_blocks.{self.block_index}.img_mlp.fc2.bias")
 
-        self.txt_mod = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.txt_mod.linear.weight', f'double_blocks.{self.block_index}.txt_mod.linear.bias')
-        self.txt_attn_qkv = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.txt_attn_qkv.weight', f'double_blocks.{self.block_index}.txt_attn_qkv.bias')
-        self.txt_attn_q_norm = RMS_WEIGHT_REGISTER['sgl-kernel'](f'double_blocks.{self.block_index}.txt_attn_q_norm.weight', eps=1e-6)
-        self.txt_attn_k_norm = RMS_WEIGHT_REGISTER['sgl-kernel'](f'double_blocks.{self.block_index}.txt_attn_k_norm.weight', eps=1e-6)
-        self.txt_attn_proj = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.txt_attn_proj.weight', f'double_blocks.{self.block_index}.txt_attn_proj.bias')
-        self.txt_mlp_fc1 = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.txt_mlp.fc1.weight', f'double_blocks.{self.block_index}.txt_mlp.fc1.bias')
-        self.txt_mlp_fc2 = MM_WEIGHT_REGISTER[mm_type](f'double_blocks.{self.block_index}.txt_mlp.fc2.weight', f'double_blocks.{self.block_index}.txt_mlp.fc2.bias')
+        self.txt_mod = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.txt_mod.linear.weight", f"double_blocks.{self.block_index}.txt_mod.linear.bias")
+        self.txt_attn_qkv = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.txt_attn_qkv.weight", f"double_blocks.{self.block_index}.txt_attn_qkv.bias")
+        self.txt_attn_q_norm = RMS_WEIGHT_REGISTER["sgl-kernel"](f"double_blocks.{self.block_index}.txt_attn_q_norm.weight", eps=1e-6)
+        self.txt_attn_k_norm = RMS_WEIGHT_REGISTER["sgl-kernel"](f"double_blocks.{self.block_index}.txt_attn_k_norm.weight", eps=1e-6)
+        self.txt_attn_proj = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.txt_attn_proj.weight", f"double_blocks.{self.block_index}.txt_attn_proj.bias")
+        self.txt_mlp_fc1 = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.txt_mlp.fc1.weight", f"double_blocks.{self.block_index}.txt_mlp.fc1.bias")
+        self.txt_mlp_fc2 = MM_WEIGHT_REGISTER[mm_type](f"double_blocks.{self.block_index}.txt_mlp.fc2.weight", f"double_blocks.{self.block_index}.txt_mlp.fc2.bias")
 
         self.weight_list = [
             self.img_mod,
@@ -81,7 +81,7 @@ class HunyuanTransformerDoubleBlock:
 
         for mm_weight in self.weight_list:
             if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, RMSWeightTemplate):
-                mm_weight.set_config(self.config['mm_config'])
+                mm_weight.set_config(self.config["mm_config"])
                 mm_weight.load(weight_dict)
 
     def to_cpu(self):
@@ -102,16 +102,16 @@ class HunyuanTransformerSingleBlock:
         self.weight_list = []
 
     def load_weights(self, weight_dict):
-        if self.config['do_mm_calib']:
-            mm_type = 'Calib'
+        if self.config["do_mm_calib"]:
+            mm_type = "Calib"
         else:
-            mm_type = self.config['mm_config'].get('mm_type', 'Default') if self.config['mm_config'] else 'Default'
+            mm_type = self.config["mm_config"].get("mm_type", "Default") if self.config["mm_config"] else "Default"
 
-        self.linear1 = MM_WEIGHT_REGISTER[mm_type](f'single_blocks.{self.block_index}.linear1.weight', f'single_blocks.{self.block_index}.linear1.bias')
-        self.linear2 = MM_WEIGHT_REGISTER[mm_type](f'single_blocks.{self.block_index}.linear2.weight', f'single_blocks.{self.block_index}.linear2.bias')
-        self.q_norm = RMS_WEIGHT_REGISTER['sgl-kernel'](f'single_blocks.{self.block_index}.q_norm.weight', eps=1e-6)
-        self.k_norm = RMS_WEIGHT_REGISTER['sgl-kernel'](f'single_blocks.{self.block_index}.k_norm.weight', eps=1e-6)
-        self.modulation = MM_WEIGHT_REGISTER[mm_type](f'single_blocks.{self.block_index}.modulation.linear.weight', f'single_blocks.{self.block_index}.modulation.linear.bias')
+        self.linear1 = MM_WEIGHT_REGISTER[mm_type](f"single_blocks.{self.block_index}.linear1.weight", f"single_blocks.{self.block_index}.linear1.bias")
+        self.linear2 = MM_WEIGHT_REGISTER[mm_type](f"single_blocks.{self.block_index}.linear2.weight", f"single_blocks.{self.block_index}.linear2.bias")
+        self.q_norm = RMS_WEIGHT_REGISTER["sgl-kernel"](f"single_blocks.{self.block_index}.q_norm.weight", eps=1e-6)
+        self.k_norm = RMS_WEIGHT_REGISTER["sgl-kernel"](f"single_blocks.{self.block_index}.k_norm.weight", eps=1e-6)
+        self.modulation = MM_WEIGHT_REGISTER[mm_type](f"single_blocks.{self.block_index}.modulation.linear.weight", f"single_blocks.{self.block_index}.modulation.linear.bias")
 
         self.weight_list = [
             self.linear1,
@@ -123,7 +123,7 @@ class HunyuanTransformerSingleBlock:
 
         for mm_weight in self.weight_list:
             if isinstance(mm_weight, MMWeightTemplate) or isinstance(mm_weight, RMSWeightTemplate):
-                mm_weight.set_config(self.config['mm_config'])
+                mm_weight.set_config(self.config["mm_config"])
                 mm_weight.load(weight_dict)
 
     def to_cpu(self):

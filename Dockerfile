@@ -36,4 +36,3 @@ RUN cd flash-attention && pip install --no-cache-dir -v -e .
 
 # install flash-attention 3, only if hopper
 RUN cd flash-attention/hopper && pip install --no-cache-dir -v -e .
-

@@ -34,14 +34,10 @@ def parallelize_hunyuan(hunyuan_model):
             combined_output: 经过后处理的输出结果
         """
         # 预处理输入数据
-        latent_model_input, freqs_cos, freqs_sin, split_dim = pre_process(
-            latent_model_input, freqs_cos, freqs_sin
-        )
+        latent_model_input, freqs_cos, freqs_sin, split_dim = pre_process(latent_model_input, freqs_cos, freqs_sin)
 
         # 调用原始推理方法，获取输出
-        output = original_infer(
-            latent_model_input, t_expand, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance
-        )
+        output = original_infer(latent_model_input, t_expand, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance)
 
         # 对输出进行后处理
         combined_output = post_process(output, split_dim)

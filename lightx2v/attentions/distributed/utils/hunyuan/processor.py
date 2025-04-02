@@ -3,7 +3,7 @@ import torch.distributed as dist
 
 
 def pre_process(latent_model_input, freqs_cos, freqs_sin):
-    '''
+    """
     对输入的潜在模型数据和频率数据进行预处理，进行切分以适应分布式计算。
 
     参数:
@@ -13,7 +13,7 @@ def pre_process(latent_model_input, freqs_cos, freqs_sin):
 
     返回:
         tuple: 处理后的 latent_model_input, freqs_cos, freqs_sin 和切分维度 split_dim
-    '''
+    """
     # 获取当前进程的世界大小和当前进程的排名
     world_size = dist.get_world_size()
     cur_rank = dist.get_rank()
@@ -25,7 +25,7 @@ def pre_process(latent_model_input, freqs_cos, freqs_sin):
         split_dim = -1  # 按宽度切分
     else:
         raise ValueError(f"Cannot split video sequence into world size ({world_size}) parts evenly")
-    
+
     # 获取时间维度、处理后的高度和宽度
     temporal_size, h, w = latent_model_input.shape[2], latent_model_input.shape[3] // 2, latent_model_input.shape[4] // 2
 
@@ -62,7 +62,7 @@ def post_process(output, split_dim):
 
     # 创建一个列表，用于存储所有进程的输出
     gathered_outputs = [torch.empty_like(output) for _ in range(world_size)]
-    
+
     # 收集所有进程的输出
     dist.all_gather(gathered_outputs, output)
 
