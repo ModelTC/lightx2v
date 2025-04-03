@@ -5,7 +5,6 @@ export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
 
 export CUDA_VISIBLE_DEVICES=2
 
-# model_path=/mnt/nvme1/yongyang/models/hy/ckpts # H800-13
 model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-I2V-14B-480P
 config_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-I2V-14B-480P/config.json
 
