@@ -14,7 +14,8 @@ from lightx2v.text2v.models.networks.wan.infer.transformer_infer import (
 )
 from lightx2v.text2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferFeatureCaching
 from safetensors import safe_open
-from lightx2v.attentions.distributed.ulysses.wrap import parallelize_wan
+import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
+import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
 
 
 class WanModel:
@@ -29,8 +30,13 @@ class WanModel:
         self._init_weights()
         self._init_infer()
 
-        if config["parallel_attn"]:
-            parallelize_wan(self)
+        if config["parallel_attn_type"]:
+            if config["parallel_attn_type"] == "ulysses":
+                ulysses_dist_wrap.parallelize_wan(self)
+            elif config["parallel_attn_type"] == "ring":
+                ring_dist_wrap.parallelize_wan(self)
+            else:
+                raise Exception(f"Unsuppotred parallel_attn_type")
 
         if self.config["cpu_offload"]:
             self.to_cpu()
