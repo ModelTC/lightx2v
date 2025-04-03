@@ -106,14 +106,9 @@ def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"
     返回:
         torch.Tensor: 计算得到的注意力结果
     """
-    # print('ring attn')
     # 获取当前进程的排名和全局进程数
     cur_rank = dist.get_rank()
     world_size = dist.get_world_size()
-
-    # if cur_rank == 0:
-    #     import pdb; pdb.set_trace()
-    # import time; time.sleep(9999)
 
     if len(cu_seqlens_qkv) == 3:
         txt_qkv_len = cu_seqlens_qkv[1] - img_qkv_len  # 文本查询、键和值的长度
