@@ -3,7 +3,6 @@ import torch
 import torch.distributed as dist
 
 
-
 class RingComm:
     def __init__(self, process_group: dist.ProcessGroup = None):
         self._process_group = process_group
@@ -19,18 +18,14 @@ class RingComm:
             self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
             self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
 
-    def send_recv(
-        self, to_send: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def send_recv(self, to_send: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None) -> torch.Tensor:
         if recv_tensor is None:
             res = torch.empty_like(to_send)
             # print(f"send_recv: empty_like {to_send.shape}")
         else:
             res = recv_tensor
 
-        send_op = dist.P2POp(
-            dist.isend, to_send, self.send_rank, group=self._process_group
-        )
+        send_op = dist.P2POp(dist.isend, to_send, self.send_rank, group=self._process_group)
         recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
         self._ops.append(send_op)
         self._ops.append(recv_op)
