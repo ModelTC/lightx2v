@@ -8,8 +8,8 @@ from lightx2v.text2v.models.networks.hunyuan.infer.post_infer import HunyuanPost
 from lightx2v.text2v.models.networks.hunyuan.infer.transformer_infer import HunyuanTransformerInfer
 from lightx2v.text2v.models.networks.hunyuan.infer.feature_caching.transformer_infer import HunyuanTransformerInferFeatureCaching
 
-# from lightx2v.core.distributed.partial_heads_attn.wrap import parallelize_hunyuan
-from lightx2v.attentions.distributed.ulysses.wrap import parallelize_hunyuan
+import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
+import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
 
 
 class HunyuanModel:
@@ -24,8 +24,13 @@ class HunyuanModel:
         self._init_weights()
         self._init_infer()
 
-        if self.config["parallel_attn"]:
-            parallelize_hunyuan(self)
+        if config["parallel_attn_type"]:
+            if config["parallel_attn_type"] == "ulysses":
+                ulysses_dist_wrap.parallelize_hunyuan(self)
+            elif config["parallel_attn_type"] == "ring":
+                ring_dist_wrap.parallelize_hunyuan(self)
+            else:
+                raise Exception(f"Unsuppotred parallel_attn_type")
 
         if self.config["cpu_offload"]:
             self.to_cpu()

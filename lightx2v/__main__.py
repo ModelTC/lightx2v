@@ -28,7 +28,7 @@ from lightx2v.image2v.models.wan.model import CLIPModel
 
 
 def load_models(args, model_config):
-    if model_config["parallel_attn"]:
+    if model_config["parallel_attn_type"]:
         cur_rank = dist.get_rank()  # 获取当前进程的 rank
         torch.cuda.set_device(cur_rank)  # 设置当前进程的 CUDA 设备
     image_encoder = None
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     parser.add_argument("--feature_caching", choices=["NoCaching", "TaylorSeer", "Tea"], default="NoCaching")
     parser.add_argument("--mm_config", default=None)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--parallel_attn", action="store_true")
+    parser.add_argument("--parallel_attn_type", default=None, choices=["ulysses", "ring"])
     parser.add_argument("--parallel_vae", action="store_true")
     parser.add_argument("--max_area", action="store_true")
     parser.add_argument("--vae_stride", default=(4, 8, 8))
@@ -235,7 +235,7 @@ if __name__ == "__main__":
 
     seed_all(args.seed)
 
-    if args.parallel_attn:
+    if args.parallel_attn_type:
         dist.init_process_group(backend="nccl")
 
     if args.mm_config:
@@ -251,7 +251,7 @@ if __name__ == "__main__":
         "do_mm_calib": args.do_mm_calib,
         "cpu_offload": args.cpu_offload,
         "feature_caching": args.feature_caching,
-        "parallel_attn": args.parallel_attn,
+        "parallel_attn_type": args.parallel_attn_type,
         "parallel_vae": args.parallel_vae,
     }
 
@@ -291,7 +291,7 @@ if __name__ == "__main__":
 
     images = run_vae(latents, generator, args)
 
-    if not args.parallel_attn or (args.parallel_attn and dist.get_rank() == 0):
+    if not args.parallel_attn_type or (args.parallel_attn_type and dist.get_rank() == 0):
         if args.model_cls == "wan2.1":
             cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
         else:
