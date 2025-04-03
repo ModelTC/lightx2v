@@ -1,19 +1,19 @@
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from lightx2v.attentions import attention
+# from lightx2v.attentions import attention
 from lightx2v.attentions.distributed.comm.ring_comm import RingComm
 import flash_attn
 from flash_attn.flash_attn_interface import _flash_attn_forward
 from typing import Optional, Tuple
 
 
-RING_COMM = None
+# RING_COMM = None
 
 
-def init_ring_comm():
-    global RING_COMM
-    RING_COMM = RingComm()
+# def init_ring_comm():
+#     global RING_COMM
+#     RING_COMM = RingComm()
 
 
 @torch.jit.script
@@ -115,14 +115,17 @@ def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"
     返回:
         torch.Tensor: 计算得到的注意力结果
     """
+    # print('ring attn')
     # 获取当前进程的排名和全局进程数
     cur_rank = dist.get_rank()
     world_size = dist.get_world_size()
     
     shard_seqlen = img_qkv_len
 
-    if RING_COMM is None:
-        init_ring_comm()
+    # if RING_COMM is None:
+    #     init_ring_comm()
+    
+    RING_COMM = RingComm()
 
     # if len(cu_seqlens_qkv) == 3:
     #     txt_qkv_len = cu_seqlens_qkv[1] - img_qkv_len  # 文本查询、键和值的长度
@@ -139,6 +142,9 @@ def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"
 
     out, lse, next_k, next_v = None, None, None, None
 
+    k = img_k
+    v = img_v
+    
     for step in range(world_size):
         if step + 1 != world_size:
             next_k = RING_COMM.send_recv(k)
@@ -146,18 +152,18 @@ def ring_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_attn2"
             RING_COMM.commit()
 
         if step + 1 == world_size:
-            k = torch.cat((img_k, txt_k), dim=1)
-            v = torch.cat((img_v, txt_v), dim=1)
-        else:
-            k = img_k
-            v = img_v
+            k = torch.cat((k, txt_k), dim=1)
+            v = torch.cat((v, txt_v), dim=1)
+        # else:
+        # k = img_k
+        # v = img_v
 
-        try:
-            block_out, block_lse = ring_attn_sub(q, k, v)
-        except Exception as e:
-            if cur_rank == 0:
-                import pdb; pdb.set_trace()
-            import time; time.sleep(999)
+        # try:
+        block_out, block_lse = ring_attn_sub(q, k, v)
+        # except Exception as e:
+        #     if cur_rank == 0:
+        #         import pdb; pdb.set_trace()
+        #     import time; time.sleep(999)
         out, lse = update_out_and_lse(out, lse, block_out, block_lse)
 
         if step + 1 != world_size:
