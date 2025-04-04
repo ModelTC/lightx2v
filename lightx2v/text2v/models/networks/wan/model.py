@@ -23,9 +23,10 @@ class WanModel:
     post_weight_class = WanPostWeights
     transformer_weight_class = WanTransformerWeights
 
-    def __init__(self, model_path, config):
+    def __init__(self, model_path, config, device):
         self.model_path = model_path
         self.config = config
+        self.device = device
         self._init_infer_class()
         self._init_weights()
         self._init_infer()
@@ -53,7 +54,7 @@ class WanModel:
 
     def _load_safetensor_to_dict(self, file_path):
         with safe_open(file_path, framework="pt") as f:
-            tensor_dict = {key: f.get_tensor(key).to(torch.bfloat16).cuda() for key in f.keys()}
+            tensor_dict = {key: f.get_tensor(key).to(torch.bfloat16).to(self.device) for key in f.keys()}
         return tensor_dict
 
     def _load_ckpt(self):
@@ -102,6 +103,10 @@ class WanModel:
     def infer(self, text_encoders_output, image_encoder_output, args):
         timestep = torch.stack([self.scheduler.timesteps[self.scheduler.step_index]])
 
+        if self.config["cpu_offload"]:
+            self.pre_weight.to_cuda()
+            self.post_weight.to_cuda()
+
         embed, grid_sizes, pre_infer_out = self.pre_infer.infer(
             self.pre_weight,
             [self.scheduler.latents],
@@ -112,6 +117,7 @@ class WanModel:
             [image_encoder_output["vae_encode_out"]],
         )
         x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+
         noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
         if self.config["feature_caching"] == "Tea":
@@ -128,6 +134,7 @@ class WanModel:
             image_encoder_output["clip_encoder_out"],
             [image_encoder_output["vae_encode_out"]],
         )
+
         x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
         noise_pred_uncond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
@@ -137,3 +144,7 @@ class WanModel:
                 self.scheduler.cnt = 0
 
         self.scheduler.noise_pred = noise_pred_uncond + args.sample_guide_scale * (noise_pred_cond - noise_pred_uncond)
+
+        if self.config["cpu_offload"]:
+            self.pre_weight.to_cpu()
+            self.post_weight.to_cpu()

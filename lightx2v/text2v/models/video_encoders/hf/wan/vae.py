@@ -725,11 +725,18 @@ class WanVAE:
         self.inv_std = self.inv_std.cuda()
         self.scale = [self.mean, self.inv_std]
 
-    def encode(self, videos):
+    def encode(self, videos, args):
         """
         videos: A list of videos each with shape [C, T, H, W].
         """
-        return [self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0) for u in videos]
+        if args.cpu_offload:
+            self.to_cuda()
+
+        out = [self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0) for u in videos]
+
+        if args.cpu_offload:
+            self.to_cpu()
+        return out
 
     def decode_dist(self, zs, world_size, cur_rank, split_dim):
         splited_total_len = zs.shape[split_dim]

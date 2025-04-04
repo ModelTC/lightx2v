@@ -1,6 +1,7 @@
 import torch
 from .utils import compute_freqs, compute_freqs_dist, apply_rotary_emb
 from lightx2v.attentions import attention
+from lightx2v.common.offload.manager import WeightStreamManager
 
 
 class WanTransformerInfer:
@@ -13,6 +14,11 @@ class WanTransformerInfer:
         self.head_dim = config["dim"] // config["num_heads"]
         self.window_size = config.get("window_size", (-1, -1))
         self.parallel_attention = None
+        if self.config["cpu_offload"]:
+            self.weights_stream_mgr = WeightStreamManager()
+            self.infer_func = self._infer_with_offload
+        else:
+            self.infer_func = self._infer_without_offload
 
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
@@ -29,9 +35,36 @@ class WanTransformerInfer:
         return cu_seqlens_q, cu_seqlens_k, lq, lk
 
     def infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
-        for i in range(self.blocks_num):
+        return self.infer_func(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+
+    def _infer_with_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+        for block_idx in range(self.blocks_num):
+            if block_idx == 0:
+                self.weights_stream_mgr.active_weights[0] = weights.blocks_weights[0]
+                self.weights_stream_mgr.active_weights[0].to_cuda()
+
+            with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
+                x = self.infer_block(
+                    self.weights_stream_mgr.active_weights[0],
+                    grid_sizes,
+                    embed,
+                    x,
+                    embed0,
+                    seq_lens,
+                    freqs,
+                    context,
+                )
+
+            if block_idx < self.blocks_num - 1:
+                self.weights_stream_mgr.prefetch_weights(block_idx + 1, weights.blocks_weights)
+            self.weights_stream_mgr.swap_weights()
+
+        return x
+
+    def _infer_without_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+        for block_idx in range(self.blocks_num):
             x = self.infer_block(
-                weights.blocks_weights[i],
+                weights.blocks_weights[block_idx],
                 grid_sizes,
                 embed,
                 x,
@@ -40,7 +73,6 @@ class WanTransformerInfer:
                 freqs,
                 context,
             )
-
         return x
 
     def infer_block(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
@@ -101,23 +133,6 @@ class WanTransformerInfer:
         k = weights.cross_attn_norm_k.apply(weights.cross_attn_k.apply(context)).view(-1, n, d)
         v = weights.cross_attn_v.apply(context).view(-1, n, d)
 
-        if self.task == "i2v":
-            k_img = weights.cross_attn_norm_k_img.apply(weights.cross_attn_k_img.apply(context_img)).view(-1, n, d)
-            v_img = weights.cross_attn_v_img.apply(context_img).view(-1, n, d)
-
-            cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q, k_img, k_lens=torch.tensor([k_img.size(0)], dtype=torch.int32, device=k.device))
-
-            img_attn_out = attention(
-                attention_type=self.attention_type,
-                q=q,
-                k=k_img,
-                v=v_img,
-                cu_seqlens_q=cu_seqlens_q,
-                cu_seqlens_kv=cu_seqlens_k,
-                max_seqlen_q=lq,
-                max_seqlen_kv=lk,
-            )
-
         cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q, k, k_lens=torch.tensor([k.size(0)], dtype=torch.int32, device=k.device))
 
         attn_out = attention(
@@ -130,6 +145,30 @@ class WanTransformerInfer:
             max_seqlen_q=lq,
             max_seqlen_kv=lk,
         )
+
+        if self.task == "i2v":
+            k_img = weights.cross_attn_norm_k_img.apply(weights.cross_attn_k_img.apply(context_img)).view(-1, n, d)
+            v_img = weights.cross_attn_v_img.apply(context_img).view(-1, n, d)
+
+            cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(
+                q,
+                k_img,
+                k_lens=torch.tensor([k_img.size(0)], dtype=torch.int32, device=k.device),
+            )
+
+            img_attn_out = attention(
+                attention_type=self.attention_type,
+                q=q,
+                k=k_img,
+                v=v_img,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=lq,
+                max_seqlen_kv=lk,
+            )
+
+            attn_out = attn_out + img_attn_out
+
         attn_out = weights.cross_attn_o.apply(attn_out)
 
         x = x + attn_out
