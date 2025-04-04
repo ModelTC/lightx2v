@@ -28,6 +28,16 @@ class MMWeightTemplate(metaclass=ABCMeta):
         if config is not None:
             self.config = config
 
+    def to_cpu(self, non_blocking=False):
+        self.weight = self.weight.to("cpu", non_blocking=non_blocking)
+        if self.bias is not None:
+            self.bias = self.bias.to("cpu", non_blocking=non_blocking)
+
+    def to_cuda(self, non_blocking=False):
+        self.weight = self.weight.cuda(non_blocking=non_blocking)
+        if self.bias is not None:
+            self.bias = self.bias.cuda(non_blocking=non_blocking)
+
 
 @MM_WEIGHT_REGISTER("Default")
 class MMWeight(MMWeightTemplate):
@@ -46,16 +56,6 @@ class MMWeight(MMWeightTemplate):
         if self.bias is None:
             return torch.mm(input_tensor, self.weight, out=output_tensor)
         return torch.addmm(self.bias, input_tensor, self.weight, out=output_tensor)
-
-    def to_cpu(self):
-        self.weight = self.weight.cpu()
-        if self.bias is not None:
-            self.bias = self.bias.cpu()
-
-    def to_cuda(self):
-        self.weight = self.weight.cuda()
-        if self.bias is not None:
-            self.bias = self.bias.cuda()
 
 
 @MM_WEIGHT_REGISTER("Default-Force-FP32")
@@ -87,7 +87,7 @@ class MMWeightWfp8channelAfp8channeldynamicVllm(MMWeightTemplate):
     def load(self, weight_dict):
         if self.config.get("weight_auto_quant", True):
             self.weight = weight_dict[self.weight_name].to(torch.float32).cuda()
-            w_quantizer = FloatQuantizer("e4m3", True, "channel")
+            w_quantizer = FloatQuantizer("e4m3", True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
             self.weight = self.weight.to(torch.float8_e4m3fn).t().cuda()
             self.weight_scale = self.weight_scale.to(torch.float32).cuda()
@@ -104,18 +104,6 @@ class MMWeightWfp8channelAfp8channeldynamicVllm(MMWeightTemplate):
         qinput, x_scale = ops.scaled_fp8_quant(input_tensor, None, scale_ub=None, use_per_token_if_dynamic=True)
         torch.ops._C.cutlass_scaled_mm(output_tensor, qinput, self.weight, x_scale, self.weight_scale, self.bias)
         return output_tensor
-
-    def to_cpu(self):
-        self.weight = self.weight.cpu()
-        self.weight_scale = self.weight_scale.cpu()
-        if self.bias is not None:
-            self.bias = self.bias.cpu()
-
-    def to_cuda(self):
-        self.weight = self.weight.cuda()
-        self.weight_scale = self.weight_scale.cuda()
-        if self.bias is not None:
-            self.bias = self.bias.cuda()
 
 
 @MM_WEIGHT_REGISTER("W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm")
@@ -135,7 +123,7 @@ class MMWeightWint8channelAint8channeldynamicVllm(MMWeightTemplate):
     def load(self, weight_dict):
         if self.config.get("weight_auto_quant", True):
             self.weight = weight_dict[self.weight_name].to(torch.float32).cuda()
-            w_quantizer = IntegerQuantizer(8, True, "channel")
+            w_quantizer = IntegerQuantizer(8, True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
             self.weight = self.weight.to(torch.int8).t().cuda()
             self.weight_scale = self.weight_scale.to(torch.float32).cuda()
@@ -152,18 +140,6 @@ class MMWeightWint8channelAint8channeldynamicVllm(MMWeightTemplate):
         qinput, x_scale, _ = ops.scaled_int8_quant(input_tensor, scale=None, azp=None, symmetric=True)
         torch.ops._C.cutlass_scaled_mm(output_tensor, qinput, self.weight, x_scale, self.weight_scale, self.bias)
         return output_tensor
-
-    def to_cpu(self):
-        self.weight = self.weight.cpu()
-        self.weight_scale = self.weight_scale.cpu()
-        if self.bias is not None:
-            self.bias = self.bias.cpu()
-
-    def to_cuda(self):
-        self.weight = self.weight.cuda()
-        self.weight_scale = self.weight_scale.cuda()
-        if self.bias is not None:
-            self.bias = self.bias.cuda()
 
 
 @MM_WEIGHT_REGISTER("W-int8-channel-sym-A-int8-channel-sym-dynamic-Q8F")
@@ -183,7 +159,7 @@ class MMWeightWint8channelAint8channeldynamicQ8F(MMWeightTemplate):
     def load(self, weight_dict):
         if self.config.get("weight_auto_quant", True):
             self.weight = weight_dict[self.weight_name].cuda()
-            w_quantizer = IntegerQuantizer(8, True, "channel")
+            w_quantizer = IntegerQuantizer(8, True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
             self.weight = self.weight.to(torch.int8)
             self.weight_scale = self.weight_scale.to(torch.float32)
@@ -196,18 +172,6 @@ class MMWeightWint8channelAint8channeldynamicQ8F(MMWeightTemplate):
         qinput, x_scale, _ = ops.scaled_int8_quant(input_tensor, scale=None, azp=None, symmetric=True)
         output_tensor = Q8F.linear.q8_linear(qinput, self.weight, self.bias, x_scale, self.weight_scale, fuse_gelu=False, out_dtype=torch.bfloat16)
         return output_tensor.squeeze(0)
-
-    def to_cpu(self):
-        self.weight = self.weight.cpu()
-        self.weight_scale = self.weight_scale.cpu()
-        if self.bias is not None:
-            self.bias = self.bias.cpu()
-
-    def to_cuda(self):
-        self.weight = self.weight.cuda()
-        self.weight_scale = self.weight_scale.cuda()
-        if self.bias is not None:
-            self.bias = self.bias.cuda()
 
 
 @MM_WEIGHT_REGISTER("W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Q8F")
@@ -227,7 +191,7 @@ class MMWeightWfp8channelAfp8channeldynamicQ8F(MMWeightTemplate):
     def load(self, weight_dict):
         if self.config.get("weight_auto_quant", True):
             self.weight = weight_dict[self.weight_name].cuda()
-            w_quantizer = FloatQuantizer("e4m3", True, "channel")
+            w_quantizer = FloatQuantizer("e4m3", True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
             self.weight = self.weight.to(torch.float8_e4m3fn)
             self.weight_scale = self.weight_scale.to(torch.float32)
@@ -240,18 +204,6 @@ class MMWeightWfp8channelAfp8channeldynamicQ8F(MMWeightTemplate):
         qinput, x_scale = ops.scaled_fp8_quant(input_tensor, None, scale_ub=None, use_per_token_if_dynamic=True)
         output_tensor = Q8F.linear.fp8_linear(qinput, self.weight, self.bias, x_scale, self.weight_scale, out_dtype=torch.bfloat16)
         return output_tensor.squeeze(0)
-
-    def to_cpu(self):
-        self.weight = self.weight.cpu()
-        self.weight_scale = self.weight_scale.cpu()
-        if self.bias is not None:
-            self.bias = self.bias.cpu()
-
-    def to_cuda(self):
-        self.weight = self.weight.cuda()
-        self.weight_scale = self.weight_scale.cuda()
-        if self.bias is not None:
-            self.bias = self.bias.cuda()
 
 
 if __name__ == "__main__":

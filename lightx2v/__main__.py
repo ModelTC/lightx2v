@@ -54,7 +54,7 @@ def load_models(args, model_config):
             shard_fn=None,
         )
         text_encoders = [text_encoder]
-        model = WanModel(args.model_path, model_config)
+        model = WanModel(args.model_path, model_config, device=init_device)
         vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=init_device, parallel=args.parallel_vae)
         if args.task == "i2v":
             image_encoder = CLIPModel(
@@ -97,8 +97,7 @@ def run_image_encoder(args, image_encoder, vae_model):
     elif args.model_cls == "wan2.1":
         img = Image.open(args.image_path).convert("RGB")
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
-        clip_encoder_out = image_encoder.visual([img[:, None, :, :]]).squeeze(0).to(torch.bfloat16)
-
+        clip_encoder_out = image_encoder.visual([img[:, None, :, :]], args).squeeze(0).to(torch.bfloat16)
         h, w = img.shape[1:]
         aspect_ratio = h / w
         max_area = args.target_height * args.target_width
@@ -115,13 +114,14 @@ def run_image_encoder(args, image_encoder, vae_model):
         msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
         msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
         msk = msk.transpose(1, 2)[0]
-
-        vae_encode_out = vae_model.encode([torch.concat([torch.nn.functional.interpolate(img[None].cpu(), size=(h, w), mode="bicubic").transpose(0, 1), torch.zeros(3, 80, h, w)], dim=1).cuda()])[0]
+        vae_encode_out = vae_model.encode(
+            [torch.concat([torch.nn.functional.interpolate(img[None].cpu(), size=(h, w), mode="bicubic").transpose(0, 1), torch.zeros(3, 80, h, w)], dim=1).cuda()], args
+        )[0]
         vae_encode_out = torch.concat([msk, vae_encode_out]).to(torch.bfloat16)
         return {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
 
     else:
-        raise NotImplementedError(f"Unsupported model class: {model_cls}")
+        raise NotImplementedError(f"Unsupported model class: {args.model_cls}")
 
 
 def run_text_encoder(args, text, text_encoders, model_config):
@@ -279,15 +279,10 @@ if __name__ == "__main__":
     gc.collect()
     torch.cuda.empty_cache()
 
-    if args.cpu_offload:
-        model.to_cuda()
-
     latents, generator = run_main_inference(args, model, text_encoder_output, image_encoder_output)
 
-    if args.cpu_offload:
-        model.to_cpu()
-        gc.collect()
-        torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
 
     images = run_vae(latents, generator, args)
 

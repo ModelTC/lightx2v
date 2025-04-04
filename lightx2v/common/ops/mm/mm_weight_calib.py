@@ -25,8 +25,8 @@ class MMWeightCalib(MMWeight):
 
     def get_quantizer(self):
         if self.config["mm_type"] == "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Vllm":
-            self.w_setting = {"bit": "e4m3", "symmetric": True, "granularity": "channel"}
-            self.a_setting = {"bit": "e4m3", "symmetric": True, "granularity": "channel"}
+            self.w_setting = {"bit": "e4m3", "symmetric": True, "granularity": "per_channel"}
+            self.a_setting = {"bit": "e4m3", "symmetric": True, "granularity": "per_channel"}
             self.w_quantizer = FloatQuantizer(**self.w_setting)
             self.a_quantizer = FloatQuantizer(**self.a_setting)
             self.act_dynamic_quant = True

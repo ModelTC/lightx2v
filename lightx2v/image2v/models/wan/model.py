@@ -442,7 +442,9 @@ class CLIPModel:
         # init tokenizer
         self.tokenizer = HuggingfaceTokenizer(name=tokenizer_path, seq_len=self.model.max_text_len - 2, clean="whitespace")
 
-    def visual(self, videos):
+    def visual(self, videos, args):
+        if args.cpu_offload:
+            self.to_cuda()
         # preprocess
         size = (self.model.image_size,) * 2
         videos = torch.cat([F.interpolate(u.transpose(0, 1), size=size, mode="bicubic", align_corners=False) for u in videos])
@@ -451,4 +453,13 @@ class CLIPModel:
         # forward
         with torch.amp.autocast("cuda", dtype=self.dtype):
             out = self.model.visual(videos, use_31_block=True)
-            return out
+
+        if args.cpu_offload:
+            self.to_cpu()
+        return out
+
+    def to_cuda(self):
+        self.model = self.model.cuda()
+
+    def to_cpu(self):
+        self.model = self.model.cpu()
