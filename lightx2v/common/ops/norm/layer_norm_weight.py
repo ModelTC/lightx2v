@@ -22,17 +22,17 @@ class LNWeightTemplate(metaclass=ABCMeta):
         if config is not None:
             self.config = config
 
-    def to_cpu(self):
+    def to_cpu(self, non_blocking=False):
         if self.weight is not None:
-            self.weight = self.weight.cpu()
+            self.weight = self.weight.to("cpu", non_blocking=non_blocking)
         if self.bias is not None:
-            self.bias = self.bias.cpu()
+            self.bias = self.bias.to("cpu", non_blocking=non_blocking)
 
-    def to_cuda(self):
+    def to_cuda(self, non_blocking=False):
         if self.weight is not None:
-            self.weight = self.weight.cuda()
+            self.weight = self.weight.cuda(non_blocking=non_blocking)
         if self.bias is not None:
-            self.bias = self.bias.cuda()
+            self.bias = self.bias.cuda(non_blocking=non_blocking)
 
 
 @LN_WEIGHT_REGISTER("Default")

@@ -21,11 +21,11 @@ class RMSWeightTemplate(metaclass=ABCMeta):
         if config is not None:
             self.config = config
 
-    def to_cpu(self):
-        self.weight = self.weight.cpu()
+    def to_cpu(self, non_blocking=False):
+        self.weight = self.weight.to("cpu", non_blocking=non_blocking)
 
-    def to_cuda(self):
-        self.weight = self.weight.cuda()
+    def to_cuda(self, non_blocking=False):
+        self.weight = self.weight.cuda(non_blocking=non_blocking)
 
 
 @RMS_WEIGHT_REGISTER("Default")
