@@ -71,13 +71,11 @@ class WanTransformerAttentionBlock:
             self.cross_attn_norm_k,
             self.ffn_0,
             self.ffn_2,
-            # self.modulation,
         ]
 
         if self.task == "i2v":
             self.cross_attn_k_img = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.k_img.weight", f"blocks.{self.block_index}.cross_attn.k_img.bias")
             self.cross_attn_v_img = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.v_img.weight", f"blocks.{self.block_index}.cross_attn.v_img.bias")
-            # self.cross_attn_norm_k_img_weight = weight_dict[f'blocks.{self.block_index}.cross_attn.norm_k_img.weight']
             self.cross_attn_norm_k_img = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.cross_attn.norm_k_img.weight")
             self.weight_list.append(self.cross_attn_k_img)
             self.weight_list.append(self.cross_attn_v_img)

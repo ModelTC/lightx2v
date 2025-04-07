@@ -41,7 +41,7 @@ def load_models(args, model_config):
         text_encoder_1 = TextEncoderHFLlamaModel(os.path.join(args.model_path, "text_encoder"), init_device)
         text_encoder_2 = TextEncoderHFClipModel(os.path.join(args.model_path, "text_encoder_2"), init_device)
         text_encoders = [text_encoder_1, text_encoder_2]
-        model = HunyuanModel(args.model_path, model_config, device=init_device)
+        model = HunyuanModel(args.model_path, model_config, init_device)
         vae_model = VideoEncoderKLCausal3DModel(args.model_path, dtype=torch.float16, device=init_device)
 
     elif args.model_cls == "wan2.1":
@@ -54,7 +54,7 @@ def load_models(args, model_config):
             shard_fn=None,
         )
         text_encoders = [text_encoder]
-        model = WanModel(args.model_path, model_config, device=init_device)
+        model = WanModel(args.model_path, model_config, init_device)
         vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=init_device, parallel=args.parallel_vae)
         if args.task == "i2v":
             image_encoder = CLIPModel(
