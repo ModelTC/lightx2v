@@ -87,9 +87,6 @@ class WanTransformerAttentionBlock:
             if isinstance(mm_weight, (MMWeightTemplate, LNWeightTemplate, RMSWeightTemplate)):
                 mm_weight.set_config(self.config["mm_config"])
                 mm_weight.load(weight_dict)
-                if self.config["cpu_offload"]:
-                    mm_weight.to_cpu()
-                    self.modulation = self.modulation.cpu()
 
     def to_cpu(self):
         for mm_weight in self.weight_list:

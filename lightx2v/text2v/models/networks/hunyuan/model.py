@@ -17,9 +17,10 @@ class HunyuanModel:
     post_weight_class = HunyuanPostWeights
     transformer_weight_class = HunyuanTransformerWeights
 
-    def __init__(self, model_path, config):
+    def __init__(self, model_path, config, device):
         self.model_path = model_path
         self.config = config
+        self.device = device
         self._init_infer_class()
         self._init_weights()
         self._init_infer()
@@ -47,7 +48,7 @@ class HunyuanModel:
 
     def _load_ckpt(self):
         ckpt_path = os.path.join(self.model_path, "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt")
-        weight_dict = torch.load(ckpt_path, map_location="cuda", weights_only=True)["module"]
+        weight_dict = torch.load(ckpt_path, map_location=self.device, weights_only=True)["module"]
         return weight_dict
 
     def _init_weights(self):
@@ -82,6 +83,9 @@ class HunyuanModel:
 
     @torch.no_grad()
     def infer(self, text_encoder_output, image_encoder_output, args):
+        if self.config["cpu_offload"]:
+            self.pre_weight.to_cuda()
+            self.post_weight.to_cuda()
         pre_infer_out = self.pre_infer.infer(
             self.pre_weight,
             self.scheduler.latents,
@@ -95,3 +99,6 @@ class HunyuanModel:
         )
         img, vec = self.transformer_infer.infer(self.transformer_weights, *pre_infer_out)
         self.scheduler.noise_pred = self.post_infer.infer(self.post_weight, img, vec, self.scheduler.latents.shape)
+        if self.config["cpu_offload"]:
+            self.pre_weight.to_cpu()
+            self.post_weight.to_cpu()
