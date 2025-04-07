@@ -136,7 +136,6 @@ class HunyuanTransformerSingleBlock:
                 mm_weight.set_config(self.config["mm_config"])
                 mm_weight.load(weight_dict)
 
-
     def to_cpu(self):
         for mm_weight in self.weight_list:
             if isinstance(mm_weight, (MMWeightTemplate, RMSWeightTemplate)):
