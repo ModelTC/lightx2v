@@ -6,8 +6,8 @@ model_path=""
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
-    echo "Warn: CUDA_VISIBLE_DEVICES is not set, using defalt value: 0,1,2,3, change at shell script or set env variable."
-    cuda_devices="0,1,2,3"
+    cuda_devices=0,1,2,3
+    echo "Warn: CUDA_VISIBLE_DEVICES is not set, using defalt value: ${cuda_devices}, change at shell script or set env variable."
     export CUDA_VISIBLE_DEVICES=${cuda_devices}
 fi
 

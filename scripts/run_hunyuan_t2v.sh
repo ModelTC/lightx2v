@@ -6,8 +6,8 @@ model_path=""
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
-    echo "Warn: CUDA_VISIBLE_DEVICES is not set, using defalt value: 0, change at shell script or set env variable."
-    cuda_devices="0"
+    cuda_devices=0
+    echo "Warn: CUDA_VISIBLE_DEVICES is not set, using defalt value: ${cuda_devices}, change at shell script or set env variable."
     export CUDA_VISIBLE_DEVICES=${cuda_devices}
 fi
 
@@ -32,5 +32,5 @@ python ${lightx2v_path}/lightx2v/__main__.py \
 --target_height 720 \
 --target_width 1280 \
 --attention_type flash_attn3 \
---save_video_path ./output_lightx2v_int8.mp4 \
+--save_video_path ./output_lightx2v_hy_t2v.mp4 \
 --mm_config '{"mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm", "weight_auto_quant": true}'
