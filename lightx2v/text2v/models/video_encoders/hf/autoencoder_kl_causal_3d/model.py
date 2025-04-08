@@ -1,17 +1,21 @@
 import os
 import torch
-from .autoencoder_kl_causal_3d import AutoencoderKLCausal3D
+from .autoencoder_kl_causal_3d import AutoencoderKLCausal3D, DiagonalGaussianDistribution
 
 
 class VideoEncoderKLCausal3DModel:
-    def __init__(self, model_path, dtype, device):
+    def __init__(self, model_path, dtype, device, args):
         self.model_path = model_path
         self.dtype = dtype
         self.device = device
+        self.args = args
         self.load()
 
     def load(self):
-        self.vae_path = os.path.join(self.model_path, "hunyuan-video-t2v-720p/vae")
+        if self.args.task == "t2v":
+            self.vae_path = os.path.join(self.model_path, "hunyuan-video-t2v-720p/vae")
+        else:
+            self.vae_path = os.path.join(self.model_path, "hunyuan-video-i2v-720p/vae")
         config = AutoencoderKLCausal3D.load_config(self.vae_path)
         self.model = AutoencoderKLCausal3D.from_config(config)
         ckpt = torch.load(os.path.join(self.vae_path, "pytorch_model.pt"), map_location="cpu", weights_only=True)
@@ -38,6 +42,12 @@ class VideoEncoderKLCausal3DModel:
         if args.cpu_offload:
             self.to_cpu()
         return image
+
+    def encode(self, x, args):
+        h = self.model.encoder(x)
+        moments = self.model.quant_conv(h)
+        posterior = DiagonalGaussianDistribution(moments)
+        return posterior
 
 
 if __name__ == "__main__":

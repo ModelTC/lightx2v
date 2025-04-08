@@ -17,10 +17,11 @@ class HunyuanModel:
     post_weight_class = HunyuanPostWeights
     transformer_weight_class = HunyuanTransformerWeights
 
-    def __init__(self, model_path, config, device):
+    def __init__(self, model_path, config, device, args):
         self.model_path = model_path
         self.config = config
         self.device = device
+        self.args = args
         self._init_infer_class()
         self._init_weights()
         self._init_infer()
@@ -47,7 +48,10 @@ class HunyuanModel:
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")
 
     def _load_ckpt(self):
-        ckpt_path = os.path.join(self.model_path, "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt")
+        if self.args.task == "t2v":
+            ckpt_path = os.path.join(self.model_path, "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt")
+        else:
+            ckpt_path = os.path.join(self.model_path, "hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt")
         weight_dict = torch.load(ckpt_path, map_location=self.device, weights_only=True)["module"]
         return weight_dict
 
@@ -96,6 +100,7 @@ class HunyuanModel:
             self.scheduler.freqs_cos,
             self.scheduler.freqs_sin,
             self.scheduler.guidance,
+            img_latents=image_encoder_output["img_latents"] if "img_latents" in image_encoder_output else None,
         )
         img, vec = self.transformer_infer.infer(self.transformer_weights, *pre_infer_out)
         self.scheduler.noise_pred = self.post_infer.infer(self.post_weight, img, vec, self.scheduler.latents.shape)

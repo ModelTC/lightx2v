@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from diffusers.utils.torch_utils import randn_tensor
 from typing import Union, Tuple, List
 from typing import Any, Callable, Dict, List, Optional, Union, Tuple
@@ -174,35 +175,108 @@ def get_nd_rotary_pos_embed(
 def set_timesteps_sigmas(num_inference_steps, shift, device, num_train_timesteps=1000):
     sigmas = torch.linspace(1, 0, num_inference_steps + 1)
     sigmas = (shift * sigmas) / (1 + (shift - 1) * sigmas)
-    timesteps = (sigmas[:-1] * num_train_timesteps).to(dtype=torch.bfloat16, device=device)
+    timesteps = (sigmas[:-1] * num_train_timesteps).to(dtype=torch.float32, device=device)
     return timesteps, sigmas
 
 
+def get_1d_rotary_pos_embed_riflex(
+    dim: int,
+    pos: Union[np.ndarray, int],
+    theta: float = 10000.0,
+    use_real=False,
+    k: Optional[int] = None,
+    L_test: Optional[int] = None,
+):
+    """
+    RIFLEx: Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
+
+    This function calculates a frequency tensor with complex exponentials using the given dimension 'dim' and the end
+    index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex values in complex64
+    data type.
+
+    Args:
+        dim (`int`): Dimension of the frequency tensor.
+        pos (`np.ndarray` or `int`): Position indices for the frequency tensor. [S] or scalar
+        theta (`float`, *optional*, defaults to 10000.0):
+            Scaling factor for frequency computation. Defaults to 10000.0.
+        use_real (`bool`, *optional*):
+            If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+        k (`int`, *optional*, defaults to None): the index for the intrinsic frequency in RoPE
+        L_test (`int`, *optional*, defaults to None): the number of frames for inference
+    Returns:
+        `torch.Tensor`: Precomputed frequency tensor with complex exponentials. [S, D/2]
+    """
+    assert dim % 2 == 0
+
+    if isinstance(pos, int):
+        pos = torch.arange(pos)
+    if isinstance(pos, np.ndarray):
+        pos = torch.from_numpy(pos)  # type: ignore  # [S]
+
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, device=pos.device)[: (dim // 2)].float() / dim))  # [D/2]
+
+    # === Riflex modification start ===
+    # Reduce the intrinsic frequency to stay within a single period after extrapolation (see Eq. (8)).
+    # Empirical observations show that a few videos may exhibit repetition in the tail frames.
+    # To be conservative, we multiply by 0.9 to keep the extrapolated length below 90% of a single period.
+    if k is not None:
+        freqs[k - 1] = 0.9 * 2 * torch.pi / L_test
+    # === Riflex modification end ===
+
+    freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
+    if use_real:
+        freqs_cos = freqs.cos().repeat_interleave(2, dim=1).float()  # [S, D]
+        freqs_sin = freqs.sin().repeat_interleave(2, dim=1).float()  # [S, D]
+        return freqs_cos, freqs_sin
+    else:
+        # lumina
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
+        return freqs_cis
+
+
 class HunyuanScheduler(BaseScheduler):
-    def __init__(self, args):
+    def __init__(self, args, image_encoder_output):
         super().__init__(args)
         self.infer_steps = self.args.infer_steps
+        self.image_encoder_output = image_encoder_output
         self.shift = 7.0
         self.timesteps, self.sigmas = set_timesteps_sigmas(self.infer_steps, self.shift, device=torch.device("cuda"))
         assert len(self.timesteps) == self.infer_steps
         self.embedded_guidance_scale = 6.0
-        self.generator = [torch.Generator("cuda").manual_seed(seed) for seed in [42]]
+        self.generator = [torch.Generator("cuda").manual_seed(seed) for seed in [self.args.seed]]
         self.noise_pred = None
-        self.prepare_latents(shape=self.args.target_shape, dtype=torch.bfloat16)
+        self.prepare_latents(shape=self.args.target_shape, dtype=torch.float16)
         self.prepare_guidance()
-        self.prepare_rotary_pos_embedding(video_length=self.args.target_video_length, height=self.args.target_height, width=self.args.target_width)
+        if self.args.task == "t2v":
+            target_height, target_width = self.args.target_height, self.args.target_width
+        else:
+            target_height, target_width = self.image_encoder_output["target_height"], self.image_encoder_output["target_width"]
+        self.prepare_rotary_pos_embedding(video_length=self.args.target_video_length, height=target_height, width=target_width)
 
     def prepare_guidance(self):
         self.guidance = torch.tensor([self.embedded_guidance_scale], dtype=torch.bfloat16, device=torch.device("cuda")) * 1000.0
 
     def step_post(self):
-        sample = self.latents.to(torch.float32)
-        dt = self.sigmas[self.step_index + 1] - self.sigmas[self.step_index]
-        prev_sample = sample + self.noise_pred.to(torch.float32) * dt
-        self.latents = prev_sample
+        if self.args.task == "t2v":
+            sample = self.latents.to(torch.float32)
+            dt = self.sigmas[self.step_index + 1] - self.sigmas[self.step_index]
+            self.latents = sample + self.noise_pred.to(torch.float32) * dt
+        else:
+            sample = self.latents[:, :, 1:, :, :].to(torch.float32)
+            dt = self.sigmas[self.step_index + 1] - self.sigmas[self.step_index]
+            latents = sample + self.noise_pred[:, :, 1:, :, :].to(torch.float32) * dt
+            self.latents = torch.concat([self.image_encoder_output["img_latents"], latents], dim=2)
 
     def prepare_latents(self, shape, dtype):
-        self.latents = randn_tensor(shape, generator=self.generator, device=torch.device("cuda"), dtype=dtype)
+        if self.args.task == "t2v":
+            self.latents = randn_tensor(shape, generator=self.generator, device=torch.device("cuda"), dtype=dtype)
+        else:
+            x1 = self.image_encoder_output["img_latents"].repeat(1, 1, (self.args.target_video_length - 1) // 4 + 1, 1, 1)
+            x0 = randn_tensor(shape, generator=self.generator, device=torch.device("cuda"), dtype=dtype)
+            t = torch.tensor([0.999]).to(device=torch.device("cuda"))
+            self.latents = x0 * t + x1 * (1 - t)
+            self.latents = self.latents.to(dtype=dtype)
+            self.latents = torch.concat([self.image_encoder_output["img_latents"], self.latents[:, :, 1:, :, :]], dim=2)
 
     def prepare_rotary_pos_embedding(self, video_length, height, width):
         target_ndim = 3
@@ -230,17 +304,62 @@ class HunyuanScheduler(BaseScheduler):
 
         if len(rope_sizes) != target_ndim:
             rope_sizes = [1] * (target_ndim - len(rope_sizes)) + rope_sizes  # time axis
-        head_dim = hidden_size // heads_num
-        rope_dim_list = rope_dim_list
-        if rope_dim_list is None:
-            rope_dim_list = [head_dim // target_ndim for _ in range(target_ndim)]
-        assert sum(rope_dim_list) == head_dim, "sum(rope_dim_list) should equal to head_dim of attention layer"
-        self.freqs_cos, self.freqs_sin = get_nd_rotary_pos_embed(
-            rope_dim_list,
-            rope_sizes,
-            theta=rope_theta,
-            use_real=True,
-            theta_rescale_factor=1,
-        )
-        self.freqs_cos = self.freqs_cos.to(dtype=torch.bfloat16, device=torch.device("cuda"))
-        self.freqs_sin = self.freqs_sin.to(dtype=torch.bfloat16, device=torch.device("cuda"))
+
+        if self.args.task == "t2v":
+            head_dim = hidden_size // heads_num
+            rope_dim_list = rope_dim_list
+            if rope_dim_list is None:
+                rope_dim_list = [head_dim // target_ndim for _ in range(target_ndim)]
+            assert sum(rope_dim_list) == head_dim, "sum(rope_dim_list) should equal to head_dim of attention layer"
+            self.freqs_cos, self.freqs_sin = get_nd_rotary_pos_embed(
+                rope_dim_list,
+                rope_sizes,
+                theta=rope_theta,
+                use_real=True,
+                theta_rescale_factor=1,
+            )
+            self.freqs_cos = self.freqs_cos.to(dtype=torch.bfloat16, device=torch.device("cuda"))
+            self.freqs_sin = self.freqs_sin.to(dtype=torch.bfloat16, device=torch.device("cuda"))
+
+        else:
+            L_test = rope_sizes[0]  # Latent frames
+            L_train = 25  # Training length from HunyuanVideo
+            actual_num_frames = video_length  # Use input video_length directly
+
+            head_dim = hidden_size // heads_num
+            rope_dim_list = rope_dim_list or [head_dim // target_ndim for _ in range(target_ndim)]
+            assert sum(rope_dim_list) == head_dim, "sum(rope_dim_list) must equal head_dim"
+
+            if actual_num_frames > 192:
+                k = 2 + ((actual_num_frames + 3) // (4 * L_train))
+                k = max(4, min(8, k))
+
+                # Compute positional grids for RIFLEx
+                axes_grids = [torch.arange(size, device=torch.device("cuda"), dtype=torch.float32) for size in rope_sizes]
+                grid = torch.meshgrid(*axes_grids, indexing="ij")
+                grid = torch.stack(grid, dim=0)  # [3, t, h, w]
+                pos = grid.reshape(3, -1).t()  # [t * h * w, 3]
+
+                # Apply RIFLEx to temporal dimension
+                freqs = []
+                for i in range(3):
+                    if i == 0:  # Temporal with RIFLEx
+                        freqs_cos, freqs_sin = get_1d_rotary_pos_embed_riflex(rope_dim_list[i], pos[:, i], theta=rope_theta, use_real=True, k=k, L_test=L_test)
+                    else:  # Spatial with default RoPE
+                        freqs_cos, freqs_sin = get_1d_rotary_pos_embed_riflex(rope_dim_list[i], pos[:, i], theta=rope_theta, use_real=True, k=None, L_test=None)
+                    freqs.append((freqs_cos, freqs_sin))
+
+                freqs_cos = torch.cat([f[0] for f in freqs], dim=1)
+                freqs_sin = torch.cat([f[1] for f in freqs], dim=1)
+            else:
+                # 20250316 pftq: Original code for <= 192 frames
+                freqs_cos, freqs_sin = get_nd_rotary_pos_embed(
+                    rope_dim_list,
+                    rope_sizes,
+                    theta=rope_theta,
+                    use_real=True,
+                    theta_rescale_factor=1,
+                )
+
+            self.freqs_cos = freqs_cos.to(dtype=torch.bfloat16, device=torch.device("cuda"))
+            self.freqs_sin = freqs_sin.to(dtype=torch.bfloat16, device=torch.device("cuda"))

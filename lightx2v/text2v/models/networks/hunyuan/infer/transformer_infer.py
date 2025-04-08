@@ -25,10 +25,10 @@ class HunyuanTransformerInfer:
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
 
-    def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis):
-        return self.infer_func(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis)
+    def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
+        return self.infer_func(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
-    def _infer_with_offload(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis):
+    def _infer_with_offload(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num):
         txt_seq_len = txt.shape[0]
         img_seq_len = img.shape[0]
 
@@ -75,38 +75,22 @@ class HunyuanTransformerInfer:
         img = x[:img_seq_len, ...]
         return img, vec
 
-    def _infer_without_offload(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis):
+    def _infer_without_offload(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num):
         txt_seq_len = txt.shape[0]
         img_seq_len = img.shape[0]
 
         for i in range(self.double_blocks_num):
-            img, txt = self.infer_double_block(
-                weights.double_blocks_weights[i],
-                img,
-                txt,
-                vec,
-                cu_seqlens_qkv,
-                max_seqlen_qkv,
-                freqs_cis,
-            )
+            img, txt = self.infer_double_block(weights.double_blocks_weights[i], img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
         x = torch.cat((img, txt), 0)
 
         for i in range(self.single_blocks_num):
-            x = self.infer_single_block(
-                weights.single_blocks_weights[i],
-                x,
-                vec,
-                txt_seq_len,
-                cu_seqlens_qkv,
-                max_seqlen_qkv,
-                freqs_cis,
-            )
+            x = self.infer_single_block(weights.single_blocks_weights[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
         img = x[:img_seq_len, ...]
         return img, vec
 
-    def infer_double_block(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis):
+    def infer_double_block(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num):
         vec_silu = torch.nn.functional.silu(vec)
 
         img_mod_out = weights.img_mod.apply(vec_silu)
@@ -119,6 +103,13 @@ class HunyuanTransformerInfer:
             img_mod2_gate,
         ) = img_mod_out.chunk(6, dim=-1)
 
+        if token_replace_vec is not None:
+            token_replace_vec_silu = torch.nn.functional.silu(token_replace_vec)
+            token_replace_vec_img_mod_out = weights.img_mod.apply(token_replace_vec_silu)
+            (tr_img_mod1_shift, tr_img_mod1_scale, tr_img_mod1_gate, tr_img_mod2_shift, tr_img_mod2_scale, tr_img_mod2_gate) = token_replace_vec_img_mod_out.chunk(6, dim=-1)
+        else:
+            (tr_img_mod1_shift, tr_img_mod1_scale, tr_img_mod1_gate, tr_img_mod2_shift, tr_img_mod2_scale, tr_img_mod2_gate) = None, None, None, None, None, None
+
         txt_mod_out = weights.txt_mod.apply(vec_silu)
         (
             txt_mod1_shift,
@@ -129,7 +120,7 @@ class HunyuanTransformerInfer:
             txt_mod2_gate,
         ) = txt_mod_out.chunk(6, dim=-1)
 
-        img_q, img_k, img_v = self.infer_double_block_img_pre_atten(weights, img, img_mod1_scale, img_mod1_shift, freqs_cis)
+        img_q, img_k, img_v = self.infer_double_block_img_pre_atten(weights, img, img_mod1_scale, img_mod1_shift, tr_img_mod1_scale, tr_img_mod1_shift, frist_frame_token_num, freqs_cis)
         txt_q, txt_k, txt_v = self.infer_double_block_txt_pre_atten(weights, txt, txt_mod1_scale, txt_mod1_shift)
 
         q = torch.cat((img_q, txt_q), dim=0)
@@ -162,28 +153,19 @@ class HunyuanTransformerInfer:
 
         img_attn, txt_attn = attn[: img.shape[0]], attn[img.shape[0] :]
         img = self.infer_double_block_img_post_atten(
-            weights,
-            img,
-            img_attn,
-            img_mod1_gate,
-            img_mod2_shift,
-            img_mod2_scale,
-            img_mod2_gate,
+            weights, img, img_attn, img_mod1_gate, img_mod2_shift, img_mod2_scale, img_mod2_gate, tr_img_mod1_gate, tr_img_mod2_shift, tr_img_mod2_scale, tr_img_mod2_gate, frist_frame_token_num
         )
-        txt = self.infer_double_block_txt_post_atten(
-            weights,
-            txt,
-            txt_attn,
-            txt_mod1_gate,
-            txt_mod2_shift,
-            txt_mod2_scale,
-            txt_mod2_gate,
-        )
+        txt = self.infer_double_block_txt_post_atten(weights, txt, txt_attn, txt_mod1_gate, txt_mod2_shift, txt_mod2_scale, txt_mod2_gate)
         return img, txt
 
-    def infer_double_block_img_pre_atten(self, weights, img, img_mod1_scale, img_mod1_shift, freqs_cis):
+    def infer_double_block_img_pre_atten(self, weights, img, img_mod1_scale, img_mod1_shift, tr_img_mod1_scale, tr_img_mod1_shift, frist_frame_token_num, freqs_cis):
         img_modulated = torch.nn.functional.layer_norm(img, (img.shape[1],), None, None, 1e-6)
-        img_modulated = img_modulated * (1 + img_mod1_scale) + img_mod1_shift
+        if tr_img_mod1_scale is not None:
+            x_zero = img_modulated[:frist_frame_token_num] * (1 + tr_img_mod1_scale) + tr_img_mod1_shift
+            x_orig = img_modulated[frist_frame_token_num:] * (1 + img_mod1_scale) + img_mod1_shift
+            img_modulated = torch.concat((x_zero, x_orig), dim=0)
+        else:
+            img_modulated = img_modulated * (1 + img_mod1_scale) + img_mod1_shift
         img_qkv = weights.img_attn_qkv.apply(img_modulated)
 
         img_q, img_k, img_v = rearrange(img_qkv, "L (K H D) -> K L H D", K=3, H=self.heads_num)
@@ -206,21 +188,24 @@ class HunyuanTransformerInfer:
         return txt_q, txt_k, txt_v
 
     def infer_double_block_img_post_atten(
-        self,
-        weights,
-        img,
-        img_attn,
-        img_mod1_gate,
-        img_mod2_shift,
-        img_mod2_scale,
-        img_mod2_gate,
+        self, weights, img, img_attn, img_mod1_gate, img_mod2_shift, img_mod2_scale, img_mod2_gate, tr_img_mod1_gate, tr_img_mod2_shift, tr_img_mod2_scale, tr_img_mod2_gate, frist_frame_token_num
     ):
         out = weights.img_attn_proj.apply(img_attn)
-        out = out * img_mod1_gate
+        if tr_img_mod1_gate is not None:
+            x_zero = out[:frist_frame_token_num] * tr_img_mod1_gate
+            x_orig = out[frist_frame_token_num:] * img_mod1_gate
+            out = torch.concat((x_zero, x_orig), dim=0)
+        else:
+            out = out * img_mod1_gate
         img = img + out
 
         out = torch.nn.functional.layer_norm(img, (img.shape[1],), None, None, 1e-6)
-        out = out * (1 + img_mod2_scale) + img_mod2_shift
+        if tr_img_mod1_gate is not None:
+            x_zero = out[:frist_frame_token_num] * (1 + tr_img_mod2_scale) + tr_img_mod2_shift
+            x_orig = out[frist_frame_token_num:] * (1 + img_mod2_scale) + img_mod2_shift
+            out = torch.concat((x_zero, x_orig), dim=0)
+        else:
+            out = out * (1 + img_mod2_scale) + img_mod2_shift
         out = weights.img_mlp_fc1.apply(out)
         out = torch.nn.functional.gelu(out, approximate="tanh")
         out = weights.img_mlp_fc2.apply(out)
@@ -251,13 +236,23 @@ class HunyuanTransformerInfer:
         txt = txt + out
         return txt
 
-    def infer_single_block(self, weights, x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis):
+    def infer_single_block(self, weights, x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
         out = torch.nn.functional.silu(vec)
         out = weights.modulation.apply(out)
         mod_shift, mod_scale, mod_gate = out.chunk(3, dim=-1)
 
+        if token_replace_vec is not None:
+            token_replace_vec_out = torch.nn.functional.silu(token_replace_vec)
+            token_replace_vec_out = weights.modulation.apply(token_replace_vec_out)
+            tr_mod_shift, tr_mod_scale, tr_mod_gate = token_replace_vec_out.chunk(3, dim=-1)
+
         out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
-        x_mod = out * (1 + mod_scale) + mod_shift
+        if token_replace_vec is not None:
+            x_zero = out[:frist_frame_token_num] * (1 + tr_mod_scale) + tr_mod_shift
+            x_orig = out[frist_frame_token_num:] * (1 + mod_scale) + mod_shift
+            x_mod = torch.concat((x_zero, x_orig), dim=0)
+        else:
+            x_mod = out * (1 + mod_scale) + mod_shift
 
         x_mod = weights.linear1.apply(x_mod)
 
@@ -301,6 +296,12 @@ class HunyuanTransformerInfer:
         out = torch.nn.functional.gelu(mlp, approximate="tanh")
         out = torch.cat((attn, out), 1)
         out = weights.linear2.apply(out)
-        out = out * mod_gate
+
+        if token_replace_vec is not None:
+            x_zero = out[:frist_frame_token_num] * tr_mod_gate
+            x_orig = out[frist_frame_token_num:] * mod_gate
+            out = torch.concat((x_zero, x_orig), dim=0)
+        else:
+            out = out * mod_gate
         x = x + out
         return x

@@ -5,12 +5,14 @@ import os
 import time
 import gc
 import json
+import torchvision
 import torchvision.transforms.functional as TF
 import numpy as np
 from PIL import Image
 from lightx2v.text2v.models.text_encoders.hf.llama.model import TextEncoderHFLlamaModel
 from lightx2v.text2v.models.text_encoders.hf.clip.model import TextEncoderHFClipModel
 from lightx2v.text2v.models.text_encoders.hf.t5.model import T5EncoderModel
+from lightx2v.text2v.models.text_encoders.hf.llava.model import TextEncoderHFLlavaModel
 
 from lightx2v.text2v.models.schedulers.hunyuan.scheduler import HunyuanScheduler
 from lightx2v.text2v.models.schedulers.hunyuan.feature_caching.scheduler import HunyuanSchedulerFeatureCaching
@@ -38,11 +40,14 @@ def load_models(args, model_config):
         init_device = torch.device("cuda")
 
     if args.model_cls == "hunyuan":
-        text_encoder_1 = TextEncoderHFLlamaModel(os.path.join(args.model_path, "text_encoder"), init_device)
+        if args.task == "t2v":
+            text_encoder_1 = TextEncoderHFLlamaModel(os.path.join(args.model_path, "text_encoder"), init_device)
+        else:
+            text_encoder_1 = TextEncoderHFLlavaModel(os.path.join(args.model_path, "text_encoder_i2v"), init_device)
         text_encoder_2 = TextEncoderHFClipModel(os.path.join(args.model_path, "text_encoder_2"), init_device)
         text_encoders = [text_encoder_1, text_encoder_2]
-        model = HunyuanModel(args.model_path, model_config, init_device)
-        vae_model = VideoEncoderKLCausal3DModel(args.model_path, dtype=torch.float16, device=init_device)
+        model = HunyuanModel(args.model_path, model_config, init_device, args)
+        vae_model = VideoEncoderKLCausal3DModel(args.model_path, dtype=torch.float16, device=init_device, args=args)
 
     elif args.model_cls == "wan2.1":
         text_encoder = T5EncoderModel(
@@ -69,16 +74,26 @@ def load_models(args, model_config):
     return model, text_encoders, vae_model, image_encoder
 
 
-def set_target_shape(args):
+def set_target_shape(args, image_encoder_output):
     if args.model_cls == "hunyuan":
-        vae_scale_factor = 2 ** (4 - 1)
-        args.target_shape = (
-            1,
-            16,
-            (args.target_video_length - 1) // 4 + 1,
-            int(args.target_height) // vae_scale_factor,
-            int(args.target_width) // vae_scale_factor,
-        )
+        if args.task == "t2v":
+            vae_scale_factor = 2 ** (4 - 1)
+            args.target_shape = (
+                1,
+                16,
+                (args.target_video_length - 1) // 4 + 1,
+                int(args.target_height) // vae_scale_factor,
+                int(args.target_width) // vae_scale_factor,
+            )
+        elif args.task == "i2v":
+            vae_scale_factor = 2 ** (4 - 1)
+            args.target_shape = (
+                1,
+                16,
+                (args.target_video_length - 1) // 4 + 1,
+                int(image_encoder_output["target_height"]) // vae_scale_factor,
+                int(image_encoder_output["target_width"]) // vae_scale_factor,
+            )
     elif args.model_cls == "wan2.1":
         if args.task == "i2v":
             args.target_shape = (16, 21, args.lat_h, args.lat_w)
@@ -91,9 +106,75 @@ def set_target_shape(args):
             )
 
 
+def generate_crop_size_list(base_size=256, patch_size=32, max_ratio=4.0):
+    num_patches = round((base_size / patch_size) ** 2)
+    assert max_ratio >= 1.0
+    crop_size_list = []
+    wp, hp = num_patches, 1
+    while wp > 0:
+        if max(wp, hp) / min(wp, hp) <= max_ratio:
+            crop_size_list.append((wp * patch_size, hp * patch_size))
+        if (hp + 1) * wp <= num_patches:
+            hp += 1
+        else:
+            wp -= 1
+    return crop_size_list
+
+
+def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
+    aspect_ratio = float(height) / float(width)
+    diff_ratios = ratios - aspect_ratio
+
+    if aspect_ratio >= 1:
+        indices = [(index, x) for index, x in enumerate(diff_ratios) if x <= 0]
+    else:
+        indices = [(index, x) for index, x in enumerate(diff_ratios) if x > 0]
+
+    closest_ratio_id = min(indices, key=lambda pair: abs(pair[1]))[0]
+    closest_size = buckets[closest_ratio_id]
+    closest_ratio = ratios[closest_ratio_id]
+
+    return closest_size, closest_ratio
+
+
 def run_image_encoder(args, image_encoder, vae_model):
     if args.model_cls == "hunyuan":
-        return None
+        img = Image.open(args.image_path).convert("RGB")
+        origin_size = img.size
+
+        i2v_resolution = "720p"
+        if i2v_resolution == "720p":
+            bucket_hw_base_size = 960
+        elif i2v_resolution == "540p":
+            bucket_hw_base_size = 720
+        elif i2v_resolution == "360p":
+            bucket_hw_base_size = 480
+        else:
+            raise ValueError(f"i2v_resolution: {i2v_resolution} must be in [360p, 540p, 720p]")
+
+        crop_size_list = generate_crop_size_list(bucket_hw_base_size, 32)
+        aspect_ratios = np.array([round(float(h) / float(w), 5) for h, w in crop_size_list])
+        closest_size, closest_ratio = get_closest_ratio(origin_size[1], origin_size[0], aspect_ratios, crop_size_list)
+
+        resize_param = min(closest_size)
+        center_crop_param = closest_size
+
+        ref_image_transform = torchvision.transforms.Compose(
+            [torchvision.transforms.Resize(resize_param), torchvision.transforms.CenterCrop(center_crop_param), torchvision.transforms.ToTensor(), torchvision.transforms.Normalize([0.5], [0.5])]
+        )
+
+        semantic_image_pixel_values = [ref_image_transform(img)]
+        semantic_image_pixel_values = torch.cat(semantic_image_pixel_values).unsqueeze(0).unsqueeze(2).to(torch.float16).to(torch.device("cuda"))
+
+        img_latents = vae_model.encode(semantic_image_pixel_values, args).mode()
+
+        scaling_factor = 0.476986
+        img_latents.mul_(scaling_factor)
+
+        target_height, target_width = closest_size
+
+        return {"img": img, "img_latents": img_latents, "target_height": target_height, "target_width": target_width}
+
     elif args.model_cls == "wan2.1":
         img = Image.open(args.image_path).convert("RGB")
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
@@ -124,11 +205,14 @@ def run_image_encoder(args, image_encoder, vae_model):
         raise NotImplementedError(f"Unsupported model class: {args.model_cls}")
 
 
-def run_text_encoder(args, text, text_encoders, model_config):
+def run_text_encoder(args, text, text_encoders, model_config, image_encoder_output):
     text_encoder_output = {}
     if args.model_cls == "hunyuan":
         for i, encoder in enumerate(text_encoders):
-            text_state, attention_mask = encoder.infer(text, args)
+            if args.task == "i2v" and i == 0:
+                text_state, attention_mask = encoder.infer(text, image_encoder_output["img"], args)
+            else:
+                text_state, attention_mask = encoder.infer(text, args)
             text_encoder_output[f"text_encoder_{i + 1}_text_states"] = text_state.to(dtype=torch.bfloat16)
             text_encoder_output[f"text_encoder_{i + 1}_attention_mask"] = attention_mask
 
@@ -145,12 +229,12 @@ def run_text_encoder(args, text, text_encoders, model_config):
     return text_encoder_output
 
 
-def init_scheduler(args):
+def init_scheduler(args, image_encoder_output):
     if args.model_cls == "hunyuan":
         if args.feature_caching == "NoCaching":
-            scheduler = HunyuanScheduler(args)
+            scheduler = HunyuanScheduler(args, image_encoder_output)
         elif args.feature_caching == "TaylorSeer":
-            scheduler = HunyuanSchedulerFeatureCaching(args)
+            scheduler = HunyuanSchedulerFeatureCaching(args, image_encoder_output)
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {args.feature_caching}")
 
@@ -269,10 +353,10 @@ if __name__ == "__main__":
     else:
         image_encoder_output = {"clip_encoder_out": None, "vae_encode_out": None}
 
-    text_encoder_output = run_text_encoder(args, args.prompt, text_encoders, model_config)
+    text_encoder_output = run_text_encoder(args, args.prompt, text_encoders, model_config, image_encoder_output)
 
-    set_target_shape(args)
-    scheduler = init_scheduler(args)
+    set_target_shape(args, image_encoder_output)
+    scheduler = init_scheduler(args, image_encoder_output)
 
     model.set_scheduler(scheduler)
 

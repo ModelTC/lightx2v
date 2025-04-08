@@ -8,12 +8,23 @@ class HunyuanPreInfer:
     def __init__(self):
         self.heads_num = 24
 
-    def infer(self, weights, x, t, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance):
+    def infer(self, weights, x, t, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance, img_latents=None):
+        if img_latents is not None:
+            token_replace_t = torch.zeros_like(t)
+            token_replace_vec = self.infer_time_in(weights, token_replace_t)
+            th = x.shape[-2] // 2
+            tw = x.shape[-1] // 2
+            frist_frame_token_num = th * tw
+
         time_out = self.infer_time_in(weights, t)
         img_out = self.infer_img_in(weights, x)
         infer_text_out = self.infer_text_in(weights, text_states, text_mask, t)
         infer_vector_out = self.infer_vector_in(weights, text_states_2)
         vec = time_out + infer_vector_out
+
+        if img_latents is not None:
+            token_replace_vec = token_replace_vec + infer_vector_out
+
         guidance_out = self.infer_guidance_in(weights, guidance)
         vec = vec + guidance_out
 
@@ -32,6 +43,8 @@ class HunyuanPreInfer:
             cu_seqlens_qkv[2 * i + 2] = s2
 
         max_seqlen_qkv = img_seq_len + txt_seq_len
+        if img_latents is not None:
+            return img_out[0], infer_text_out, vec, cu_seqlens_qkv, max_seqlen_qkv, (freqs_cos, freqs_sin), token_replace_vec, frist_frame_token_num
         return img_out[0], infer_text_out, vec, cu_seqlens_qkv, max_seqlen_qkv, (freqs_cos, freqs_sin)
 
     def infer_time_in(self, weights, t):
