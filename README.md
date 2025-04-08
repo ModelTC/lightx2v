@@ -8,33 +8,29 @@
 
 --------------------------------------------------------------------------------
 
-## Fast Start Up
+## Fast Start Up With Conda
 
 ```shell
 git clone https://github.com/ModelTC/lightx2v.git lightx2v && cd lightx2v
+git submodule update --init --recursive
 
 conda create -n lightx2v python=3.11 && conda activate lightx2v
 pip install -r requirements.txt
-
-# download flash attention and install
-git clone https://github.com/Dao-AILab/flash-attention.git --recursive
-cd flash-attention && pip install -v -e .
-# for FA3, cd flash-attention/hopper && pip install -v -e .
 
 # modify the parameters of the running script
 bash scripts/run_hunyuan_t2v.sh
 ```
 
-## Docker Image
+## Fast Start Up With Docker
 
 ```shell
 docker pull lightx2v/lightx2v:latest
 docker run -it --rm --gpus all --ipc=host lightx2v/lightx2v:latest
 ```
 
-## Contribute
+## Contributing Guidelines
 
-We have prepared a `pre-commit` hook to enforce consistent code formatting across the project. You can clean up your code following the steps below:
+We have prepared a `pre-commit` hook to enforce consistent code formatting across the project. If your code complies with the standards, you should not see any errors, you can clean up your code following the steps below:
 
 1. Install the required dependencies:
 
@@ -48,4 +44,9 @@ We have prepared a `pre-commit` hook to enforce consistent code formatting acros
     pre-commit run --all-files
 ```
 
-If your code complies with the standards, you should not see any errors.
+3. Finally, please double-check your code to ensure it complies with the following additional specifications as much as possible:
+  - Avoid hard-coding local paths: Make sure your submissions do not include hard-coded local paths, as these paths are specific to individual development environments and can cause compatibility issues. Use relative paths or configuration files instead.
+  - Clear error handling: Implement clear error-handling mechanisms in your code so that error messages can accurately indicate the location of the problem, possible causes, and suggested solutions, facilitating quick debugging.
+  - Detailed comments and documentation: Add comments to complex code sections and provide comprehensive documentation to explain the functionality of the code, input-output requirements, and potential error scenarios.
+
+Thank you for your contributions!

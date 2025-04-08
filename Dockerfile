@@ -2,6 +2,8 @@ FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04 AS base
 
 WORKDIR /workspace
 
+COPY . /workspace/lightx2v/
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
@@ -27,13 +29,8 @@ RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/we
      tokenizers accelerate safetensors opencv-python numpy imageio imageio-ffmpeg \
      einops loguru sgl-kernel qtorch ftfy
 
-# please download flash-attention source code first
-# git clone https://github.com/Dao-AILab/flash-attention.git --recursive
-# todo: add third party repo feature
-COPY flash-attention /workspace/flash-attention
-
 # install flash-attention 2
-RUN cd flash-attention && pip install --no-cache-dir -v -e .
+RUN cd lightx2v/3rd/flash-attention && pip install --no-cache-dir -v -e .
 
 # install flash-attention 3, only if hopper
-RUN cd flash-attention/hopper && pip install --no-cache-dir -v -e .
+RUN cd lightx2v/3rd/flash-attention/hopper && pip install --no-cache-dir -v -e .
