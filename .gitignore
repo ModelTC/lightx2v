@@ -22,3 +22,6 @@
 *.pid
 *.ipynb*
 *.mp4
+
+# just4dev
+devscripts/
