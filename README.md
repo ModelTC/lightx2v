@@ -28,8 +28,8 @@ bash scripts/run_hunyuan_t2v.sh
 ## Docker Image
 
 ```shell
-docker pull registry.cn-sh-01.sensecore.cn/devsft-ccr-2/video-gen:25033101
-docker run --gpus all -itd --ipc=host --name [name] -v /mnt:/mnt --entrypoint /bin/bash [image id]
+docker pull lightx2v/lightx2v:latest
+docker run -it --rm --gpus all --ipc=host lightx2v/lightx2v:latest
 ```
 
 ## Contribute
