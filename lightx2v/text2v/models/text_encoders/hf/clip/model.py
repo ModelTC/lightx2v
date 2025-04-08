@@ -50,7 +50,8 @@ class TextEncoderHFClipModel:
 
 
 if __name__ == "__main__":
-    model = TextEncoderHFClipModel("/mnt/nvme0/yongyang/projects/hy/HunyuanVideo/ckpts/text_encoder_2", torch.device("cuda"))
+    model_path = ""
+    model = TextEncoderHFClipModel(model_path, torch.device("cuda"))
     text = "A cat walks on the grass, realistic style."
     outputs = model.infer(text)
     print(outputs)

@@ -509,7 +509,7 @@ class T5EncoderModel:
 
 
 if __name__ == "__main__":
-    checkpoint_dir = "/mnt/nvme0/yongyang/projects/wan/Wan2.1-T2V-1.3B"
+    checkpoint_dir = ""
     t5_checkpoint = "models_t5_umt5-xxl-enc-bf16.pth"
     t5_tokenizer = "google/umt5-xxl"
     model = T5EncoderModel(

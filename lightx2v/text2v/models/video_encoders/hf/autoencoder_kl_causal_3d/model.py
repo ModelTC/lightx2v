@@ -41,4 +41,5 @@ class VideoEncoderKLCausal3DModel:
 
 
 if __name__ == "__main__":
-    vae_model = VideoEncoderKLCausal3DModel("/mnt/nvme0/yongyang/projects/hy/new/HunyuanVideo/ckpts", dtype=torch.float16, device=torch.device("cuda"))
+    model_path = ""
+    vae_model = VideoEncoderKLCausal3DModel(model_path, dtype=torch.float16, device=torch.device("cuda"))

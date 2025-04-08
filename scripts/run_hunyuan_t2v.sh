@@ -1,12 +1,27 @@
 #!/bin/bash
 
-lightx2v_path=/mtc/yongyang/projects/lightx2v
+# set path and first
+lightx2v_path=""
+model_path=""
+
+# check section
+if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
+    echo "Warn: CUDA_VISIBLE_DEVICES is not set, using defalt value: 0, change at shell script or set env variable."
+    cuda_devices="0"
+    export CUDA_VISIBLE_DEVICES=${cuda_devices}
+fi
+
+if [ -z "${lightx2v_path}" ]; then
+    echo "Error: lightx2v_path is not set. Please set this variable first."
+    exit 1
+fi
+
+if [ -z "${model_path}" ]; then
+    echo "Error: model_path is not set. Please set this variable first."
+    exit 1
+fi
+
 export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
-
-export CUDA_VISIBLE_DEVICES=2
-
-model_path=/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/t2v
-
 
 python ${lightx2v_path}/lightx2v/__main__.py \
 --model_cls hunyuan \

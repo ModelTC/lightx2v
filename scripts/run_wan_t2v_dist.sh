@@ -1,12 +1,33 @@
 #!/bin/bash
 
-lightx2v_path=/home/devsft/huangxinchi/lightx2v
+# set path and first
+lightx2v_path=""
+model_path=""
+config_path=""
+
+# check section
+if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
+    echo "Warn: CUDA_VISIBLE_DEVICES is not set, using defalt value: 0,1,2,3 , change at shell script or set env variable."
+    cuda_devices="0,1,2,3"
+    export CUDA_VISIBLE_DEVICES=${cuda_devices}
+fi
+
+if [ -z "${lightx2v_path}" ]; then
+    echo "Error: lightx2v_path is not set. Please set this variable first."
+    exit 1
+fi
+
+if [ -z "${model_path}" ]; then
+    echo "Error: model_path is not set. Please set this variable first."
+    exit 1
+fi
+
+if [ -z "${config_path}" ]; then
+    echo "Error: config_path is not set. Please set this variable first."
+    exit 1
+fi
+
 export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
-
-export CUDA_VISIBLE_DEVICES=4,5,6,7
-
-model_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B
-config_path=/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B/config.json
 
 
 torchrun --nproc_per_node=4 ${lightx2v_path}/lightx2v/__main__.py \
