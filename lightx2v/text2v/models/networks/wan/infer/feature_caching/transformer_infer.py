@@ -1,6 +1,6 @@
 import numpy as np
 from ..transformer_infer import WanTransformerInfer
-from lightx2v.attentions import attention
+import torch
 
 
 class WanTransformerInferFeatureCaching(WanTransformerInfer):
@@ -61,6 +61,10 @@ class WanTransformerInferFeatureCaching(WanTransformerInfer):
                     context,
                 )
                 self.scheduler.previous_residual_even = x - ori_x
+                if self.config["cpu_offload"]:
+                    ori_x = ori_x.to("cpu")
+                    del ori_x
+                    torch.cuda.empty_cache()
         else:
             if not should_calc_odd:
                 x += self.scheduler.previous_residual_odd
@@ -77,5 +81,8 @@ class WanTransformerInferFeatureCaching(WanTransformerInfer):
                     context,
                 )
                 self.scheduler.previous_residual_odd = x - ori_x
-
+                if self.config["cpu_offload"]:
+                    ori_x = ori_x.to("cpu")
+                    del ori_x
+                    torch.cuda.empty_cache()
         return x

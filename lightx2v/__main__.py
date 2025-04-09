@@ -328,6 +328,7 @@ if __name__ == "__main__":
         mm_config = None
 
     model_config = {
+        "model_cls": args.model_cls,
         "task": args.task,
         "attention_type": args.attention_type,
         "sample_neg_prompt": args.sample_neg_prompt,
@@ -348,6 +349,9 @@ if __name__ == "__main__":
 
     model, text_encoders, vae_model, image_encoder = load_models(args, model_config)
 
+    load_models_time = time.time()
+    print(f"Load models cost: {load_models_time - start_time}")
+
     if args.task in ["i2v"]:
         image_encoder_output = run_image_encoder(args, image_encoder, vae_model)
     else:
@@ -362,19 +366,23 @@ if __name__ == "__main__":
 
     gc.collect()
     torch.cuda.empty_cache()
-
     latents, generator = run_main_inference(args, model, text_encoder_output, image_encoder_output)
 
-    gc.collect()
-    torch.cuda.empty_cache()
+    if args.cpu_offload:
+        scheduler.clear()
+        del text_encoder_output, image_encoder_output, model, text_encoders, scheduler
+        torch.cuda.empty_cache()
 
     images = run_vae(latents, generator, args)
 
     if not args.parallel_attn_type or (args.parallel_attn_type and dist.get_rank() == 0):
+        save_video_st = time.time()
         if args.model_cls == "wan2.1":
             cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
         else:
             save_videos_grid(images, args.save_video_path, fps=24)
+        save_video_et = time.time()
+        print(f"Save video cost: {save_video_et - save_video_st}")
 
     end_time = time.time()
-    print(f"Total time: {end_time - start_time}")
+    print(f"Total cost: {end_time - start_time}")

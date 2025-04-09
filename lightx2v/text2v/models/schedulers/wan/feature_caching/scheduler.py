@@ -71,3 +71,18 @@ class WanSchedulerFeatureCaching(WanScheduler):
                     self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
                 self.ret_steps = 1 * 2
                 self.cutoff_steps = self.args.infer_steps * 2 - 2
+
+    def clear(self):
+        if self.previous_e0_even is not None:
+            self.previous_e0_even = self.previous_e0_even.cpu()
+        if self.previous_e0_odd is not None:
+            self.previous_e0_odd = self.previous_e0_odd.cpu()
+        if self.previous_residual_even is not None:
+            self.previous_residual_even = self.previous_residual_even.cpu()
+        if self.previous_residual_odd is not None:
+            self.previous_residual_odd = self.previous_residual_odd.cpu()
+        self.previous_e0_even = None
+        self.previous_e0_odd = None
+        self.previous_residual_even = None
+        self.previous_residual_odd = None
+        torch.cuda.empty_cache()

@@ -341,3 +341,6 @@ class WanScheduler(BaseScheduler):
             self.lower_order_nums += 1
 
         self.latents = prev_sample
+
+    def clear(self):
+        pass
