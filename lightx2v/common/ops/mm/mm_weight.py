@@ -36,11 +36,15 @@ class MMWeightTemplate(metaclass=ABCMeta):
 
     def to_cpu(self, non_blocking=False):
         self.weight = self.weight.to("cpu", non_blocking=non_blocking)
+        if hasattr(self, "weight_scale"):
+            self.weight_scale = self.weight_scale.to("cpu", non_blocking=non_blocking)
         if self.bias is not None:
             self.bias = self.bias.to("cpu", non_blocking=non_blocking)
 
     def to_cuda(self, non_blocking=False):
         self.weight = self.weight.cuda(non_blocking=non_blocking)
+        if hasattr(self, "weight_scale"):
+            self.weight_scale = self.weight_scale.cuda(non_blocking=non_blocking)
         if self.bias is not None:
             self.bias = self.bias.cuda(non_blocking=non_blocking)
 
@@ -109,7 +113,7 @@ class MMWeightQuantTemplate(MMWeightTemplate):
 
     def load_int8_perchannel_sym(self, weight_dict):
         if self.config.get("weight_auto_quant", True):
-            self.weight = weight_dict[self.weight_name].to(torch.float32)
+            self.weight = weight_dict[self.weight_name].to(torch.float32).cuda()
             w_quantizer = IntegerQuantizer(8, True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
             self.weight = self.weight.to(torch.int8)
@@ -245,7 +249,7 @@ class MMWeightWfp8channelAfp8channeldynamicQ8F(MMWeightQuantTemplate):
 
     def apply(self, input_tensor):
         input_tensor_quant, input_tensor_scale = self.act_quant_func(input_tensor)
-        output_tensor = Q8F.linear.fp8_linear(input_tensor_quant, self.weight, self.bias, input_tensor_scale, self.weight_scale, out_dtype=torch.bfloat16)
+        output_tensor = Q8F.linear.fp8_linear(input_tensor_quant, self.weight, self.bias.float(), input_tensor_scale, self.weight_scale, out_dtype=torch.bfloat16)
         return output_tensor.squeeze(0)
 
 
@@ -268,7 +272,7 @@ class MMWeightWint8channelAint8channeldynamicQ8F(MMWeightQuantTemplate):
 
     def apply(self, input_tensor):
         input_tensor_quant, input_tensor_scale = self.act_quant_func(input_tensor)
-        output_tensor = Q8F.linear.q8_linear(input_tensor_quant, self.weight, self.bias, input_tensor_scale, self.weight_scale, fuse_gelu=False, out_dtype=torch.bfloat16)
+        output_tensor = Q8F.linear.q8_linear(input_tensor_quant, self.weight, self.bias.float(), input_tensor_scale, self.weight_scale, fuse_gelu=False, out_dtype=torch.bfloat16)
         return output_tensor.squeeze(0)
 
 

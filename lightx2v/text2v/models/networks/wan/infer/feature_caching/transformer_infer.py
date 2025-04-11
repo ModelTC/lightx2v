@@ -3,7 +3,7 @@ from ..transformer_infer import WanTransformerInfer
 import torch
 
 
-class WanTransformerInferFeatureCaching(WanTransformerInfer):
+class WanTransformerInferTeaCaching(WanTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
 

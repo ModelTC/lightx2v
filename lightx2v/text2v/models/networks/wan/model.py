@@ -12,7 +12,7 @@ from lightx2v.text2v.models.networks.wan.infer.post_infer import WanPostInfer
 from lightx2v.text2v.models.networks.wan.infer.transformer_infer import (
     WanTransformerInfer,
 )
-from lightx2v.text2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferFeatureCaching
+from lightx2v.text2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferTeaCaching
 from safetensors import safe_open
 import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
@@ -30,6 +30,7 @@ class WanModel:
         self._init_infer_class()
         self._init_weights()
         self._init_infer()
+        self.current_lora = None
 
         if config["parallel_attn_type"]:
             if config["parallel_attn_type"] == "ulysses":
@@ -48,13 +49,17 @@ class WanModel:
         if self.config["feature_caching"] == "NoCaching":
             self.transformer_infer_class = WanTransformerInfer
         elif self.config["feature_caching"] == "Tea":
-            self.transformer_infer_class = WanTransformerInferFeatureCaching
+            self.transformer_infer_class = WanTransformerInferTeaCaching
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")
 
     def _load_safetensor_to_dict(self, file_path):
+        use_bfloat16 = self.config.get("use_bfloat16", True)
         with safe_open(file_path, framework="pt") as f:
-            tensor_dict = {key: f.get_tensor(key).to(torch.bfloat16).to(self.device) for key in f.keys()}
+            if use_bfloat16:
+                tensor_dict = {key: f.get_tensor(key).to(torch.bfloat16).to(self.device) for key in f.keys()}
+            else:
+                tensor_dict = {key: f.get_tensor(key).to(self.device) for key in f.keys()}
         return tensor_dict
 
     def _load_ckpt(self):
@@ -69,16 +74,19 @@ class WanModel:
             weight_dict.update(file_weights)
         return weight_dict
 
-    def _init_weights(self):
-        weight_dict = self._load_ckpt()
+    def _init_weights(self, weight_dict=None):
+        if weight_dict is None:
+            self.original_weight_dict = self._load_ckpt()
+        else:
+            self.original_weight_dict = weight_dict
         # init weights
         self.pre_weight = self.pre_weight_class(self.config)
         self.post_weight = self.post_weight_class(self.config)
         self.transformer_weights = self.transformer_weight_class(self.config)
         # load weights
-        self.pre_weight.load_weights(weight_dict)
-        self.post_weight.load_weights(weight_dict)
-        self.transformer_weights.load_weights(weight_dict)
+        self.pre_weight.load_weights(self.original_weight_dict)
+        self.post_weight.load_weights(self.original_weight_dict)
+        self.transformer_weights.load_weights(self.original_weight_dict)
 
     def _init_infer(self):
         self.pre_infer = self.pre_infer_class(self.config)

@@ -1,78 +1,87 @@
 import torch
+import numpy as np
 from einops import rearrange
 from lightx2v.attentions import attention
+from .utils import taylor_cache_init, derivative_approximation, taylor_formula
 from ..utils_bf16 import apply_rotary_emb
-from typing import Dict
-import math
 from ..transformer_infer import HunyuanTransformerInfer
 
 
-def taylor_cache_init(cache_dic: Dict, current: Dict):
-    """
-    Initialize Taylor cache, expanding storage areas for Taylor series derivatives
-    :param cache_dic: Cache dictionary
-    :param current: Information of the current step
-    """
-    if current["step"] == 0:
-        cache_dic["cache"][-1][current["stream"]][current["layer"]][current["module"]] = {}
-
-
-def derivative_approximation(cache_dic: Dict, current: Dict, feature: torch.Tensor):
-    """
-    Compute derivative approximation
-    :param cache_dic: Cache dictionary
-    :param current: Information of the current step
-    """
-    difference_distance = current["activated_steps"][-1] - current["activated_steps"][-2]
-    # difference_distance = current['activated_times'][-1] - current['activated_times'][-2]
-
-    updated_taylor_factors = {}
-    updated_taylor_factors[0] = feature
-
-    for i in range(cache_dic["max_order"]):
-        if (cache_dic["cache"][-1][current["stream"]][current["layer"]][current["module"]].get(i, None) is not None) and (current["step"] > cache_dic["first_enhance"] - 2):
-            updated_taylor_factors[i + 1] = (updated_taylor_factors[i] - cache_dic["cache"][-1][current["stream"]][current["layer"]][current["module"]][i]) / difference_distance
-        else:
-            break
-
-    cache_dic["cache"][-1][current["stream"]][current["layer"]][current["module"]] = updated_taylor_factors
-
-
-def taylor_formula(cache_dic: Dict, current: Dict) -> torch.Tensor:
-    """
-    Compute Taylor expansion error
-    :param cache_dic: Cache dictionary
-    :param current: Information of the current step
-    """
-    x = current["step"] - current["activated_steps"][-1]
-    # x = current['t'] - current['activated_times'][-1]
-    output = 0
-
-    for i in range(len(cache_dic["cache"][-1][current["stream"]][current["layer"]][current["module"]])):
-        output += (1 / math.factorial(i)) * cache_dic["cache"][-1][current["stream"]][current["layer"]][current["module"]][i] * (x**i)
-
-    return output
-
-
-class HunyuanTransformerInferFeatureCaching(HunyuanTransformerInfer):
+class HunyuanTransformerInferTeaCaching(HunyuanTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
 
-    def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis):
+    def infer(
+        self,
+        weights,
+        img,
+        txt,
+        vec,
+        cu_seqlens_qkv,
+        max_seqlen_qkv,
+        freqs_cis,
+        token_replace_vec=None,
+        frist_frame_token_num=None,
+    ):
+        inp = img.clone()
+        vec_ = vec.clone()
+
+        weights.double_blocks_weights[0].to_cuda()
+        img_mod1_shift, img_mod1_scale, _, _, _, _ = weights.double_blocks_weights[0].img_mod.apply(vec_).chunk(6, dim=-1)
+        weights.double_blocks_weights[0].to_cpu_sync()
+
+        normed_inp = torch.nn.functional.layer_norm(inp, (inp.shape[1],), None, None, 1e-6)
+        modulated_inp = normed_inp * (1 + img_mod1_scale) + img_mod1_shift
+        del normed_inp, inp, vec_
+
+        if self.scheduler.cnt == 0 or self.scheduler.cnt == self.scheduler.num_steps - 1:
+            should_calc = True
+            self.scheduler.accumulated_rel_l1_distance = 0
+        else:
+            rescale_func = np.poly1d(self.scheduler.coefficients)
+            self.scheduler.accumulated_rel_l1_distance += rescale_func(
+                ((modulated_inp - self.scheduler.previous_modulated_input).abs().mean() / self.scheduler.previous_modulated_input.abs().mean()).cpu().item()
+            )
+            if self.scheduler.accumulated_rel_l1_distance < self.scheduler.teacache_thresh:
+                should_calc = False
+            else:
+                should_calc = True
+                self.scheduler.accumulated_rel_l1_distance = 0
+        self.scheduler.previous_modulated_input = modulated_inp
+        del modulated_inp
+
+        if not should_calc:
+            img += self.scheduler.previous_residual
+        else:
+            ori_img = img.clone()
+            img, vec = super().infer(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
+            self.scheduler.previous_residual = img - ori_img
+            del ori_img
+            torch.cuda.empty_cache()
+
+        return img, vec
+
+
+class HunyuanTransformerInferTaylorCaching(HunyuanTransformerInfer):
+    def __init__(self, config):
+        super().__init__(config)
+        assert not self.config["cpu_offload"], "Not support cpu-offload for TaylorCaching"
+
+    def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
         txt_seq_len = txt.shape[0]
         img_seq_len = img.shape[0]
 
         self.scheduler.current["stream"] = "double_stream"
         for i in range(self.double_blocks_num):
             self.scheduler.current["layer"] = i
-            img, txt = self.infer_double_block(weights.double_blocks_weights[i], img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis)
+            img, txt = self.infer_double_block(weights.double_blocks_weights[i], img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
         x = torch.cat((img, txt), 0)
 
         self.scheduler.current["stream"] = "single_stream"
         for i in range(self.single_blocks_num):
             self.scheduler.current["layer"] = i
-            x = self.infer_single_block(weights.single_blocks_weights[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis)
+            x = self.infer_single_block(weights.single_blocks_weights[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
         img = x[:img_seq_len, ...]
         return img, vec
@@ -133,8 +142,24 @@ class HunyuanTransformerInferFeatureCaching(HunyuanTransformerInfer):
                 )
 
             img_attn, txt_attn = attn[: img.shape[0]], attn[img.shape[0] :]
-            img = self.infer_double_block_img_post_atten(weights, img, img_attn, img_mod1_gate, img_mod2_shift, img_mod2_scale, img_mod2_gate)
-            txt = self.infer_double_block_txt_post_atten(weights, txt, txt_attn, txt_mod1_gate, txt_mod2_shift, txt_mod2_scale, txt_mod2_gate)
+            img = self.infer_double_block_img_post_atten(
+                weights,
+                img,
+                img_attn,
+                img_mod1_gate,
+                img_mod2_shift,
+                img_mod2_scale,
+                img_mod2_gate,
+            )
+            txt = self.infer_double_block_txt_post_atten(
+                weights,
+                txt,
+                txt_attn,
+                txt_mod1_gate,
+                txt_mod2_shift,
+                txt_mod2_scale,
+                txt_mod2_gate,
+            )
             return img, txt
 
         elif self.scheduler.current["type"] == "taylor_cache":
@@ -166,7 +191,16 @@ class HunyuanTransformerInferFeatureCaching(HunyuanTransformerInfer):
 
             return img, txt
 
-    def infer_double_block_img_post_atten(self, weights, img, img_attn, img_mod1_gate, img_mod2_shift, img_mod2_scale, img_mod2_gate):
+    def infer_double_block_img_post_atten(
+        self,
+        weights,
+        img,
+        img_attn,
+        img_mod1_gate,
+        img_mod2_shift,
+        img_mod2_scale,
+        img_mod2_gate,
+    ):
         self.scheduler.current["module"] = "img_attn"
         taylor_cache_init(self.scheduler.cache_dic, self.scheduler.current)
 
@@ -190,7 +224,16 @@ class HunyuanTransformerInferFeatureCaching(HunyuanTransformerInfer):
         img = img + out
         return img
 
-    def infer_double_block_txt_post_atten(self, weights, txt, txt_attn, txt_mod1_gate, txt_mod2_shift, txt_mod2_scale, txt_mod2_gate):
+    def infer_double_block_txt_post_atten(
+        self,
+        weights,
+        txt,
+        txt_attn,
+        txt_mod1_gate,
+        txt_mod2_shift,
+        txt_mod2_scale,
+        txt_mod2_gate,
+    ):
         self.scheduler.current["module"] = "txt_attn"
         taylor_cache_init(self.scheduler.cache_dic, self.scheduler.current)
 

@@ -2,7 +2,7 @@ import torch
 from ..scheduler import WanScheduler
 
 
-class WanSchedulerFeatureCaching(WanScheduler):
+class WanSchedulerTeaCaching(WanScheduler):
     def __init__(self, args):
         super().__init__(args)
         self.cnt = 0

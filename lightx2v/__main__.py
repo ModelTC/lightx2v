@@ -8,6 +8,7 @@ import json
 import torchvision
 import torchvision.transforms.functional as TF
 import numpy as np
+from contextlib import contextmanager
 from PIL import Image
 from lightx2v.text2v.models.text_encoders.hf.llama.model import TextEncoderHFLlamaModel
 from lightx2v.text2v.models.text_encoders.hf.clip.model import TextEncoderHFClipModel
@@ -15,18 +16,28 @@ from lightx2v.text2v.models.text_encoders.hf.t5.model import T5EncoderModel
 from lightx2v.text2v.models.text_encoders.hf.llava.model import TextEncoderHFLlavaModel
 
 from lightx2v.text2v.models.schedulers.hunyuan.scheduler import HunyuanScheduler
-from lightx2v.text2v.models.schedulers.hunyuan.feature_caching.scheduler import HunyuanSchedulerFeatureCaching
+from lightx2v.text2v.models.schedulers.hunyuan.feature_caching.scheduler import HunyuanSchedulerTaylorCaching, HunyuanSchedulerTeaCaching
 from lightx2v.text2v.models.schedulers.wan.scheduler import WanScheduler
-from lightx2v.text2v.models.schedulers.wan.feature_caching.scheduler import WanSchedulerFeatureCaching
+from lightx2v.text2v.models.schedulers.wan.feature_caching.scheduler import WanSchedulerTeaCaching
 
 from lightx2v.text2v.models.networks.hunyuan.model import HunyuanModel
 from lightx2v.text2v.models.networks.wan.model import WanModel
+from lightx2v.text2v.models.networks.wan.lora_adapter import WanLoraWrapper
 
 from lightx2v.text2v.models.video_encoders.hf.autoencoder_kl_causal_3d.model import VideoEncoderKLCausal3DModel
 from lightx2v.text2v.models.video_encoders.hf.wan.vae import WanVAE
 from lightx2v.utils.utils import save_videos_grid, seed_all, cache_video
 from lightx2v.common.ops import *
 from lightx2v.image2v.models.wan.model import CLIPModel
+
+
+@contextmanager
+def time_duration(label: str = ""):
+    start_time = time.time()
+    yield
+    end_time = time.time()
+    print(f"==> {label} start:{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))} cost {end_time - start_time:.2f} seconds")
+    torch.cuda.synchronize()
 
 
 def load_models(args, model_config):
@@ -50,24 +61,36 @@ def load_models(args, model_config):
         vae_model = VideoEncoderKLCausal3DModel(args.model_path, dtype=torch.float16, device=init_device, args=args)
 
     elif args.model_cls == "wan2.1":
-        text_encoder = T5EncoderModel(
-            text_len=model_config["text_len"],
-            dtype=torch.bfloat16,
-            device=init_device,
-            checkpoint_path=os.path.join(args.model_path, "models_t5_umt5-xxl-enc-bf16.pth"),
-            tokenizer_path=os.path.join(args.model_path, "google/umt5-xxl"),
-            shard_fn=None,
-        )
-        text_encoders = [text_encoder]
-        model = WanModel(args.model_path, model_config, init_device)
-        vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=init_device, parallel=args.parallel_vae)
-        if args.task == "i2v":
-            image_encoder = CLIPModel(
-                dtype=torch.float16,
+        with time_duration("Load Text Encoder"):
+            text_encoder = T5EncoderModel(
+                text_len=model_config["text_len"],
+                dtype=torch.bfloat16,
                 device=init_device,
-                checkpoint_path=os.path.join(args.model_path, "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"),
-                tokenizer_path=os.path.join(args.model_path, "xlm-roberta-large"),
+                checkpoint_path=os.path.join(args.model_path, "models_t5_umt5-xxl-enc-bf16.pth"),
+                tokenizer_path=os.path.join(args.model_path, "google/umt5-xxl"),
+                shard_fn=None,
             )
+            text_encoders = [text_encoder]
+        with time_duration("Load Wan Model"):
+            model = WanModel(args.model_path, model_config, init_device)
+
+        if args.lora_path:
+            lora_wrapper = WanLoraWrapper(model)
+            with time_duration("Load LoRA Model"):
+                lora_name = lora_wrapper.load_lora(args.lora_path)
+                lora_wrapper.apply_lora(lora_name, args.strength_model)
+                print(f"Loaded LoRA: {lora_name}")
+
+        with time_duration("Load WAN VAE Model"):
+            vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=init_device, parallel=args.parallel_vae)
+        if args.task == "i2v":
+            with time_duration("Load Image Encoder"):
+                image_encoder = CLIPModel(
+                    dtype=torch.float16,
+                    device=init_device,
+                    checkpoint_path=os.path.join(args.model_path, "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"),
+                    tokenizer_path=os.path.join(args.model_path, "xlm-roberta-large"),
+                )
     else:
         raise NotImplementedError(f"Unsupported model class: {args.model_cls}")
 
@@ -233,8 +256,10 @@ def init_scheduler(args, image_encoder_output):
     if args.model_cls == "hunyuan":
         if args.feature_caching == "NoCaching":
             scheduler = HunyuanScheduler(args, image_encoder_output)
+        elif args.feature_caching == "Tea":
+            scheduler = HunyuanSchedulerTeaCaching(args, image_encoder_output)
         elif args.feature_caching == "TaylorSeer":
-            scheduler = HunyuanSchedulerFeatureCaching(args, image_encoder_output)
+            scheduler = HunyuanSchedulerTaylorCaching(args, image_encoder_output)
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {args.feature_caching}")
 
@@ -242,7 +267,7 @@ def init_scheduler(args, image_encoder_output):
         if args.feature_caching == "NoCaching":
             scheduler = WanScheduler(args)
         elif args.feature_caching == "Tea":
-            scheduler = WanSchedulerFeatureCaching(args)
+            scheduler = WanSchedulerTeaCaching(args)
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {args.feature_caching}")
 
@@ -312,6 +337,9 @@ if __name__ == "__main__":
     parser.add_argument("--patch_size", default=(1, 2, 2))
     parser.add_argument("--teacache_thresh", type=float, default=0.26)
     parser.add_argument("--use_ret_steps", action="store_true", default=False)
+    parser.add_argument("--use_bfloat16", action="store_true", default=True)
+    parser.add_argument("--lora_path", type=str, default=None)
+    parser.add_argument("--strength_model", type=float, default=1.0)
     args = parser.parse_args()
 
     start_time = time.time()
@@ -338,6 +366,7 @@ if __name__ == "__main__":
         "feature_caching": args.feature_caching,
         "parallel_attn_type": args.parallel_attn_type,
         "parallel_vae": args.parallel_vae,
+        "use_bfloat16": args.use_bfloat16,
     }
 
     if args.config_path is not None:
@@ -347,17 +376,16 @@ if __name__ == "__main__":
 
     print(f"model_config: {model_config}")
 
-    model, text_encoders, vae_model, image_encoder = load_models(args, model_config)
-
-    load_models_time = time.time()
-    print(f"Load models cost: {load_models_time - start_time}")
+    with time_duration("Load models"):
+        model, text_encoders, vae_model, image_encoder = load_models(args, model_config)
 
     if args.task in ["i2v"]:
         image_encoder_output = run_image_encoder(args, image_encoder, vae_model)
     else:
         image_encoder_output = {"clip_encoder_out": None, "vae_encode_out": None}
 
-    text_encoder_output = run_text_encoder(args, args.prompt, text_encoders, model_config, image_encoder_output)
+    with time_duration("Run Text Encoder"):
+        text_encoder_output = run_text_encoder(args, args.prompt, text_encoders, model_config, image_encoder_output)
 
     set_target_shape(args, image_encoder_output)
     scheduler = init_scheduler(args, image_encoder_output)
@@ -373,16 +401,15 @@ if __name__ == "__main__":
         del text_encoder_output, image_encoder_output, model, text_encoders, scheduler
         torch.cuda.empty_cache()
 
-    images = run_vae(latents, generator, args)
+    with time_duration("Run VAE"):
+        images = run_vae(latents, generator, args)
 
     if not args.parallel_attn_type or (args.parallel_attn_type and dist.get_rank() == 0):
-        save_video_st = time.time()
-        if args.model_cls == "wan2.1":
-            cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
-        else:
-            save_videos_grid(images, args.save_video_path, fps=24)
-        save_video_et = time.time()
-        print(f"Save video cost: {save_video_et - save_video_st}")
+        with time_duration("Save video"):
+            if args.model_cls == "wan2.1":
+                cache_video(tensor=images, save_file=args.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
+            else:
+                save_videos_grid(images, args.save_video_path, fps=24)
 
     end_time = time.time()
     print(f"Total cost: {end_time - start_time}")

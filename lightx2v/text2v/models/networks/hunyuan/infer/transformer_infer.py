@@ -38,15 +38,7 @@ class HunyuanTransformerInfer:
                 self.double_weights_stream_mgr.active_weights[0].to_cuda()
 
             with torch.cuda.stream(self.double_weights_stream_mgr.compute_stream):
-                img, txt = self.infer_double_block(
-                    self.double_weights_stream_mgr.active_weights[0],
-                    img,
-                    txt,
-                    vec,
-                    cu_seqlens_qkv,
-                    max_seqlen_qkv,
-                    freqs_cis,
-                )
+                img, txt = self.infer_double_block(self.double_weights_stream_mgr.active_weights[0], img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
             if double_block_idx < self.double_blocks_num - 1:
                 self.double_weights_stream_mgr.prefetch_weights(double_block_idx + 1, weights.double_blocks_weights)
@@ -54,23 +46,21 @@ class HunyuanTransformerInfer:
 
         x = torch.cat((img, txt), 0)
 
+        img = img.cpu()
+        txt = txt.cpu()
+        del img, txt
+        torch.cuda.empty_cache()
+
         for single_block_idx in range(self.single_blocks_num):
             if single_block_idx == 0:
                 self.single_weights_stream_mgr.active_weights[0] = weights.single_blocks_weights[0]
                 self.single_weights_stream_mgr.active_weights[0].to_cuda()
             with torch.cuda.stream(self.single_weights_stream_mgr.compute_stream):
-                x = self.infer_single_block(
-                    weights.single_blocks_weights[single_block_idx],
-                    x,
-                    vec,
-                    txt_seq_len,
-                    cu_seqlens_qkv,
-                    max_seqlen_qkv,
-                    freqs_cis,
-                )
+                x = self.infer_single_block(self.single_weights_stream_mgr.active_weights[0], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
             if single_block_idx < self.single_blocks_num - 1:
                 self.single_weights_stream_mgr.prefetch_weights(single_block_idx + 1, weights.single_blocks_weights)
             self.single_weights_stream_mgr.swap_weights()
+            torch.cuda.empty_cache()
 
         img = x[:img_seq_len, ...]
         return img, vec
