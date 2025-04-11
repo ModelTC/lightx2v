@@ -36,9 +36,9 @@ def time_duration(label: str = ""):
     torch.cuda.synchronize()
     start_time = time.time()
     yield
+    torch.cuda.synchronize()
     end_time = time.time()
     print(f"==> {label} start:{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))} cost {end_time - start_time:.2f} seconds")
-    torch.cuda.synchronize()
 
 
 def load_models(args, model_config):
