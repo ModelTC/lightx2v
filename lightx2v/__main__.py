@@ -33,6 +33,7 @@ from lightx2v.image2v.models.wan.model import CLIPModel
 
 @contextmanager
 def time_duration(label: str = ""):
+    torch.cuda.synchronize()
     start_time = time.time()
     yield
     end_time = time.time()
