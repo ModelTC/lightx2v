@@ -21,9 +21,6 @@ class HyVaeTrtModelInfer(TrtModelInferBase):
     def __init__(self, engine_path):
         super().__init__(engine_path)
 
-    def output_spec(self):
-        return self.outputs[0]["shape"], self.outputs[0]["dtype"]
-
     def __call__(self, batch, *args, **kwargs):
         """
         Execute inference
