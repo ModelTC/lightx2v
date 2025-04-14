@@ -25,3 +25,6 @@
 
 # just4dev
 devscripts/
+out*
+mycode
+work_dir

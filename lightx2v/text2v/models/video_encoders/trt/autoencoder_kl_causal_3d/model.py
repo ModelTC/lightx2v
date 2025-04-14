@@ -6,7 +6,7 @@ from lightx2v.text2v.models.video_encoders.trt.autoencoder_kl_causal_3d import t
 
 
 class VideoEncoderKLCausal3DModel:
-    def __init__(self, model_path, dtype, device):
+    def __init__(self, model_path, dtype, device, **kwargs):
         self.model_path = model_path
         self.dtype = dtype
         self.device = device
@@ -24,7 +24,7 @@ class VideoEncoderKLCausal3DModel:
         trt_decoder = trt_vae_infer.HyVaeTrtModelInfer(engine_path=os.path.join(self.vae_path, "vae_decoder.engine"))
         self.model.decoder = trt_decoder
 
-    def decode(self, latents, generator):
+    def decode(self, latents, generator, **kwargs):
         latents = latents / self.model.config.scaling_factor
         latents = latents.to(dtype=self.dtype, device=self.device)
         self.model.enable_tiling()
