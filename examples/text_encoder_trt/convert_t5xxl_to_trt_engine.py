@@ -19,19 +19,12 @@ def parse_args():
 
 def convert_trt_engine(args):
     t5_checkpoint_path = os.path.join(args.model_path, "models_t5_umt5-xxl-enc-bf16.pth")
-    t5_tokenizer_path  = os.path.join(args.model_path, "google/umt5-xxl")
+    t5_tokenizer_path = os.path.join(args.model_path, "google/umt5-xxl")
     assert Path(t5_checkpoint_path).exists(), f"{t5_checkpoint_path} not exists."
-    model = T5EncoderModel(
-        text_len=512,
-        dtype=args.dtype,
-        device=args.device,
-        checkpoint_path=t5_checkpoint_path,
-        tokenizer_path=t5_tokenizer_path,
-        shard_fn=None
-    )
+    model = T5EncoderModel(text_len=512, dtype=args.dtype, device=args.device, checkpoint_path=t5_checkpoint_path, tokenizer_path=t5_tokenizer_path, shard_fn=None)
     texts = "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage."
     ids, mask = model.tokenizer(texts, return_mask=True, add_special_tokens=True)
-    ids  = ids.to(args.device)
+    ids = ids.to(args.device)
     mask = mask.to(args.device)
     onnx_path = T5TrtModelInfer.export_to_onnx(model.model, model_dir=args.model_path, ids=ids, mask=mask)
     del model

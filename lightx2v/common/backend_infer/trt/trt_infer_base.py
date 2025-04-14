@@ -12,10 +12,7 @@ from lightx2v.common.backend_infer.trt import common
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 
 
-np_torch_dtype_map = {
-    "float16": torch.float16,
-    "float32": torch.float32
-}
+np_torch_dtype_map = {"float16": torch.float16, "float32": torch.float32}
 
 
 class TrtModelInferBase(nn.Module):
@@ -94,21 +91,9 @@ class TrtModelInferBase(nn.Module):
         for bind in self.engine:
             mode = self.engine.get_tensor_mode(bind)
             if mode.name == "INPUT":
-                self.inp_list.append(
-                    {
-                        "name": bind,
-                        "shape": self.engine.get_tensor_shape(bind),
-                        "dtype": self.engine.get_tensor_dtype(bind).name
-                    }
-                )
+                self.inp_list.append({"name": bind, "shape": self.engine.get_tensor_shape(bind), "dtype": self.engine.get_tensor_dtype(bind).name})
             else:
-                self.out_list.append(
-                    {
-                        "name": bind,
-                        "shape": self.engine.get_tensor_shape(bind),
-                        "dtype": self.engine.get_tensor_dtype(bind).name
-                    }
-                )
+                self.out_list.append({"name": bind, "shape": self.engine.get_tensor_shape(bind), "dtype": self.engine.get_tensor_dtype(bind).name})
         return
 
     def output_spec(self):

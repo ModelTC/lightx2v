@@ -6,18 +6,8 @@ from ...hf.t5.tokenizer import HuggingfaceTokenizer
 from .trt_t5_infer import T5TrtModelInfer
 
 
-
 class T5EncoderModel:
-    def __init__(
-        self,
-        text_len,
-        dtype=torch.bfloat16,
-        device=torch.cuda.current_device(),
-        engine_path=None,
-        checkpoint_path=None,
-        tokenizer_path=None,
-        **kwargs
-    ):
+    def __init__(self, text_len, dtype=torch.bfloat16, device=torch.cuda.current_device(), engine_path=None, checkpoint_path=None, tokenizer_path=None, **kwargs):
         self.text_len = text_len
         self.dtype = dtype
         self.device = device
