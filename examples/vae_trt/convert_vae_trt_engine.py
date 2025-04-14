@@ -17,7 +17,7 @@ def parse_args():
     return args.parse_args()
 
 
-def convert_vae_trt_engine(args):
+def convert_trt_engine(args):
     vae_path = os.path.join(args.model_path, "hunyuan-video-t2v-720p/vae")
     assert Path(vae_path).exists(), f"{vae_path} not exists."
     config = AutoencoderKLCausal3D.load_config(vae_path)
@@ -38,7 +38,7 @@ def convert_vae_trt_engine(args):
 
 def main():
     args = parse_args()
-    convert_vae_trt_engine(args)
+    convert_trt_engine(args)
 
 
 if __name__ == "__main__":

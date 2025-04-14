@@ -82,12 +82,12 @@ class Resample(nn.Module):
         # layers
         if mode == "upsample2d":
             self.resample = nn.Sequential(
-                Upsample(scale_factor=(2.0, 2.0), mode="nearest-exact"),
+                Upsample(scale_factor=(2.0, 2.0), mode="nearest"),
                 nn.Conv2d(dim, dim // 2, 3, padding=1),
             )
         elif mode == "upsample3d":
             self.resample = nn.Sequential(
-                Upsample(scale_factor=(2.0, 2.0), mode="nearest-exact"),
+                Upsample(scale_factor=(2.0, 2.0), mode="nearest"),
                 nn.Conv2d(dim, dim // 2, 3, padding=1),
             )
             self.time_conv = CausalConv3d(dim, dim * 2, (3, 1, 1), padding=(1, 0, 0))
@@ -253,7 +253,8 @@ class AttentionBlock(nn.Module):
             k,
             v,
         )
-        x = x.squeeze(1).permute(0, 2, 1).reshape(b * t, c, h, w)
+        # x = x.squeeze(1).permute(0, 2, 1).reshape(b * t, c, h, w)
+        x = x.view(x.shape[0], x.shape[2], x.shape[3]).permute(0, 2, 1).reshape(b * t, c, h, w)
 
         # output
         x = self.proj(x)
@@ -649,7 +650,8 @@ def _video_vae(pretrained_path=None, z_dim=None, device="cpu", **kwargs):
     return model
 
 
-class WanVAE:
+class WanVAE(nn.Module):
+
     def __init__(
         self,
         z_dim=16,
@@ -658,6 +660,7 @@ class WanVAE:
         device="cuda",
         parallel=False,
     ):
+        super().__init__()
         self.dtype = dtype
         self.device = device
         self.parallel = parallel
@@ -811,3 +814,6 @@ class WanVAE:
             self.to_cpu()
 
         return images
+
+    def forward(self, zs):
+        return self.decode(zs, None, None)
