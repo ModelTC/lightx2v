@@ -83,10 +83,11 @@ class TrtModelInferBase(nn.Module):
     def get_io_properties(self):
         for bind in self.engine:
             mode = self.engine.get_tensor_mode(bind)
+            dtype = trt.nptype(self.engine.get_tensor_dtype(bind))
             if mode.name == "INPUT":
-                self.inp_list.append({"name": bind, "shape": self.engine.get_tensor_shape(bind), "dtype": self.engine.get_tensor_dtype(bind).name})
+                self.inp_list.append({"name": bind, "shape": self.engine.get_tensor_shape(bind), "dtype": dtype})
             else:
-                self.out_list.append({"name": bind, "shape": self.engine.get_tensor_shape(bind), "dtype": self.engine.get_tensor_dtype(bind).name})
+                self.out_list.append({"name": bind, "shape": self.engine.get_tensor_shape(bind), "dtype": dtype})
         return
 
     def __call__(self, batch, *args, **kwargs):

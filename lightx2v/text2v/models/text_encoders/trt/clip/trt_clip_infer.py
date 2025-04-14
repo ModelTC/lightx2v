@@ -13,10 +13,10 @@ from lightx2v.common.backend_infer.trt.trt_infer_base import TrtModelInferBase, 
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 
 
-class T5TrtModelInfer(TrtModelInferBase):
+
+class CLIPTrtModelInfer(TrtModelInferBase):
     def __init__(self, engine_path, **kwargs):
         super().__init__(engine_path, **kwargs)
-        import onnxruntime as ort
 
     def __call__(self, ids, mask, *args, **kwargs):
         device = ids.device
@@ -38,16 +38,27 @@ class T5TrtModelInfer(TrtModelInferBase):
             out = torch.from_numpy(out).to(device)
             out = out.type(torch.bfloat16)
             outs.append(out)
-        return outs[0]
+        return {"pooler_output": outs[1]}
 
     @staticmethod
     def export_to_onnx(model: Module, model_dir, *args, **kwargs):
-        ids = kwargs.get("ids")
-        mask = kwargs.get("mask")
-        onnx_dir = Path(model_dir) / "onnx/t5"
+        ids = kwargs.get("input_ids")
+        mask = kwargs.get("attention_mask")
+        onnx_dir = Path(model_dir) / "text_encoder_2/onnx/clip_l"
         onnx_dir.mkdir(parents=True, exist_ok=True)
-        onnx_path = str(onnx_dir / "t5.onnx")
-        torch.onnx.export(model, (ids, mask), onnx_path, opset_version=14)
+        onnx_path = str(onnx_dir / "clip_l.onnx")
+
+        class ClipWrapper(torch.nn.Module):
+            def __init__(self, *args, **kwargs) -> None:
+                super().__init__(*args, **kwargs)
+
+            def forward(self, input_ids, attention_mask, return_dict=False, output_hidden_states=False):
+                out = self.model(input_ids, attention_mask, return_dict=return_dict, output_hidden_states=output_hidden_states)
+                return out
+
+        model_wrapped = ClipWrapper()
+        model_wrapped.model = model
+        torch.onnx.export(model_wrapped, (ids, mask), onnx_path, opset_version=14)
         return onnx_path
 
     @staticmethod

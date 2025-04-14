@@ -1,5 +1,3 @@
-import logging
-
 import torch
 
 from ...hf.t5.tokenizer import HuggingfaceTokenizer
@@ -25,7 +23,7 @@ class T5EncoderModel:
     def to_cuda(self):
         self.model = self.model.to("cuda")
 
-    def infer(self, texts, args):
+    def infer(self, texts, args, **kwargs):
         if args.cpu_offload:
             self.to_cuda()
 

@@ -7,7 +7,7 @@ import numpy as np
 import tensorrt as trt
 from loguru import logger
 
-from lightx2v import common
+from lightx2v.common.backend_infer.trt import common
 from lightx2v.common.backend_infer.trt.trt_infer_base import TrtModelInferBase
 
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
@@ -35,9 +35,10 @@ class HyVaeTrtModelInfer(TrtModelInferBase):
             out = (b, 3, 4 * (t - 1) + 1, h * 8, w * 8)
             return out
 
-        shp_dict = {"inp": batch.shape, "out": get_output_shape(batch.shape)}
+        vae_out_shape = get_output_shape(batch.shape)
+        shp_dict = {"inp": batch.shape, "out": vae_out_shape}
         self.alloc(shp_dict)
-        output = np.zeros(*self.out_list[0]["shape"], self.out_list[0]["dtype"])
+        output = np.zeros(vae_out_shape, self.out_list[0]["dtype"])
 
         # Process I/O and execute the network
         common.memcpy_host_to_device(self.inputs[0]["allocation"], np.ascontiguousarray(batch))
