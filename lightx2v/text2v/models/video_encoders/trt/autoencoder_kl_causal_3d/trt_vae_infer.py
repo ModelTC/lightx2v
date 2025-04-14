@@ -21,6 +21,9 @@ class HyVaeTrtModelInfer(TrtModelInferBase):
     def __init__(self, engine_path):
         super().__init__(engine_path)
 
+    def output_spec(self):
+        return self.outputs[0]["shape"], self.outputs[0]["dtype"]
+
     def __call__(self, batch, *args, **kwargs):
         """
         Execute inference
@@ -37,7 +40,7 @@ class HyVaeTrtModelInfer(TrtModelInferBase):
 
         shp_dict = {"inp": batch.shape, "out": get_output_shape(batch.shape)}
         self.alloc(shp_dict)
-        output = np.zeros(*self.output_spec())
+        output = np.zeros(*self.out_list[0]["shape"], self.out_list[0]["dtype"])
 
         # Process I/O and execute the network
         common.memcpy_host_to_device(self.inputs[0]["allocation"], np.ascontiguousarray(batch))

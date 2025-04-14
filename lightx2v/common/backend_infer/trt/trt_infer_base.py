@@ -80,13 +80,6 @@ class TrtModelInferBase(nn.Module):
         assert len(self.outputs) > 0
         assert len(self.allocations) > 0
 
-    def input_spec(self):
-        """
-        Get the specs for the input tensor of the network. Useful to prepare memory allocations.
-        :return: Two items, the shape of the input tensor and its (numpy) datatype.
-        """
-        return self.inputs[0]["shape"], self.inputs[0]["dtype"]
-
     def get_io_properties(self):
         for bind in self.engine:
             mode = self.engine.get_tensor_mode(bind)
@@ -95,13 +88,6 @@ class TrtModelInferBase(nn.Module):
             else:
                 self.out_list.append({"name": bind, "shape": self.engine.get_tensor_shape(bind), "dtype": self.engine.get_tensor_dtype(bind).name})
         return
-
-    def output_spec(self):
-        """
-        Get the specs for the output tensor of the network. Useful to prepare memory allocations.
-        :return: Two items, the shape of the output tensor and its (numpy) datatype.
-        """
-        return self.outputs[0]["shape"], self.outputs[0]["dtype"]
 
     def __call__(self, batch, *args, **kwargs):
         pass
