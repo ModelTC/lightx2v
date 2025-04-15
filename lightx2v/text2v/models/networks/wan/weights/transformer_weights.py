@@ -1,4 +1,5 @@
-from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, RMS_WEIGHT_REGISTER
+from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, RMS_WEIGHT_REGISTER, ATTN_WEIGHT_REGISTER
+import torch
 from lightx2v.common.ops.mm.mm_weight import MMWeightTemplate
 from lightx2v.common.ops.norm.layer_norm_weight import LNWeightTemplate
 from lightx2v.common.ops.norm.rms_norm_weight import RMSWeightTemplate
@@ -13,11 +14,13 @@ class WanTransformerWeights:
             self.mm_type = "Calib"
         else:
             self.mm_type = config["mm_config"].get("mm_type", "Default") if config["mm_config"] else "Default"
+        self.weight_list = []
 
     def load_weights(self, weight_dict):
         self.blocks_weights = [WanTransformerAttentionBlock(i, self.task, self.mm_type, self.config) for i in range(self.blocks_num)]
         for block in self.blocks_weights:
             block.load_weights(weight_dict)
+            self.weight_list.append(block.weight_list)
 
     def to_cpu(self):
         for block in self.blocks_weights:
@@ -34,6 +37,7 @@ class WanTransformerAttentionBlock:
         self.mm_type = mm_type
         self.task = task
         self.config = config
+        self.weight_list = []
 
     def load_weights(self, weight_dict):
         self.self_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.q.weight", f"blocks.{self.block_index}.self_attn.q.bias")
@@ -54,6 +58,18 @@ class WanTransformerAttentionBlock:
         self.ffn_0 = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.0.weight", f"blocks.{self.block_index}.ffn.0.bias")
         self.ffn_2 = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.2.weight", f"blocks.{self.block_index}.ffn.2.bias")
         self.modulation = weight_dict[f"blocks.{self.block_index}.modulation"]
+        # breakpoint()
+
+        # attention weights
+        if self.config["sparge"]:
+            # print("sparge is True, just replace self attn weights")
+            assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
+            self.self_attn_1 = ATTN_WEIGHT_REGISTER["Sparge"](f"blocks.{self.block_index}")
+            self.cross_attn_1 = ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"])
+        else:
+            # print("sparge is False")
+            self.self_attn_1 = ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"])
+            self.cross_attn_1 = ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"])
 
         self.weight_list = [
             self.self_attn_q,
@@ -85,6 +101,15 @@ class WanTransformerAttentionBlock:
             if isinstance(mm_weight, (MMWeightTemplate, LNWeightTemplate, RMSWeightTemplate)):
                 mm_weight.set_config(self.config["mm_config"])
                 mm_weight.load(weight_dict)
+
+        # load attn weights
+        if self.config["sparge"]:
+            assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
+            sparge_ckpt = torch.load(self.config["sparge_ckpt"])
+            self.self_attn_1.load(sparge_ckpt)
+        else:
+            # do not load weights
+            pass
 
     def to_cpu(self):
         for mm_weight in self.weight_list:

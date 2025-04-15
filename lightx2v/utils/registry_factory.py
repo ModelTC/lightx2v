@@ -45,6 +45,7 @@ class Register(dict):
 
 
 MM_WEIGHT_REGISTER = Register()
+ATTN_WEIGHT_REGISTER = Register()
 RMS_WEIGHT_REGISTER = Register()
 LN_WEIGHT_REGISTER = Register()
 CONV3D_WEIGHT_REGISTER = Register()

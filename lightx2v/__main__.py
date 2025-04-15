@@ -341,6 +341,8 @@ if __name__ == "__main__":
     parser.add_argument("--use_bfloat16", action="store_true", default=True)
     parser.add_argument("--lora_path", type=str, default=None)
     parser.add_argument("--strength_model", type=float, default=1.0)
+    parser.add_argument("--sparge", action="store_true", help="enable sparge attention")
+    parser.add_argument("--sparge_ckpt", type=str, default=None, help="path of sparge ckpts")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -368,6 +370,8 @@ if __name__ == "__main__":
         "parallel_attn_type": args.parallel_attn_type,
         "parallel_vae": args.parallel_vae,
         "use_bfloat16": args.use_bfloat16,
+        "sparge": args.sparge,
+        "sparge_ckpt": args.sparge_ckpt,
     }
 
     if args.config_path is not None:
