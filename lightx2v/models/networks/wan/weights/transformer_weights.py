@@ -1,4 +1,5 @@
-from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, RMS_WEIGHT_REGISTER, TENSOR_REGISTER
+import torch
+from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, RMS_WEIGHT_REGISTER, TENSOR_REGISTER, ATTN_WEIGHT_REGISTER
 from lightx2v.common.modules.weight_module import WeightModule, WeightModuleList
 
 
@@ -42,9 +43,30 @@ class WanTransformerAttentionBlock(WeightModule):
         self.add_module("ffn_0", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.0.weight", f"blocks.{self.block_index}.ffn.0.bias"))
         self.add_module("ffn_2", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.2.weight", f"blocks.{self.block_index}.ffn.2.bias"))
 
+        # attention weights
+        if self.config["sparge"]:
+            assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
+            self.add_module("self_attn_1", ATTN_WEIGHT_REGISTER["Sparge"](f"blocks.{self.block_index}"))
+            self.add_module("cross_attn_1", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
+        else:
+            self.add_module("self_attn_1", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
+            self.add_module("cross_attn_1", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
+
         if self.task == "i2v":
             self.add_module("cross_attn_k_img", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.k_img.weight", f"blocks.{self.block_index}.cross_attn.k_img.bias"))
             self.add_module("cross_attn_v_img", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.v_img.weight", f"blocks.{self.block_index}.cross_attn.v_img.bias"))
             self.add_module("cross_attn_norm_k_img", RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.cross_attn.norm_k_img.weight"))
+            # attention weights
+            self.add_module("cross_attn_2", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
+
+        # load attn weights
+        if self.config["sparge"]:
+            assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
+            # breakpoint()
+            sparge_ckpt = torch.load(self.config["sparge_ckpt"])
+            self.self_attn_1.load(sparge_ckpt)
+        else:
+            # do not load weights
+            pass
 
         self.register_parameter("modulation", TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.modulation"))
