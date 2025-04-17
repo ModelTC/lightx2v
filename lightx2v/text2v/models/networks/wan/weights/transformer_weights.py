@@ -35,25 +35,29 @@ class WanTransformerAttentionBlock:
         self.task = task
         self.config = config
 
+
     def load_weights(self, weight_dict):
-        self.self_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.q.weight", f"blocks.{self.block_index}.self_attn.q.bias")
-        self.self_attn_k = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.k.weight", f"blocks.{self.block_index}.self_attn.k.bias")
-        self.self_attn_v = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.v.weight", f"blocks.{self.block_index}.self_attn.v.bias")
-        self.self_attn_o = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.o.weight", f"blocks.{self.block_index}.self_attn.o.bias")
-        self.self_attn_norm_q = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.self_attn.norm_q.weight")
-        self.self_attn_norm_k = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.self_attn.norm_k.weight")
+        self.self_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn1.to_q.weight", f"blocks.{self.block_index}.attn1.to_q.bias")
+        self.self_attn_k = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn1.to_k.weight", f"blocks.{self.block_index}.attn1.to_k.bias")
+        self.self_attn_v = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn1.to_v.weight", f"blocks.{self.block_index}.attn1.to_v.bias")
+        self.self_attn_o = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn1.to_out.0.weight", f"blocks.{self.block_index}.attn1.to_out.0.bias")
+        self.self_attn_norm_q = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.attn1.norm_q.weight")
+        self.self_attn_norm_k = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.attn1.norm_k.weight")
 
-        self.norm3 = LN_WEIGHT_REGISTER["Default"](f"blocks.{self.block_index}.norm3.weight", f"blocks.{self.block_index}.norm3.bias", eps=1e-6)
-        self.cross_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.q.weight", f"blocks.{self.block_index}.cross_attn.q.bias")
-        self.cross_attn_k = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.k.weight", f"blocks.{self.block_index}.cross_attn.k.bias")
-        self.cross_attn_v = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.v.weight", f"blocks.{self.block_index}.cross_attn.v.bias")
-        self.cross_attn_o = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.o.weight", f"blocks.{self.block_index}.cross_attn.o.bias")
-        self.cross_attn_norm_q = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.cross_attn.norm_q.weight")
-        self.cross_attn_norm_k = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.cross_attn.norm_k.weight")
+        self.norm3 = LN_WEIGHT_REGISTER["Default"](f"blocks.{self.block_index}.norm2.weight", f"blocks.{self.block_index}.norm2.bias", eps=1e-6)
+        
+        self.cross_attn_q = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn2.to_q.weight", f"blocks.{self.block_index}.attn2.to_q.bias")
+        self.cross_attn_k = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn2.to_k.weight", f"blocks.{self.block_index}.attn2.to_k.bias")
+        self.cross_attn_v = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn2.to_v.weight", f"blocks.{self.block_index}.attn2.to_v.bias")
+        self.cross_attn_o = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn2.to_out.0.weight", f"blocks.{self.block_index}.attn2.to_out.0.bias")
+        self.cross_attn_norm_q = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.attn2.norm_q.weight")
+        self.cross_attn_norm_k = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.attn2.norm_k.weight")
 
-        self.ffn_0 = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.0.weight", f"blocks.{self.block_index}.ffn.0.bias")
-        self.ffn_2 = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.2.weight", f"blocks.{self.block_index}.ffn.2.bias")
-        self.modulation = weight_dict[f"blocks.{self.block_index}.modulation"]
+        self.ffn_0 = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.net.0.proj.weight", f"blocks.{self.block_index}.ffn.net.0.proj.bias")
+        self.ffn_2 = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.net.2.weight", f"blocks.{self.block_index}.ffn.net.2.bias")
+        
+        
+        self.modulation = weight_dict[f"blocks.{self.block_index}.scale_shift_table"]
 
         self.weight_list = [
             self.self_attn_q,
@@ -74,9 +78,10 @@ class WanTransformerAttentionBlock:
         ]
 
         if self.task == "i2v":
-            self.cross_attn_k_img = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.k_img.weight", f"blocks.{self.block_index}.cross_attn.k_img.bias")
-            self.cross_attn_v_img = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.v_img.weight", f"blocks.{self.block_index}.cross_attn.v_img.bias")
-            self.cross_attn_norm_k_img = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.cross_attn.norm_k_img.weight")
+            self.cross_attn_k_img = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn2.add_k_proj.weight", f"blocks.{self.block_index}.attn2.add_k_proj.bias")
+            self.cross_attn_v_img = MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.attn2.add_v_proj.weight", f"blocks.{self.block_index}.attn2.add_v_proj.bias")
+            self.cross_attn_norm_k_img = RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.attn2.norm_added_k.weight")
+            
             self.weight_list.append(self.cross_attn_k_img)
             self.weight_list.append(self.cross_attn_v_img)
             self.weight_list.append(self.cross_attn_norm_k_img)

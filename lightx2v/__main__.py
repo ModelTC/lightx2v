@@ -10,6 +10,7 @@ import torchvision.transforms.functional as TF
 import numpy as np
 from contextlib import contextmanager
 from PIL import Image
+from loguru import logger
 from lightx2v.text2v.models.text_encoders.hf.llama.model import TextEncoderHFLlamaModel
 from lightx2v.text2v.models.text_encoders.hf.clip.model import TextEncoderHFClipModel
 from lightx2v.text2v.models.text_encoders.hf.t5.model import T5EncoderModel
@@ -38,7 +39,7 @@ def time_duration(label: str = ""):
     yield
     torch.cuda.synchronize()
     end_time = time.time()
-    print(f"==> {label} start:{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))} cost {end_time - start_time:.2f} seconds")
+    logger.info(f"==> {label} start:{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))} cost {end_time - start_time:.2f} seconds")
 
 
 def load_models(args, model_config):
@@ -80,7 +81,7 @@ def load_models(args, model_config):
             with time_duration("Load LoRA Model"):
                 lora_name = lora_wrapper.load_lora(args.lora_path)
                 lora_wrapper.apply_lora(lora_name, args.strength_model)
-                print(f"Loaded LoRA: {lora_name}")
+                logger.info(f"Loaded LoRA: {lora_name}")
 
         with time_duration("Load WAN VAE Model"):
             vae_model = WanVAE(vae_pth=os.path.join(args.model_path, "Wan2.1_VAE.pth"), device=init_device, parallel=args.parallel_vae)
@@ -297,9 +298,9 @@ def run_main_inference(args, model, text_encoder_output, image_encoder_output):
         torch.cuda.synchronize()
         time4 = time.time()
 
-        print(f"step {step_index} infer time: {time3 - time2}")
-        print(f"step {step_index} all time: {time4 - time1}")
-        print("*" * 10)
+        logger.info(f"step {step_index} infer time: {time3 - time2}")
+        logger.info(f"step {step_index} all time: {time4 - time1}")
+        logger.info("*" * 10)
 
     return model.scheduler.latents, model.scheduler.generator
 
@@ -344,7 +345,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     start_time = time.time()
-    print(f"args: {args}")
+    logger.info(f"args: {args}")
 
     seed_all(args.seed)
 
@@ -375,13 +376,14 @@ if __name__ == "__main__":
             config = json.load(f)
         model_config.update(config)
 
-    print(f"model_config: {model_config}")
+    logger.info(f"model_config: {model_config}")
 
     with time_duration("Load models"):
         model, text_encoders, vae_model, image_encoder = load_models(args, model_config)
 
     if args.task in ["i2v"]:
-        image_encoder_output = run_image_encoder(args, image_encoder, vae_model)
+        with time_duration("Run Image Encoder"):
+            image_encoder_output = run_image_encoder(args, image_encoder, vae_model)
     else:
         image_encoder_output = {"clip_encoder_out": None, "vae_encode_out": None}
 
@@ -393,14 +395,16 @@ if __name__ == "__main__":
 
     model.set_scheduler(scheduler)
 
-    gc.collect()
-    torch.cuda.empty_cache()
+    with time_duration("Clear memory"):
+        gc.collect()
+        torch.cuda.empty_cache()
     latents, generator = run_main_inference(args, model, text_encoder_output, image_encoder_output)
 
     if args.cpu_offload:
-        scheduler.clear()
-        del text_encoder_output, image_encoder_output, model, text_encoders, scheduler
-        torch.cuda.empty_cache()
+        with time_duration("Clear memory"):
+            scheduler.clear()
+            del text_encoder_output, image_encoder_output, model, text_encoders, scheduler
+            torch.cuda.empty_cache()
 
     with time_duration("Run VAE"):
         images = run_vae(latents, generator, args)
@@ -413,4 +417,4 @@ if __name__ == "__main__":
                 save_videos_grid(images, args.save_video_path, fps=24)
 
     end_time = time.time()
-    print(f"Total cost: {end_time - start_time}")
+    logger.info(f"Total cost: {end_time - start_time}")

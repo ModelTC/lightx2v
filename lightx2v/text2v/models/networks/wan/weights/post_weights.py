@@ -7,8 +7,8 @@ class WanPostWeights:
         self.config = config
 
     def load_weights(self, weight_dict):
-        self.head = MM_WEIGHT_REGISTER["Default"]("head.head.weight", "head.head.bias")
-        self.head_modulation = weight_dict["head.modulation"]
+        self.head = MM_WEIGHT_REGISTER["Default"]("proj_out.weight", "proj_out.bias")
+        self.head_modulation = weight_dict["scale_shift_table"]
 
         self.weight_list = [self.head]
 

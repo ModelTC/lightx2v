@@ -63,16 +63,19 @@ class WanModel:
         return tensor_dict
 
     def _load_ckpt(self):
-        safetensors_pattern = os.path.join(self.model_path, "*.safetensors")
-        safetensors_files = glob.glob(safetensors_pattern)
+        # safetensors_pattern = os.path.join(self.model_path, "*.safetensors")
+        # safetensors_files = glob.glob(safetensors_pattern)
 
-        if not safetensors_files:
-            raise FileNotFoundError(f"No .safetensors files found in directory: {self.model_path}")
-        weight_dict = {}
-        for file_path in safetensors_files:
-            file_weights = self._load_safetensor_to_dict(file_path)
-            weight_dict.update(file_weights)
-        return weight_dict
+        # if not safetensors_files:
+        #     raise FileNotFoundError(f"No .safetensors files found in directory: {self.model_path}")
+        # weight_dict = {}
+        # for file_path in safetensors_files:
+        #     file_weights = self._load_safetensor_to_dict(file_path)
+        #     weight_dict.update(file_weights)
+        # return weight_dict
+        weight_dict =  torch.load("/mnt/afs_2/gushiqiao/x2v_models/Wan2.1-I2V-480P-cfg/wan21_i2v_480p_bs64_08kiter.pt", weights_only=True, map_location=self.device)
+        tensor_dict = {key:  weight_dict[key].to(torch.bfloat16) for key in weight_dict.keys()}
+        return tensor_dict
 
     def _init_weights(self, weight_dict=None):
         if weight_dict is None:
@@ -133,25 +136,27 @@ class WanModel:
             if self.scheduler.cnt >= self.scheduler.num_steps:
                 self.scheduler.cnt = 0
 
-        embed, grid_sizes, pre_infer_out = self.pre_infer.infer(
-            self.pre_weight,
-            [self.scheduler.latents],
-            timestep,
-            text_encoders_output["context_null"],
-            self.scheduler.seq_len,
-            image_encoder_output["clip_encoder_out"],
-            [image_encoder_output["vae_encode_out"]],
-        )
+        # embed, grid_sizes, pre_infer_out = self.pre_infer.infer(
+        #     self.pre_weight,
+        #     [self.scheduler.latents],
+        #     timestep,
+        #     text_encoders_output["context_null"],
+        #     self.scheduler.seq_len,
+        #     image_encoder_output["clip_encoder_out"],
+        #     [image_encoder_output["vae_encode_out"]],
+        # )
 
-        x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
-        noise_pred_uncond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
+        # x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+        # noise_pred_uncond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
-        if self.config["feature_caching"] == "Tea":
-            self.scheduler.cnt += 1
-            if self.scheduler.cnt >= self.scheduler.num_steps:
-                self.scheduler.cnt = 0
+        # if self.config["feature_caching"] == "Tea":
+        #     self.scheduler.cnt += 1
+        #     if self.scheduler.cnt >= self.scheduler.num_steps:
+        #         self.scheduler.cnt = 0
 
-        self.scheduler.noise_pred = noise_pred_uncond + args.sample_guide_scale * (noise_pred_cond - noise_pred_uncond)
+        # self.scheduler.noise_pred = noise_pred_uncond + args.sample_guide_scale * (noise_pred_cond - noise_pred_uncond)
+
+        self.scheduler.noise_pred = noise_pred_cond
 
         if self.config["cpu_offload"]:
             self.pre_weight.to_cpu()
