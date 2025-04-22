@@ -324,7 +324,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_path", type=str, default=None)
     parser.add_argument("--image_path", type=str, default=None, help="The path to input image file or path for image-to-video (i2v) task")
-    parser.add_argument("--save_video_path", type=str, default="./output_ligthx2v.mp4", help="The path to save video path/file")
+    parser.add_argument("--save_video_path", type=str, default="./output_lightx2v.mp4", help="The path to save video path/file")
     parser.add_argument("--prompt", type=str, required=True)
     parser.add_argument("--infer_steps", type=int, required=True)
     parser.add_argument("--target_video_length", type=int, required=True)
