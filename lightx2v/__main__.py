@@ -160,7 +160,7 @@ def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
     return closest_size, closest_ratio
 
 
-def run_image_encoder(config,  image_path, image_encoder, vae_model):
+def run_image_encoder(config, image_path, image_encoder, vae_model):
     if config.model_cls == "hunyuan":
         img = Image.open(image_path).convert("RGB")
         origin_size = img.size
@@ -281,40 +281,37 @@ def run_vae(latents, generator, config):
     return images
 
 
-
-
 def collect_image_prompt_pairs(input_path) -> list[tuple[str, str]]:
-    '''
+    """
     batch image and prompt pairs
     :param input_path: path to the directory containing images and prompts
     :return: list of tuples containing image paths and corresponding prompt texts
 
     example:
-    - input_path: 
+    - input_path:
         |- image0.png
         |- image0.txt
         |- image1.png
         |- image1.txt
-    '''
+    """
     input_pairs = []
     for filename in os.listdir(input_path):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp')):
+        if filename.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".webp")):
             image_path = os.path.join(input_path, filename)
-            
-            prompt_filename = os.path.splitext(filename)[0] + '.txt'
+
+            prompt_filename = os.path.splitext(filename)[0] + ".txt"
             prompt_path = os.path.join(input_path, prompt_filename)
-            
+
             if not os.path.exists(prompt_path):
                 print(f"Warning: No matching prompt file for {image_path}, skipping.")
                 continue
-                
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                prompt_text = f.read().strip()
-            
-            input_pairs.append((image_path, prompt_text))
-    
-    return input_pairs
 
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                prompt_text = f.read().strip()
+
+            input_pairs.append((image_path, prompt_text))
+
+    return input_pairs
 
 
 if __name__ == "__main__":
@@ -378,14 +375,14 @@ if __name__ == "__main__":
         output_dir.mkdir(parents=True, exist_ok=True)
 
     if Path(args.image_path).is_file():
-        if not args.save_video_path.endswith('.mp4'):
-            save_video_path = output_dir / 'output.mp4'
+        if not args.save_video_path.endswith(".mp4"):
+            save_video_path = output_dir / "output.mp4"
         else:
             save_video_path = Path(args.save_video_path)
     else:
         save_video_path = output_dir
     print(f"Output directory set to parent directory: {output_dir}")
-    
+
     with ProfilingContext("Load models"):
         model, text_encoders, vae_model, image_encoder = load_models(config)
 
@@ -423,7 +420,6 @@ if __name__ == "__main__":
 
         with ProfilingContext("Run VAE"):
             images = run_vae(latents, generator, config)
-
 
         if save_video_path.is_dir():
             save_video_name = str(save_video_path / f"{Path(image_path).stem}.mp4")
