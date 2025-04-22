@@ -21,11 +21,19 @@
 ## Fast Start Up With Conda
 
 ```shell
+# clone repo and submodules
 git clone https://github.com/ModelTC/lightx2v.git lightx2v && cd lightx2v
 git submodule update --init --recursive
 
+# create conda env and install requirments
 conda create -n lightx2v python=3.11 && conda activate lightx2v
 pip install -r requirements.txt
+
+# install flash-attention 2
+RUN cd lightx2v/3rd/flash-attention && pip install --no-cache-dir -v -e .
+
+# install flash-attention 3, only if hopper
+RUN cd lightx2v/3rd/flash-attention/hopper && pip install --no-cache-dir -v -e .
 
 # modify the parameters of the running script
 bash scripts/run_hunyuan_t2v.sh
@@ -35,7 +43,7 @@ bash scripts/run_hunyuan_t2v.sh
 
 ```shell
 docker pull lightx2v/lightx2v:latest
-docker run -it --rm --gpus all --ipc=host lightx2v/lightx2v:latest
+docker run -it --rm --name lightx2v --gpus all --ipc=host lightx2v/lightx2v:latest
 ```
 
 ## Contributing Guidelines

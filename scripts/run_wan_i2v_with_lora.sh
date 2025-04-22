@@ -1,12 +1,10 @@
 #!/bin/bash
 
 # set path and first
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-lightx2v_path="$(dirname "$script_dir")"
+lightx2v_path=''
+model_path=''
+lora_path=''
 
-model_path=/mnt/aigc/shared_data/cache/huggingface/hub/Wan2.1-I2V-14B-480P
-config_path=$model_path/config.json
-lora_path=/mnt/aigc/shared_data/wan_quant/lora/toy_zoe_epoch_324.safetensors
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
     cuda_devices=0
@@ -19,8 +17,8 @@ if [ -z "${model_path}" ]; then
     exit 1
 fi
 
-if [ -z "${config_path}" ]; then
-    echo "Error: config_path is not set. Please set this variable first."
+if [ -z "${lora_path}" ]; then
+    echo "Error: lora_path is not set. Please set this variable first."
     exit 1
 fi
 
@@ -40,7 +38,6 @@ python -m lightx2v \
 --attention_type flash_attn3 \
 --seed 42 \
 --sample_neg_promp "画面过曝，模糊，文字，字幕" \
---config_path $config_path \
 --save_video_path ./output_lightx2v_wan_i2v.mp4 \
 --sample_guide_scale 5 \
 --sample_shift 5 \
