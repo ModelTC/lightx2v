@@ -5,6 +5,7 @@ import os
 import time
 import gc
 import json
+from pathlib import Path
 import torchvision
 import torchvision.transforms.functional as TF
 import numpy as np
@@ -159,9 +160,9 @@ def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
     return closest_size, closest_ratio
 
 
-def run_image_encoder(config, image_encoder, vae_model):
+def run_image_encoder(config,  image_path, image_encoder, vae_model):
     if config.model_cls == "hunyuan":
-        img = Image.open(config.image_path).convert("RGB")
+        img = Image.open(image_path).convert("RGB")
         origin_size = img.size
 
         i2v_resolution = "720p"
@@ -198,7 +199,7 @@ def run_image_encoder(config, image_encoder, vae_model):
         return {"img": img, "img_latents": img_latents, "target_height": target_height, "target_width": target_width}
 
     elif config.model_cls == "wan2.1":
-        img = Image.open(config.image_path).convert("RGB")
+        img = Image.open(image_path).convert("RGB")
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
         clip_encoder_out = image_encoder.visual([img[:, None, :, :]], config).squeeze(0).to(torch.bfloat16)
         h, w = img.shape[1:]
@@ -280,14 +281,50 @@ def run_vae(latents, generator, config):
     return images
 
 
+
+
+def collect_image_prompt_pairs(input_path) -> list[tuple[str, str]]:
+    '''
+    batch image and prompt pairs
+    :param input_path: path to the directory containing images and prompts
+    :return: list of tuples containing image paths and corresponding prompt texts
+
+    example:
+    - input_path: 
+        |- image0.png
+        |- image0.txt
+        |- image1.png
+        |- image1.txt
+    '''
+    input_pairs = []
+    for filename in os.listdir(input_path):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp')):
+            image_path = os.path.join(input_path, filename)
+            
+            prompt_filename = os.path.splitext(filename)[0] + '.txt'
+            prompt_path = os.path.join(input_path, prompt_filename)
+            
+            if not os.path.exists(prompt_path):
+                print(f"Warning: No matching prompt file for {image_path}, skipping.")
+                continue
+                
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                prompt_text = f.read().strip()
+            
+            input_pairs.append((image_path, prompt_text))
+    
+    return input_pairs
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_path", type=str, default=None)
-    parser.add_argument("--image_path", type=str, default=None)
-    parser.add_argument("--save_video_path", type=str, default="./output_ligthx2v.mp4")
+    parser.add_argument("--image_path", type=str, default=None, help="The path to input image file or path for image-to-video (i2v) task")
+    parser.add_argument("--save_video_path", type=str, default="./output_ligthx2v.mp4", help="The path to save video path/file")
     parser.add_argument("--prompt", type=str, required=True)
     parser.add_argument("--infer_steps", type=int, required=True)
     parser.add_argument("--target_video_length", type=int, required=True)
@@ -326,49 +363,79 @@ if __name__ == "__main__":
 
     print(f"config: {config}")
 
+    if Path(args.image_path).is_dir():
+        inputs_files = collect_image_prompt_pairs(args.image_path)
+    else:
+        inputs_files = [(args.image_path, args.prompt)]
+
+    print("inputs_files count:", len(inputs_files))
+
+    save_video_path = Path(args.save_video_path)
+    if save_video_path.is_file():
+        output_dir = save_video_path.parent
+    else:
+        output_dir = save_video_path
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    if Path(args.image_path).is_file():
+        if not args.save_video_path.endswith('.mp4'):
+            save_video_path = output_dir / 'output.mp4'
+        else:
+            save_video_path = Path(args.save_video_path)
+    else:
+        save_video_path = output_dir
+    print(f"Output directory set to parent directory: {output_dir}")
+    
     with ProfilingContext("Load models"):
         model, text_encoders, vae_model, image_encoder = load_models(config)
 
-    if config["task"] in ["i2v"]:
-        image_encoder_output = run_image_encoder(config, image_encoder, vae_model)
-    else:
-        image_encoder_output = {"clip_encoder_out": None, "vae_encode_out": None}
+    for image_path, prompt in inputs_files:
+        if config["task"] in ["i2v"]:
+            image_encoder_output = run_image_encoder(config, image_path, image_encoder, vae_model)
+        else:
+            image_encoder_output = {"clip_encoder_out": None, "vae_encode_out": None}
 
-    with ProfilingContext("Run Text Encoder"):
-        text_encoder_output = run_text_encoder(config["prompt"], text_encoders, config, image_encoder_output)
+        with ProfilingContext("Run Text Encoder"):
+            text_encoder_output = run_text_encoder(prompt, text_encoders, config, image_encoder_output)
 
-    inputs = {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
+        inputs = {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
 
-    set_target_shape(config, image_encoder_output)
-    scheduler = init_scheduler(config, image_encoder_output)
+        set_target_shape(config, image_encoder_output)
+        scheduler = init_scheduler(config, image_encoder_output)
 
-    model.set_scheduler(scheduler)
+        model.set_scheduler(scheduler)
 
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    if CHECK_ENABLE_GRAPH_MODE():
-        default_runner = DefaultRunner(model, inputs)
-        runner = GraphRunner(default_runner)
-    else:
-        runner = DefaultRunner(model, inputs)
-
-    latents, generator = runner.run()
-
-    if config.cpu_offload:
-        scheduler.clear()
-        del text_encoder_output, image_encoder_output, model, text_encoders, scheduler
+        gc.collect()
         torch.cuda.empty_cache()
 
-    with ProfilingContext("Run VAE"):
-        images = run_vae(latents, generator, config)
+        if CHECK_ENABLE_GRAPH_MODE():
+            default_runner = DefaultRunner(model, inputs)
+            runner = GraphRunner(default_runner)
+        else:
+            runner = DefaultRunner(model, inputs)
 
-    if not config.parallel_attn_type or (config.parallel_attn_type and dist.get_rank() == 0):
-        with ProfilingContext("Save video"):
-            if config.model_cls == "wan2.1":
-                cache_video(tensor=images, save_file=config.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
-            else:
-                save_videos_grid(images, config.save_video_path, fps=24)
+        latents, generator = runner.run()
+
+        if config.cpu_offload:
+            scheduler.clear()
+            del text_encoder_output, image_encoder_output, model, text_encoders, scheduler
+            torch.cuda.empty_cache()
+
+        with ProfilingContext("Run VAE"):
+            images = run_vae(latents, generator, config)
+
+
+        if save_video_path.is_dir():
+            save_video_name = str(save_video_path / f"{Path(image_path).stem}.mp4")
+        else:
+            save_video_name = str(save_video_path)
+
+        if not config.parallel_attn_type or (config.parallel_attn_type and dist.get_rank() == 0):
+            with ProfilingContext("Save video"):
+                if config.model_cls == "wan2.1":
+                    cache_video(tensor=images, save_file=save_video_name, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
+                else:
+                    save_videos_grid(images, save_video_name, fps=24)
 
     end_time = time.perf_counter()
     print(f"Total cost: {end_time - start_time}")
