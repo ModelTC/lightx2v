@@ -1,4 +1,5 @@
 import json
+import os
 from easydict import EasyDict
 
 
@@ -11,9 +12,11 @@ def set_config(args):
     else:
         config.mm_config = None
 
-    if args.config_path is not None:
-        with open(args.config_path, "r") as f:
+    try:
+        with open(os.path.join(args.model_path, "config.json"), "r") as f:
             model_config = json.load(f)
         config.update(model_config)
+    except Exception as e:
+        print(e)
 
     return config

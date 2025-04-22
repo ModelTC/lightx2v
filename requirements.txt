@@ -29,7 +29,6 @@ fastapi==0.115.12
 fastapi-cli==0.0.7
 fastrlock==0.8.3
 filelock==3.18.0
-flash_attn_3==3.0.0b1
 frozenlist==1.5.0
 fsspec==2025.3.2
 ftfy==6.3.1
@@ -149,3 +148,6 @@ xformers==0.0.29.post2
 xgrammar==0.1.16
 yarl==1.18.3
 zipp==3.21.0
+ruff==0.11.6
+pre_commit==4.2.0
+easydict==1.13
