@@ -22,11 +22,11 @@ if __name__ == "__main__":
     parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causal"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
     parser.add_argument("--model_path", type=str, required=True)
-    parser.add_argument("--image_path", type=str, default=None, help="The path to input image file or path for image-to-video (i2v) task")
-    parser.add_argument("--save_video_path", type=str, default="./output_lightx2v.mp4", help="The path to save video path/file")
     parser.add_argument("--prompt", type=str, required=True)
     parser.add_argument("--negative_prompt", type=str, default="")
+    parser.add_argument("--image_path", type=str, default=None, help="The path to input image file or path for image-to-video (i2v) task")
     parser.add_argument("--config_json", type=str, required=True)
+    parser.add_argument("--save_video_path", type=str, default="./output_lightx2v.mp4", help="The path to save video path/file")
     args = parser.parse_args()
     print(f"args: {args}")
 
