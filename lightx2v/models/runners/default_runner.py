@@ -61,7 +61,7 @@ class DefaultRunner:
     @ProfilingContext("Save video")
     def save_video(self, images):
         if not self.config.parallel_attn_type or (self.config.parallel_attn_type and dist.get_rank() == 0):
-            if self.config.model_cls == "wan2.1":
+            if self.config.model_cls in ["wan2.1", "wan2.1_causal"]:
                 cache_video(tensor=images, save_file=self.config.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
             else:
                 save_videos_grid(images, self.config.save_video_path, fps=24)

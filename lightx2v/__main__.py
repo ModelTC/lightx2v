@@ -11,6 +11,7 @@ from lightx2v.utils.registry_factory import RUNNER_REGISTER
 
 from lightx2v.models.runners.hunyuan.hunyuan_runner import HunyuanRunner
 from lightx2v.models.runners.wan.wan_runner import WanRunner
+from lightx2v.models.runners.wan.wan_causal_runner import WanCausalRunner
 from lightx2v.models.runners.graph_runner import GraphRunner
 
 from lightx2v.common.ops import *
@@ -18,7 +19,7 @@ from lightx2v.common.ops import *
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan"], default="hunyuan")
+    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causal"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--image_path", type=str, default=None, help="The path to input image file or path for image-to-video (i2v) task")

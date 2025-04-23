@@ -293,7 +293,8 @@ class WanScheduler(BaseScheduler):
         if order == 1:
             rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
-            rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
+            rhos_c = torch.linalg.solve(R.cpu(), b.cpu()).to(device).to(x.dtype)
+            # rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
 
         x_t_ = sigma_t / sigma_s0 * x - alpha_t * h_phi_1 * m0
         if D1s is not None:
