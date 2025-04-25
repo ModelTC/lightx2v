@@ -26,6 +26,7 @@ class WanCausalRunner(WanRunner):
         self.num_frames = self.model.config.num_frames
         self.frame_seq_length = self.model.config.frame_seq_length
         self.infer_blocks = self.model.config.num_blocks
+        self.num_fragments = self.model.config.num_fragments
 
     @ProfilingContext("Load models")
     def load_model(self):
@@ -86,34 +87,56 @@ class WanCausalRunner(WanRunner):
         self.model.transformer_infer._init_crossattn_cache(dtype=torch.bfloat16, device="cuda")
 
         output_latents = torch.zeros(
-            (self.model.config.target_shape[0], self.num_frames, *self.model.config.target_shape[2:]),
+            (self.model.config.target_shape[0], 
+             self.num_frames + (self.num_fragments - 1) * (self.num_frames - self.num_frame_per_block), 
+             *self.model.config.target_shape[2:]),
             device="cuda",
             dtype=torch.bfloat16
         )
 
-        kv_start = 0
-        kv_end = kv_start + self.num_frame_per_block * self.frame_seq_length
+        start_block_idx = 0
 
-        for block_idx in range(self.infer_blocks):
-            print(f"=======> block_idx: {block_idx + 1} / {self.infer_blocks}")
-            print(f"=======> kv_start: {kv_start}, kv_end: {kv_end}")
-            self.model.scheduler.reset()
+        for fragment_idx in range(self.num_fragments):
+            print(f"=======> fragment_idx: {fragment_idx + 1} / {self.num_fragments}")
 
-            for step_index in range(self.model.scheduler.infer_steps):
-                print(f"==> step_index: {step_index + 1} / {self.model.scheduler.infer_steps}")
+            kv_start = 0
+            kv_end = kv_start + self.num_frame_per_block * self.frame_seq_length
 
+            if fragment_idx > 0:
+                print("recompute the kv_cache ...")
                 with ProfilingContext4Debug("step_pre"):
-                    self.model.scheduler.step_pre(step_index=step_index)
+                    self.model.scheduler.latents = self.model.scheduler.last_sample
+                    self.model.scheduler.step_pre(step_index=self.model.scheduler.infer_steps - 1)
 
                 with ProfilingContext4Debug("infer"):
                     self.model.infer(self.inputs, kv_start, kv_end)
 
-                with ProfilingContext4Debug("step_post"):
-                    self.model.scheduler.step_post()
+                kv_start += self.num_frame_per_block * self.frame_seq_length
+                kv_end += self.num_frame_per_block * self.frame_seq_length
 
-            kv_start += self.num_frame_per_block * self.frame_seq_length
-            kv_end += self.num_frame_per_block * self.frame_seq_length
+            infer_blocks = self.infer_blocks - (fragment_idx > 0)
 
-            output_latents[:, block_idx * self.num_frame_per_block: (block_idx + 1) * self.num_frame_per_block] = self.model.scheduler.latents
+            for block_idx in range(infer_blocks):
+                print(f"=======> block_idx: {block_idx + 1} / {infer_blocks}")
+                print(f"=======> kv_start: {kv_start}, kv_end: {kv_end}")
+                self.model.scheduler.reset()
+
+                for step_index in range(self.model.scheduler.infer_steps):
+                    print(f"==> step_index: {step_index + 1} / {self.model.scheduler.infer_steps}")
+
+                    with ProfilingContext4Debug("step_pre"):
+                        self.model.scheduler.step_pre(step_index=step_index)
+
+                    with ProfilingContext4Debug("infer"):
+                        self.model.infer(self.inputs, kv_start, kv_end)
+
+                    with ProfilingContext4Debug("step_post"):
+                        self.model.scheduler.step_post()
+
+                kv_start += self.num_frame_per_block * self.frame_seq_length
+                kv_end += self.num_frame_per_block * self.frame_seq_length
+
+                output_latents[:, start_block_idx * self.num_frame_per_block: (start_block_idx + 1) * self.num_frame_per_block] = self.model.scheduler.latents
+                start_block_idx += 1
 
         return output_latents, self.model.scheduler.generator

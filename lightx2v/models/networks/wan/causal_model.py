@@ -34,13 +34,12 @@ class WanCausalModel(WanModel):
 
     def _load_ckpt(self):
         use_bfloat16 = self.config.get("use_bfloat16", True)
-        origin_weight_dict = torch.load(os.path.join(self.model_path, "causal_model.pt"), map_location="cpu")
-        weight_dict = {}
-        for key, value in origin_weight_dict.items():
-            if use_bfloat16:
-                weight_dict[key] = value.to(torch.bfloat16).to(self.device)
-            else:
-                weight_dict[key] = value.to(self.device)
+        weight_dict = torch.load(os.path.join(self.model_path, "causal_model.pt"), map_location="cpu", weights_only=True)
+
+        dtype = torch.bfloat16 if use_bfloat16 else None
+        for key, value in weight_dict.items():
+            weight_dict[key] = value.to(device=self.device, dtype=dtype)
+
         return weight_dict
     
     @torch.no_grad()

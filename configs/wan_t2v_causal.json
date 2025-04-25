@@ -1,5 +1,5 @@
 {
-    "infer_steps": 50,
+    "infer_steps": 9,
     "target_video_length": 81,
     "target_height": 480,
     "target_width": 832,
@@ -8,12 +8,13 @@
     "sample_guide_scale": 6,
     "sample_shift": 8,
     "mm_config": {
-        "mm_type": "Default",
+        "mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Sgl",
         "weight_auto_quant": true
     },
+    "num_fragments": 3,
     "num_frames": 21,
     "num_frame_per_block": 3,
     "num_blocks": 7,
     "frame_seq_length": 1560,
-    "denoising_step_list": [999, 934, 862, 756, 603, 410, 250, 140, 74, 0]
+    "denoising_step_list": [999, 934, 862, 756, 603, 410, 250, 140, 74]
 }

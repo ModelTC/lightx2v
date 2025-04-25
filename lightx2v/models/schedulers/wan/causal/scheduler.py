@@ -44,17 +44,11 @@ class WanCausalScheduler(WanScheduler):
         self, 
         device: Union[str, torch.device] = None
     ):
-        if self.denoising_step_list[-1] == 0:
-            self.denoising_step_list = self.denoising_step_list[:-1]
         self.timesteps = torch.tensor(self.denoising_step_list, device=device, dtype=torch.int64)
         self.sigmas = torch.cat([self.timesteps / self.num_train_timesteps, 
                                 torch.tensor([0.0], device=device)])
         self.sigmas = self.sigmas.to("cpu")
         self.infer_steps = len(self.timesteps)
-        
-        print(self.sigmas)
-        print(self.timesteps)
-        print(self.infer_steps)
 
         self.model_outputs = [
             None,
