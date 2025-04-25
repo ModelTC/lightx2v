@@ -87,11 +87,9 @@ class WanCausalRunner(WanRunner):
         self.model.transformer_infer._init_crossattn_cache(dtype=torch.bfloat16, device="cuda")
 
         output_latents = torch.zeros(
-            (self.model.config.target_shape[0], 
-             self.num_frames + (self.num_fragments - 1) * (self.num_frames - self.num_frame_per_block), 
-             *self.model.config.target_shape[2:]),
+            (self.model.config.target_shape[0], self.num_frames + (self.num_fragments - 1) * (self.num_frames - self.num_frame_per_block), *self.model.config.target_shape[2:]),
             device="cuda",
-            dtype=torch.bfloat16
+            dtype=torch.bfloat16,
         )
 
         start_block_idx = 0
@@ -136,7 +134,7 @@ class WanCausalRunner(WanRunner):
                 kv_start += self.num_frame_per_block * self.frame_seq_length
                 kv_end += self.num_frame_per_block * self.frame_seq_length
 
-                output_latents[:, start_block_idx * self.num_frame_per_block: (start_block_idx + 1) * self.num_frame_per_block] = self.model.scheduler.latents
+                output_latents[:, start_block_idx * self.num_frame_per_block : (start_block_idx + 1) * self.num_frame_per_block] = self.model.scheduler.latents
                 start_block_idx += 1
 
         return output_latents, self.model.scheduler.generator

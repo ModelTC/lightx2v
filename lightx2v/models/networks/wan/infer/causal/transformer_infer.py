@@ -22,10 +22,12 @@ class WanTransformerInferCausal(WanTransformerInfer):
         kv_cache = []
 
         for _ in range(self.blocks_num):
-            kv_cache.append({
-                "k": torch.zeros([self.kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
-                "v": torch.zeros([self.kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device)
-            })
+            kv_cache.append(
+                {
+                    "k": torch.zeros([self.kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
+                    "v": torch.zeros([self.kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
+                }
+            )
 
         self.kv_cache = kv_cache
 
@@ -33,11 +35,13 @@ class WanTransformerInferCausal(WanTransformerInfer):
         crossattn_cache = []
 
         for _ in range(self.blocks_num):
-            crossattn_cache.append({
-                "k": torch.zeros([self.text_len, self.num_heads, self.head_dim], dtype=dtype, device=device),
-                "v": torch.zeros([self.text_len, self.num_heads, self.head_dim], dtype=dtype, device=device),
-                "is_init": False
-            })
+            crossattn_cache.append(
+                {
+                    "k": torch.zeros([self.text_len, self.num_heads, self.head_dim], dtype=dtype, device=device),
+                    "v": torch.zeros([self.text_len, self.num_heads, self.head_dim], dtype=dtype, device=device),
+                    "is_init": False,
+                }
+            )
 
         self.crossattn_cache = crossattn_cache
 
@@ -52,19 +56,7 @@ class WanTransformerInferCausal(WanTransformerInfer):
                 self.weights_stream_mgr.active_weights[0].to_cuda()
 
             with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
-                x = self.infer_block(
-                    self.weights_stream_mgr.active_weights[0],
-                    grid_sizes,
-                    embed,
-                    x,
-                    embed0,
-                    seq_lens,
-                    freqs,
-                    context,
-                    block_idx,
-                    kv_start,
-                    kv_end
-                )
+                x = self.infer_block(self.weights_stream_mgr.active_weights[0], grid_sizes, embed, x, embed0, seq_lens, freqs, context, block_idx, kv_start, kv_end)
 
             if block_idx < self.blocks_num - 1:
                 self.weights_stream_mgr.prefetch_weights(block_idx + 1, weights.blocks_weights)
@@ -74,21 +66,9 @@ class WanTransformerInferCausal(WanTransformerInfer):
 
     def _infer_without_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, kv_start, kv_end):
         for block_idx in range(self.blocks_num):
-            x = self.infer_block(
-                weights.blocks_weights[block_idx],
-                grid_sizes,
-                embed,
-                x,
-                embed0,
-                seq_lens,
-                freqs,
-                context,
-                block_idx,
-                kv_start,
-                kv_end
-            )
+            x = self.infer_block(weights.blocks_weights[block_idx], grid_sizes, embed, x, embed0, seq_lens, freqs, context, block_idx, kv_start, kv_end)
         return x
-    
+
     def infer_block(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, block_idx, kv_start, kv_end):
         embed0 = (weights.modulation + embed0).chunk(6, dim=1)
 
@@ -101,44 +81,35 @@ class WanTransformerInferCausal(WanTransformerInfer):
         v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
 
         if not self.parallel_attention:
-            freqs_i = compute_freqs_causal(
-                q.size(2) // 2,
-                grid_sizes,
-                freqs,
-                start_frame=kv_start // math.prod(grid_sizes[0][1:]).item()
-            )
+            freqs_i = compute_freqs_causal(q.size(2) // 2, grid_sizes, freqs, start_frame=kv_start // math.prod(grid_sizes[0][1:]).item())
         else:
             # TODO: Implement parallel attention for causal inference
             raise NotImplementedError("Parallel attention is not implemented for causal inference")
-        
+
         q = apply_rotary_emb(q, freqs_i)
         k = apply_rotary_emb(k, freqs_i)
 
         self.kv_cache[block_idx]["k"][kv_start:kv_end] = k
         self.kv_cache[block_idx]["v"][kv_start:kv_end] = v
 
-        cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(
-            q = q, 
-            k = self.kv_cache[block_idx]["k"][:kv_end], 
-            k_lens=torch.tensor([kv_end], dtype=torch.int32, device=k.device)
-        )
+        cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q=q, k=self.kv_cache[block_idx]["k"][:kv_end], k_lens=torch.tensor([kv_end], dtype=torch.int32, device=k.device))
 
         if not self.parallel_attention:
             attn_out = attention(
-                attention_type = self.attention_type, 
-                q = q, 
-                k = self.kv_cache[block_idx]["k"][:kv_end], 
-                v = self.kv_cache[block_idx]["v"][:kv_end], 
-                cu_seqlens_q = cu_seqlens_q, 
-                cu_seqlens_kv = cu_seqlens_k, 
-                max_seqlen_q = lq, 
-                max_seqlen_kv = lk, 
-                model_cls = self.config["model_cls"]
+                attention_type=self.attention_type,
+                q=q,
+                k=self.kv_cache[block_idx]["k"][:kv_end],
+                v=self.kv_cache[block_idx]["v"][:kv_end],
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=lq,
+                max_seqlen_kv=lk,
+                model_cls=self.config["model_cls"],
             )
         else:
             # TODO: Implement parallel attention for causal inference
             raise NotImplementedError("Parallel attention is not implemented for causal inference")
-        
+
         y = weights.self_attn_o.apply(attn_out)
 
         x = x + y * embed0[2].squeeze(0)
@@ -170,7 +141,7 @@ class WanTransformerInferCausal(WanTransformerInfer):
         # TODO: Implement I2V inference for causal model
         if self.task == "i2v":
             raise NotImplementedError("I2V inference for causal model is not implemented")
-        
+
         attn_out = weights.cross_attn_o.apply(attn_out)
 
         x = x + attn_out
@@ -180,4 +151,3 @@ class WanTransformerInferCausal(WanTransformerInfer):
         y = weights.ffn_2.apply(y)
         x = x + y * embed0[5].squeeze(0)
         return x
-        

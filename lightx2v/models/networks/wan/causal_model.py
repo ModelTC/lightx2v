@@ -41,13 +41,13 @@ class WanCausalModel(WanModel):
             weight_dict[key] = value.to(device=self.device, dtype=dtype)
 
         return weight_dict
-    
+
     @torch.no_grad()
     def infer(self, inputs, kv_start, kv_end):
         if self.config["cpu_offload"]:
             self.pre_weight.to_cuda()
             self.post_weight.to_cuda()
-        
+
         embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=True)
 
         x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out, kv_start, kv_end)

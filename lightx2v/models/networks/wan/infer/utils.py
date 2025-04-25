@@ -26,7 +26,7 @@ def compute_freqs_causal(c, grid_sizes, freqs, start_frame=0):
     seq_len = f * h * w
     freqs_i = torch.cat(
         [
-            freqs[0][start_frame:start_frame + f].view(f, 1, 1, -1).expand(f, h, w, -1),
+            freqs[0][start_frame : start_frame + f].view(f, 1, 1, -1).expand(f, h, w, -1),
             freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
             freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1),
         ],
