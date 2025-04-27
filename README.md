@@ -18,6 +18,8 @@
 
 ✅ [Wan2.1-I2V](https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P)
 
+✅ [Wan2.1-T2V-CausVid](https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid)
+
 ## Fast Start Up With Conda
 
 ```shell
