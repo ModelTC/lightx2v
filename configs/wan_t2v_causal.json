@@ -16,5 +16,6 @@
     "num_frame_per_block": 3,
     "num_blocks": 7,
     "frame_seq_length": 1560,
-    "denoising_step_list": [999, 934, 862, 756, 603, 410, 250, 140, 74]
+    "denoising_step_list": [999, 934, 862, 756, 603, 410, 250, 140, 74],
+    "cpu_offload": true
 }
