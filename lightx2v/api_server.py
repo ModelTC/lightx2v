@@ -62,7 +62,7 @@ class Message(BaseModel):
     def get(self, key, default=None):
         return getattr(self, key, default)
 
-    
+
 @app.post("/v1/local/video/generate")
 async def v1_local_video_generate(message: Message, request: Request):
     if message.use_prompt_enhancer and prompt_enhancer is not None:
@@ -76,7 +76,7 @@ async def v1_local_video_generate(message: Message, request: Request):
     global runner
     runner.set_inputs(message)
     await asyncio.to_thread(runner.run_pipeline)
-    return {"response": "finished", "save_video_path": message.save_video_path}
+    return {"response": "finished", "prompt": message.prompt, "save_video_path": message.save_video_path}
 
 
 # =========================
@@ -91,15 +91,15 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_json", type=str, required=True)
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--prompt_enhancer", type=str, nargs='?', const="Qwen/Qwen2.5-32B-Instruct", help="Enable prompt enhancer with optional model name if GPU count >= 2")
+    parser.add_argument("--prompt_enhancer", type=str, nargs="?", const="Qwen/Qwen2.5-32B-Instruct", help="Enable prompt enhancer with optional model name if GPU count >= 2")
     args = parser.parse_args()
     print(f"args: {args}")
 
     gpu_count = torch.cuda.device_count()
     print(f"Available GPU count: {gpu_count}")
-    
+
     prompt_enhancer, enhancer_gpu_id = None, None
-    
+
     # Only enable prompt_enhancer if we have enough GPUs and the argument is provided
     if args.prompt_enhancer is not None:
         if gpu_count >= 2:
@@ -115,15 +115,15 @@ if __name__ == "__main__":
             video_gpus = list(range(enhancer_gpu_id))  # All GPUs except the enhancer GPU
             video_gpus_str = ",".join(map(str, video_gpus))
             print(f"Setting video model to use GPUs: {video_gpus_str}")
-            
+
             original_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
             os.environ["CUDA_VISIBLE_DEVICES"] = video_gpus_str
-            
+
             # Initialize the runner with only video GPUs visible
             config = set_config(args)
             print(f"config:\n{json.dumps(config, ensure_ascii=False, indent=4)}")
             runner = init_runner(config)
-            
+
             # Restore original CUDA_VISIBLE_DEVICES
             if original_cuda_devices:
                 os.environ["CUDA_VISIBLE_DEVICES"] = original_cuda_devices

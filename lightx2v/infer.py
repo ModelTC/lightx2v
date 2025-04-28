@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--negative_prompt", type=str, default="")
     parser.add_argument("--image_path", type=str, default="", help="The path to input image file or path for image-to-video (i2v) task")
     parser.add_argument("--save_video_path", type=str, default="./output_lightx2v.mp4", help="The path to save video path/file")
-    parser.add_argument("--prompt_enhancer", type=str, nargs='?', const="Qwen/Qwen2.5-32B-Instruct", help="Enable prompt enhancer with optional model name")
+    parser.add_argument("--prompt_enhancer", type=str, nargs="?", const="Qwen/Qwen2.5-32B-Instruct", help="Enable prompt enhancer with optional model name")
     args = parser.parse_args()
     print(f"args: {args}")
 
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 del prompt_enhancer
                 gc.collect()
                 torch.cuda.empty_cache()
-            
+
         config = set_config(args)
         print(f"config:\n{json.dumps(config, ensure_ascii=False, indent=4)}")
         runner = init_runner(config)
