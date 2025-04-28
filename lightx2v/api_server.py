@@ -3,10 +3,14 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
 import json
+import torch
+import gc
+import os
 
 from lightx2v.utils.profiler import ProfilingContext
 from lightx2v.utils.set_config import set_config
 from lightx2v.infer import init_runner
+from lightx2v.utils.prompt_enhancer import PromptEnhancer
 
 
 class Message(BaseModel):
@@ -14,12 +18,22 @@ class Message(BaseModel):
     negative_prompt: str = ""
     image_path: str = ""
     save_video_path: str
+    use_prompt_enhancer: bool = False
 
     def get(self, key, default=None):
         return getattr(self, key, default)
 
 
 async def main(message):
+    # Apply prompt enhancement if enabled
+    if message.use_prompt_enhancer and prompt_enhancer is not None:
+        with ProfilingContext("Prompt Enhancer Cost"):
+            print(f"Enhancing prompt using model")
+            enhanced_prompt = prompt_enhancer(message.prompt)
+            print(f"Original prompt: {message.prompt}")
+            print(f"Enhanced prompt: {enhanced_prompt}")
+            message.prompt = enhanced_prompt
+    
     runner.set_inputs(message)
     runner.run_pipeline()
     return {"response": "finished"}
@@ -32,13 +46,49 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_json", type=str, required=True)
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--prompt_enhancer", type=str, nargs='?', const="Qwen/Qwen2.5-32B-Instruct", help="Enable prompt enhancer with optional model name if GPU count >= 2")
     args = parser.parse_args()
     print(f"args: {args}")
 
+    gpu_count = torch.cuda.device_count()
+    print(f"Available GPU count: {gpu_count}")
+    
+    prompt_enhancer, enhancer_gpu_id = None, None
+    
+    # Only enable prompt_enhancer if we have enough GPUs and the argument is provided
+    if args.prompt_enhancer is not None:
+        if gpu_count >= 2:
+            enhancer_gpu_id = gpu_count - 1  # Use the last GPU for enhancer
+            with ProfilingContext("Init Prompt Enhancer Cost"):
+                print(f"Initializing prompt enhancer on cuda:{enhancer_gpu_id}")
+                prompt_enhancer = PromptEnhancer(model_name=args.prompt_enhancer, device_map=f"cuda:{enhancer_gpu_id}")
+        else:
+            print("Warning: prompt_enhancer requires at least 2 GPUs, disabling this feature")
+
     with ProfilingContext("Init Server Cost"):
-        config = set_config(args)
-        print(f"config:\n{json.dumps(config, ensure_ascii=False, indent=4)}")
-        runner = init_runner(config)
+        if gpu_count >= 2 and enhancer_gpu_id is not None:
+            video_gpus = list(range(enhancer_gpu_id))  # All GPUs except the enhancer GPU
+            video_gpus_str = ",".join(map(str, video_gpus))
+            print(f"Setting video model to use GPUs: {video_gpus_str}")
+            
+            original_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+            os.environ["CUDA_VISIBLE_DEVICES"] = video_gpus_str
+            
+            # Initialize the runner with only video GPUs visible
+            config = set_config(args)
+            print(f"config:\n{json.dumps(config, ensure_ascii=False, indent=4)}")
+            runner = init_runner(config)
+            
+            # Restore original CUDA_VISIBLE_DEVICES
+            if original_cuda_devices:
+                os.environ["CUDA_VISIBLE_DEVICES"] = original_cuda_devices
+            else:
+                os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+        else:
+            # No need to restrict GPUs
+            config = set_config(args)
+            print(f"config:\n{json.dumps(config, ensure_ascii=False, indent=4)}")
+            runner = init_runner(config)
 
     app = FastAPI()
 
