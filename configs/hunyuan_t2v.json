@@ -8,5 +8,6 @@
     "mm_config": {
         "mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm",
         "weight_auto_quant": true
-    }
+    },
+    "prompt_enhancer_cpu_offload": true
 }

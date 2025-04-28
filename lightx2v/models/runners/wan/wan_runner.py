@@ -27,7 +27,7 @@ class WanRunner(DefaultRunner):
             cur_rank = dist.get_rank()
             torch.cuda.set_device(cur_rank)
         image_encoder = None
-        if self.config.cpu_offload:
+        if self.config.cpu_offload or self.prompt_enhancer_cpu_offload:
             init_device = torch.device("cpu")
         else:
             init_device = torch.device("cuda")

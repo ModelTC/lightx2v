@@ -34,7 +34,7 @@ class WanCausalRunner(WanRunner):
             cur_rank = dist.get_rank()
             torch.cuda.set_device(cur_rank)
         image_encoder = None
-        if self.config.cpu_offload:
+        if self.config.cpu_offload or self.prompt_enhancer_cpu_offload:
             init_device = torch.device("cpu")
         else:
             init_device = torch.device("cuda")
@@ -138,3 +138,9 @@ class WanCausalRunner(WanRunner):
                 start_block_idx += 1
 
         return output_latents, self.model.scheduler.generator
+
+    def end_run(self):
+        self.model.scheduler.clear()
+        del self.inputs, self.model.scheduler
+        del self.model.transformer_infer.kv_cache, self.model.transformer_infer.crossattn_cache
+        torch.cuda.empty_cache()

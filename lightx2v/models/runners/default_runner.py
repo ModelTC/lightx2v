@@ -1,15 +1,68 @@
+import os
 import gc
 import torch
 import torch.distributed as dist
 from lightx2v.utils.profiler import ProfilingContext4Debug, ProfilingContext
 from lightx2v.utils.utils import save_videos_grid, cache_video
 from lightx2v.utils.envs import *
+from lightx2v.utils.prompt_enhancer import PromptEnhancer
 
 
 class DefaultRunner:
     def __init__(self, config):
         self.config = config
+
+        self.prompt_enhancer_cpu_offload = False
+        self.gpu_count = torch.cuda.device_count()
+        self.all_gpus = os.environ["CUDA_VISIBLE_DEVICES"]
+        self.video_gpus = os.environ["CUDA_VISIBLE_DEVICES"]
+
+        if self.config.prompt_enhancer is not None and self.config.task == "t2v":
+            self.prompt_enhancer_cpu_offload = self.config.prompt_enhancer_cpu_offload
+            self.load_prompt_enhancer()
+            if not self.prompt_enhancer_cpu_offload:
+                self.video_gpus = ",".join(self.all_gpus.split(",")[: self.gpu_count - 1])
+
+        print(f"Prompt Enhancer CPU Offload: {self.prompt_enhancer_cpu_offload}")
+        print(f"All GPUs: {self.all_gpus}")
+        print(f"Video GPUs: {self.video_gpus}")
+
+        os.environ["CUDA_VISIBLE_DEVICES"] = self.video_gpus
         self.model, self.text_encoders, self.vae_model, self.image_encoder = self.load_model()
+        os.environ["CUDA_VISIBLE_DEVICES"] = self.all_gpus
+
+    @ProfilingContext("Load prompt enhancer")
+    def load_prompt_enhancer(self):
+        gpu_count = torch.cuda.device_count()
+
+        if gpu_count == 1:
+            self.prompt_enhancer_cpu_offload = True
+
+        self.prompt_enhancer = PromptEnhancer(model_name=self.config.prompt_enhancer, device_map="cpu" if self.prompt_enhancer_cpu_offload else f"cuda:{self.gpu_count - 1}")
+
+    def run_prompt_enhancer(self):
+        if self.config.prompt_enhancer is None or self.config.task != "t2v":
+            return
+
+        if self.prompt_enhancer_cpu_offload:
+            self.prompt_enhancer.to_device(f"cuda:{self.gpu_count - 1}")
+
+        enhanced_prompt = self.prompt_enhancer(self.config.prompt)
+        print(f"Original prompt: {self.config.prompt}")
+        print(f"Enhanced prompt: {enhanced_prompt}")
+        self.config.prompt = enhanced_prompt
+
+        if self.prompt_enhancer_cpu_offload:
+            self.prompt_enhancer.to_device("cpu")
+            if not self.config.cpu_offload:
+                self.model_to_device("cuda")
+
+    def model_to_device(self, device):
+        if device == "cuda" and self.config["parallel_attn_type"]:
+            cur_rank = dist.get_rank()
+            torch.cuda.set_device(cur_rank)
+
+        self.model, self.text_encoders, self.vae_model, self.image_encoder = self.model.to(device), self.text_encoders.to(device), self.vae_model.to(device), self.image_encoder.to(device)
 
     def set_inputs(self, inputs):
         self.config["prompt"] = inputs.get("prompt", "")
@@ -54,10 +107,9 @@ class DefaultRunner:
         self.model.scheduler.step_post()
 
     def end_run(self):
-        if self.config.cpu_offload:
-            self.model.scheduler.clear()
-            del self.inputs, self.model.scheduler, self.model, self.text_encoders
-            torch.cuda.empty_cache()
+        self.model.scheduler.clear()
+        del self.inputs, self.model.scheduler
+        torch.cuda.empty_cache()
 
     @ProfilingContext("Run VAE")
     def run_vae(self, latents, generator):
@@ -73,6 +125,7 @@ class DefaultRunner:
                 save_videos_grid(images, self.config.save_video_path, fps=24)
 
     def run_pipeline(self):
+        self.run_prompt_enhancer()
         self.init_scheduler()
         self.run_input_encoder()
         self.model.scheduler.prepare(self.inputs["image_encoder_output"])
@@ -80,3 +133,8 @@ class DefaultRunner:
         self.end_run()
         images = self.run_vae(latents, generator)
         self.save_video(images)
+        del latents, generator, images
+        gc.collect()
+        torch.cuda.empty_cache()
+        if self.prompt_enhancer_cpu_offload:
+            self.model_to_device("cpu")

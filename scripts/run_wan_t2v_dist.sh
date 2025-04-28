@@ -3,6 +3,7 @@
 # set path and first
 lightx2v_path=
 model_path=
+prompt_enhancer_path=
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
@@ -32,6 +33,7 @@ torchrun --nproc_per_node=4 ${lightx2v_path}/lightx2v/infer.py \
 --task t2v \
 --model_path $model_path \
 --prompt "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
+--prompt_enhancer ${prompt_enhancer_path} \
 --infer_steps 50 \
 --target_video_length 84 \
 --target_width  832 \
@@ -50,6 +52,7 @@ torchrun --nproc_per_node=4 ${lightx2v_path}/lightx2v/infer.py \
 --task t2v \
 --model_path $model_path \
 --prompt "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
+--prompt_enhancer ${prompt_enhancer_path} \
 --infer_steps 50 \
 --target_video_length 81 \
 --target_width  832 \

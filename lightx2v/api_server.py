@@ -78,6 +78,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_json", type=str, required=True)
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--prompt_enhancer", default=None)
     args = parser.parse_args()
     print(f"args: {args}")
 

@@ -3,6 +3,7 @@
 # set path and first
 lightx2v_path=
 model_path=
+prompt_enhancer_path=
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
@@ -41,4 +42,5 @@ torchrun --nproc_per_node=4 ${lightx2v_path}/lightx2v/infer.py \
 --model_path $model_path \
 --config_json ${lightx2v_path}/configs/dist/hunyuan_t2v_dist_ring.json \
 --prompt "A cat walks on the grass, realistic style." \
+--prompt_enhancer ${prompt_enhancer_path} \
 --save_video_path ${lightx2v_path}/save_results/output_lightx2v_hunyuan_t2v_dist_ring.mp4
