@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # set path and first
-lightx2v_path=
-model_path=
+lightx2v_path="/home/yangrongjin/lightx2v"
+model_path="/mtc/yongyang/models/x2v_models/wan/Wan2.1-I2V-14B-480P"
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then

@@ -2,7 +2,7 @@
 
 # set path and first
 lightx2v_path="/home/yangrongjin/lightx2v"
-model_path="/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/i2v"
+model_path="/mtc/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B"
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
@@ -29,10 +29,10 @@ export ENABLE_PROFILING_DEBUG=true
 export ENABLE_GRAPH_MODE=false
 
 python -m lightx2v.infer \
---model_cls hunyuan \
---task i2v \
+--model_cls wan2.1 \
+--task t2v \
 --model_path $model_path \
---config_json ${lightx2v_path}/configs/hunyuan_i2v.json \
---prompt "An Asian man with short hair in black tactical uniform and white clothes waves a firework stick." \
---image_path ${lightx2v_path}/assets/inputs/imgs/img_1.jpg \
---save_video_path ${lightx2v_path}/save_results/output_lightx2v_hy_i2v.mp4
+--config_json ${lightx2v_path}/configs/caching/wan_t2v_Tea.json \
+--prompt "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
+--negative_prompt 色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走 \
+--save_video_path ${lightx2v_path}/save_results/output_lightx2v_wan_t2v_tea.mp4
