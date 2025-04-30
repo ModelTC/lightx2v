@@ -1,13 +1,13 @@
 import torch
 import math
-from ..utils import compute_freqs, compute_freqs_causal, compute_freqs_dist, apply_rotary_emb
+from ..utils import compute_freqs, compute_freqs_causvid, compute_freqs_dist, apply_rotary_emb
 from lightx2v.attentions import attention
 from lightx2v.common.offload.manager import WeightStreamManager
 from lightx2v.utils.envs import *
 from ..transformer_infer import WanTransformerInfer
 
 
-class WanTransformerInferCausal(WanTransformerInfer):
+class WanTransformerInferCausVid(WanTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
         self.num_frames = config["num_frames"]
@@ -52,25 +52,55 @@ class WanTransformerInferCausal(WanTransformerInfer):
     def _infer_with_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, kv_start, kv_end):
         for block_idx in range(self.blocks_num):
             if block_idx == 0:
-                self.weights_stream_mgr.active_weights[0] = weights.blocks_weights[0]
+                self.weights_stream_mgr.active_weights[0] = weights.blocks[0]
                 self.weights_stream_mgr.active_weights[0].to_cuda()
 
             with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
-                x = self.infer_block(self.weights_stream_mgr.active_weights[0], grid_sizes, embed, x, embed0, seq_lens, freqs, context, block_idx, kv_start, kv_end)
+                x = self.infer_block(
+                    self.weights_stream_mgr.active_weights[0],
+                    grid_sizes,
+                    embed,
+                    x,
+                    embed0,
+                    seq_lens,
+                    freqs,
+                    context,
+                    block_idx,
+                    kv_start,
+                    kv_end,
+                )
 
             if block_idx < self.blocks_num - 1:
-                self.weights_stream_mgr.prefetch_weights(block_idx + 1, weights.blocks_weights)
+                self.weights_stream_mgr.prefetch_weights(block_idx + 1, weights.blocks)
             self.weights_stream_mgr.swap_weights()
 
         return x
 
     def _infer_without_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, kv_start, kv_end):
         for block_idx in range(self.blocks_num):
-            x = self.infer_block(weights.blocks_weights[block_idx], grid_sizes, embed, x, embed0, seq_lens, freqs, context, block_idx, kv_start, kv_end)
+            x = self.infer_block(
+                weights.blocks[block_idx],
+                grid_sizes,
+                embed,
+                x,
+                embed0,
+                seq_lens,
+                freqs,
+                context,
+                block_idx,
+                kv_start,
+                kv_end,
+            )
         return x
 
     def infer_block(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, block_idx, kv_start, kv_end):
-        embed0 = (weights.modulation + embed0).chunk(6, dim=1)
+        if embed0.dim() == 3:
+            modulation = weights.modulation.tensor.unsqueeze(2)  # 1, 6, 1, dim
+            embed0 = embed0.unsqueeze(0)  #
+            embed0 = (modulation + embed0).chunk(6, dim=1)
+            embed0 = [ei.squeeze(1) for ei in embed0]
+        elif embed0.dim() == 2:
+            embed0 = (weights.modulation.tensor + embed0).chunk(6, dim=1)
 
         norm1_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
         norm1_out = (norm1_out * (1 + embed0[1]) + embed0[0]).squeeze(0)
@@ -81,10 +111,10 @@ class WanTransformerInferCausal(WanTransformerInfer):
         v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
 
         if not self.parallel_attention:
-            freqs_i = compute_freqs_causal(q.size(2) // 2, grid_sizes, freqs, start_frame=kv_start // math.prod(grid_sizes[0][1:]).item())
+            freqs_i = compute_freqs_causvid(q.size(2) // 2, grid_sizes, freqs, start_frame=kv_start // math.prod(grid_sizes[0][1:]).item())
         else:
-            # TODO: Implement parallel attention for causal inference
-            raise NotImplementedError("Parallel attention is not implemented for causal inference")
+            # TODO: Implement parallel attention for causvid inference
+            raise NotImplementedError("Parallel attention is not implemented for causvid inference")
 
         q = apply_rotary_emb(q, freqs_i)
         k = apply_rotary_emb(k, freqs_i)
@@ -107,8 +137,8 @@ class WanTransformerInferCausal(WanTransformerInfer):
                 model_cls=self.config["model_cls"],
             )
         else:
-            # TODO: Implement parallel attention for causal inference
-            raise NotImplementedError("Parallel attention is not implemented for causal inference")
+            # TODO: Implement parallel attention for causvid inference
+            raise NotImplementedError("Parallel attention is not implemented for causvid inference")
 
         y = weights.self_attn_o.apply(attn_out)
 
@@ -116,9 +146,9 @@ class WanTransformerInferCausal(WanTransformerInfer):
 
         norm3_out = weights.norm3.apply(x)
 
-        # TODO: Implement I2V inference for causal model
+        # TODO: Implement I2V inference for causvid model
         if self.task == "i2v":
-            raise NotImplementedError("I2V inference for causal model is not implemented")
+            raise NotImplementedError("I2V inference for causvid model is not implemented")
 
         n, d = self.num_heads, self.head_dim
         q = weights.cross_attn_norm_q.apply(weights.cross_attn_q.apply(norm3_out)).view(-1, n, d)
@@ -138,9 +168,9 @@ class WanTransformerInferCausal(WanTransformerInfer):
             attention_type=self.attention_type, q=q, k=k, v=v, cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_k, max_seqlen_q=lq, max_seqlen_kv=lk, model_cls=self.config["model_cls"]
         )
 
-        # TODO: Implement I2V inference for causal model
+        # TODO: Implement I2V inference for causvid model
         if self.task == "i2v":
-            raise NotImplementedError("I2V inference for causal model is not implemented")
+            raise NotImplementedError("I2V inference for causvid model is not implemented")
 
         attn_out = weights.cross_attn_o.apply(attn_out)
 

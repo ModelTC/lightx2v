@@ -10,8 +10,8 @@ from lightx2v.models.networks.wan.weights.transformer_weights import (
 )
 from lightx2v.models.networks.wan.infer.pre_infer import WanPreInfer
 from lightx2v.models.networks.wan.infer.post_infer import WanPostInfer
-from lightx2v.models.networks.wan.infer.causal.transformer_infer import (
-    WanTransformerInferCausal,
+from lightx2v.models.networks.wan.infer.causvid.transformer_infer import (
+    WanTransformerInferCausVid,
 )
 from lightx2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferTeaCaching
 from safetensors import safe_open
@@ -19,7 +19,7 @@ import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
 
 
-class WanCausalModel(WanModel):
+class WanCausVidModel(WanModel):
     pre_weight_class = WanPreWeights
     post_weight_class = WanPostWeights
     transformer_weight_class = WanTransformerWeights
@@ -30,7 +30,7 @@ class WanCausalModel(WanModel):
     def _init_infer_class(self):
         self.pre_infer_class = WanPreInfer
         self.post_infer_class = WanPostInfer
-        self.transformer_infer_class = WanTransformerInferCausal
+        self.transformer_infer_class = WanTransformerInferCausVid
 
     def _load_ckpt(self):
         use_bfloat16 = self.config.get("use_bfloat16", True)
