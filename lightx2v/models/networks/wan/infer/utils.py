@@ -20,7 +20,7 @@ def compute_freqs(c, grid_sizes, freqs):
     return freqs_i
 
 
-def compute_freqs_causal(c, grid_sizes, freqs, start_frame=0):
+def compute_freqs_causvid(c, grid_sizes, freqs, start_frame=0):
     freqs = freqs.split([c - 2 * (c // 3), c // 3, c // 3], dim=1)
     f, h, w = grid_sizes[0].tolist()
     seq_len = f * h * w

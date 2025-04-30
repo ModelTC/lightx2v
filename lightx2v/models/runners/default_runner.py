@@ -3,17 +3,36 @@ import torch
 import torch.distributed as dist
 from lightx2v.utils.profiler import ProfilingContext4Debug, ProfilingContext
 from lightx2v.utils.utils import save_videos_grid, cache_video
+from lightx2v.utils.prompt_enhancer import PromptEnhancer
 from lightx2v.utils.envs import *
 from loguru import logger
-
 
 class DefaultRunner:
     def __init__(self, config):
         self.config = config
+        self.config["user_prompt"] = self.config["prompt"]
+        self.has_prompt_enhancer = self.config.prompt_enhancer is not None and self.config.task == "t2v"
+        self.config["use_prompt_enhancer"] = self.has_prompt_enhancer
+
+        if self.has_prompt_enhancer:
+            self.load_prompt_enhancer()
+
         self.model, self.text_encoders, self.vae_model, self.image_encoder = self.load_model()
 
+    @ProfilingContext("Load prompt enhancer")
+    def load_prompt_enhancer(self):
+        gpu_count = torch.cuda.device_count()
+
+        if gpu_count == 1:
+            logger.info("Only one GPU, use prompt enhancer cpu offload")
+            raise NotImplementedError("prompt enhancer cpu offload is not supported.")
+
+        self.prompt_enhancer = PromptEnhancer(model_name=self.config.prompt_enhancer, device_map="cuda:1")
+
     def set_inputs(self, inputs):
+        self.config["user_prompt"] = inputs.get("prompt", "")
         self.config["prompt"] = inputs.get("prompt", "")
+        self.config["use_prompt_enhancer"] = inputs.get("use_prompt_enhancer", False)
         self.config["negative_prompt"] = inputs.get("negative_prompt", "")
         self.config["image_path"] = inputs.get("image_path", "")
         self.config["save_video_path"] = inputs.get("save_video_path", "")
@@ -55,10 +74,9 @@ class DefaultRunner:
         self.model.scheduler.step_post()
 
     def end_run(self):
-        if self.config.cpu_offload:
-            self.model.scheduler.clear()
-            del self.inputs, self.model.scheduler, self.model, self.text_encoders
-            torch.cuda.empty_cache()
+        self.model.scheduler.clear()
+        del self.inputs, self.model.scheduler
+        torch.cuda.empty_cache()
 
     @ProfilingContext("Run VAE")
     def run_vae(self, latents, generator):
@@ -68,12 +86,14 @@ class DefaultRunner:
     @ProfilingContext("Save video")
     def save_video(self, images):
         if not self.config.parallel_attn_type or (self.config.parallel_attn_type and dist.get_rank() == 0):
-            if self.config.model_cls in ["wan2.1", "wan2.1_causal", "wan2.1_skyreels_v2_df"]:
+            if self.config.model_cls in ["wan2.1", "wan2.1_causvid", "wan2.1_skyreels_v2_df"]:
                 cache_video(tensor=images, save_file=self.config.save_video_path, fps=16, nrow=1, normalize=True, value_range=(-1, 1))
             else:
                 save_videos_grid(images, self.config.save_video_path, fps=24)
 
     def run_pipeline(self):
+        if self.has_prompt_enhancer and self.config["use_prompt_enhancer"]:
+            self.config["prompt"] = self.prompt_enhancer(self.config["user_prompt"])
         self.init_scheduler()
         self.run_input_encoder()
         self.model.scheduler.prepare(self.inputs["image_encoder_output"])
@@ -81,3 +101,6 @@ class DefaultRunner:
         self.end_run()
         images = self.run_vae(latents, generator)
         self.save_video(images)
+        del latents, generator, images
+        gc.collect()
+        torch.cuda.empty_cache()

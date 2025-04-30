@@ -51,8 +51,10 @@ app = FastAPI()
 
 class Message(BaseModel):
     prompt: str
+    use_prompt_enhancer: bool = False
     negative_prompt: str = ""
     image_path: str = ""
+    num_fragments: int = 1
     save_video_path: str
 
     def get(self, key, default=None):
@@ -63,8 +65,12 @@ class Message(BaseModel):
 async def v1_local_video_generate(message: Message):
     global runner
     runner.set_inputs(message)
+    logger.info(f"message: {message}")
     await asyncio.to_thread(runner.run_pipeline)
-    return {"response": "finished", "save_video_path": message.save_video_path}
+    response = {"response": "finished", "save_video_path": message.save_video_path}
+    if runner.has_prompt_enhancer and message.use_prompt_enhancer:
+        response["enhanced_prompt"] = runner.config["prompt"]
+    return response
 
 
 # =========================
@@ -74,10 +80,11 @@ async def v1_local_video_generate(message: Message):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causal"], default="hunyuan")
+    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_json", type=str, required=True)
+    parser.add_argument("--prompt_enhancer", default=None)
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     logger.info(f"args: {args}")
