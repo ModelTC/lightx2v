@@ -7,6 +7,7 @@ from lightx2v.utils.prompt_enhancer import PromptEnhancer
 from lightx2v.utils.envs import *
 from loguru import logger
 
+
 class DefaultRunner:
     def __init__(self, config):
         self.config = config
