@@ -26,9 +26,9 @@ class HunyuanTransformerInferTeaCaching(HunyuanTransformerInfer):
         inp = img.clone()
         vec_ = vec.clone()
 
-        weights.double_blocks_weights[0].to_cuda()
-        img_mod1_shift, img_mod1_scale, _, _, _, _ = weights.double_blocks_weights[0].img_mod.apply(vec_).chunk(6, dim=-1)
-        weights.double_blocks_weights[0].to_cpu_sync()
+        weights.double_blocks[0].to_cuda()
+        img_mod1_shift, img_mod1_scale, _, _, _, _ = weights.double_blocks[0].img_mod.apply(vec_).chunk(6, dim=-1)
+        weights.double_blocks[0].to_cpu_sync()
 
         normed_inp = torch.nn.functional.layer_norm(inp, (inp.shape[1],), None, None, 1e-6)
         modulated_inp = normed_inp * (1 + img_mod1_scale) + img_mod1_shift
@@ -74,14 +74,14 @@ class HunyuanTransformerInferTaylorCaching(HunyuanTransformerInfer):
         self.scheduler.current["stream"] = "double_stream"
         for i in range(self.double_blocks_num):
             self.scheduler.current["layer"] = i
-            img, txt = self.infer_double_block(weights.double_blocks_weights[i], img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
+            img, txt = self.infer_double_block(weights.double_blocks[i], img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis)
 
         x = torch.cat((img, txt), 0)
 
         self.scheduler.current["stream"] = "single_stream"
         for i in range(self.single_blocks_num):
             self.scheduler.current["layer"] = i
-            x = self.infer_single_block(weights.single_blocks_weights[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
+            x = self.infer_single_block(weights.single_blocks[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis)
 
         img = x[:img_seq_len, ...]
         return img, vec
@@ -110,7 +110,7 @@ class HunyuanTransformerInferTaylorCaching(HunyuanTransformerInfer):
         ) = txt_mod_out.chunk(6, dim=-1)
 
         if self.scheduler.current["type"] == "full":
-            img_q, img_k, img_v = self.infer_double_block_img_pre_atten(weights, img, img_mod1_scale, img_mod1_shift, freqs_cis)
+            img_q, img_k, img_v = self.infer_double_block_img_pre_atten(weights, img, img_mod1_scale, img_mod1_shift, None, None, None, freqs_cis)
             txt_q, txt_k, txt_v = self.infer_double_block_txt_pre_atten(weights, txt, txt_mod1_scale, txt_mod1_shift)
 
             q = torch.cat((img_q, txt_q), dim=0)

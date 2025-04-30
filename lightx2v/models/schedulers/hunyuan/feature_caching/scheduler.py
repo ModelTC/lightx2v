@@ -7,8 +7,8 @@ class HunyuanSchedulerTeaCaching(HunyuanScheduler):
     def __init__(self, config):
         super().__init__(config)
         self.cnt = 0
-        self.num_steps = self.args.infer_steps
-        self.teacache_thresh = self.args.teacache_thresh
+        self.num_steps = self.infer_steps
+        self.teacache_thresh = self.config.teacache_thresh
         self.accumulated_rel_l1_distance = 0
         self.previous_modulated_input = None
         self.previous_residual = None

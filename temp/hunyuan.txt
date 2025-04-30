@@ -1,0 +1,80 @@
+/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/
+├── i2v
+│   ├── hunyuan-video-i2v-720p
+│   │   ├── lora
+│   │   │   ├── embrace_kohaya_weights.safetensors
+│   │   │   └── hair_growth_kohaya_weights.safetensors
+│   │   ├── transformers
+│   │   │   └── mp_rank_00_model_states.pt
+│   │   └── vae
+│   │       ├── config.json
+│   │       └── pytorch_model.pt
+│   ├── text_encoder_i2v
+│   |   ├── README.md
+│   |   ├── config.json
+│   |   ├── generation_config.json
+│   |   ├── model-00001-of-00004.safetensors
+│   |   ├── model-00002-of-00004.safetensors
+│   |   ├── model-00003-of-00004.safetensors
+│   |   ├── model-00004-of-00004.safetensors
+│   |   ├── model.safetensors.index.json
+│   |   ├── preprocessor_config.json
+│   |   ├── special_tokens_map.json
+│   |   ├── tokenizer.json
+│   |   └── tokenizer_config.json
+│   └── text_encoder_2
+│       ├── README.md
+│       ├── config.json
+│       ├── flax_model.msgpack
+│       ├── merges.txt
+│       ├── model.safetensors
+│       ├── onnx
+│       │   └── clip_l
+│       │       ├── clip_l.engine
+│       │       └── clip_l.onnx
+│       ├── preprocessor_config.json
+│       ├── pytorch_model.bin
+│       ├── special_tokens_map.json
+│       ├── tf_model.h5
+│       ├── tokenizer.json
+│       ├── tokenizer_config.json
+│       └── vocab.json
+└── t2v
+    ├── hunyuan-video-t2v-720p
+    │   ├── transformers
+    │   │   ├── mp_rank_00_model_states.pt
+    │   │   ├── mp_rank_00_model_states_fp8.pt
+    │   │   └── mp_rank_00_model_states_fp8_map.pt
+    │   └── vae
+    │       ├── config.json
+    │       ├── pytorch_model.pt
+    │       ├── vae_decoder.engine
+    │       └── vae_decoder.onnx
+    ├── text_encoder
+    │   ├── config.json
+    │   ├── generation_config.json
+    │   ├── model-00001-of-00004.safetensors
+    │   ├── model-00002-of-00004.safetensors
+    │   ├── model-00003-of-00004.safetensors
+    │   ├── model-00004-of-00004.safetensors
+    │   ├── model.safetensors.index.json
+    │   ├── special_tokens_map.json
+    │   ├── tokenizer.json
+    │   └── tokenizer_config.json
+    └── text_encoder_2
+        ├── README.md
+        ├── config.json
+        ├── flax_model.msgpack
+        ├── merges.txt
+        ├── model.safetensors
+        ├── onnx
+        │   └── clip_l
+        │       ├── clip_l.engine
+        │       └── clip_l.onnx
+        ├── preprocessor_config.json
+        ├── pytorch_model.bin
+        ├── special_tokens_map.json
+        ├── tf_model.h5
+        ├── tokenizer.json
+        ├── tokenizer_config.json
+        └── vocab.json
