@@ -1,0 +1,19 @@
+{
+    "infer_steps": 50,
+    "target_video_length": 81,
+    "text_len": 512,
+    "target_height": 480,
+    "target_width": 832,
+    "attention_type": "flash_attn3",
+    "seed": 42,
+    "sample_guide_scale": 6,
+    "sample_shift": 8,
+    "enable_cfg": true,
+    "cpu_offload": false,
+    "mm_config": {
+        "mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Sgl",
+        "weight_auto_quant": true
+    },
+    "sparge": true,
+    "sparge_ckpt": "configs/shared_weights/sparge_wan2.1_t2v_1.3B.pt "
+}
