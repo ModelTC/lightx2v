@@ -47,17 +47,17 @@ class WanTransformerAttentionBlock(WeightModule):
         if self.config["sparge"]:
             assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
             self.add_module("self_attn_1", ATTN_WEIGHT_REGISTER["Sparge"](f"blocks.{self.block_index}"))
-            self.add_module("cross_attn_1", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
+            self.add_module("cross_attn_1", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
         else:
-            self.add_module("self_attn_1", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
-            self.add_module("cross_attn_1", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
+            self.add_module("self_attn_1", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
+            self.add_module("cross_attn_1", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
 
         if self.task == "i2v":
             self.add_module("cross_attn_k_img", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.k_img.weight", f"blocks.{self.block_index}.cross_attn.k_img.bias"))
             self.add_module("cross_attn_v_img", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.cross_attn.v_img.weight", f"blocks.{self.block_index}.cross_attn.v_img.bias"))
             self.add_module("cross_attn_norm_k_img", RMS_WEIGHT_REGISTER["sgl-kernel"](f"blocks.{self.block_index}.cross_attn.norm_k_img.weight"))
             # attention weights
-            self.add_module("cross_attn_2", ATTN_WEIGHT_REGISTER["Default"](attn_type=self.config["attention_type"]))
+            self.add_module("cross_attn_2", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
 
         # load attn weights
         if self.config["sparge"]:

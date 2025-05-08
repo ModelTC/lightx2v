@@ -2,8 +2,38 @@ import torch
 import torch.nn as nn
 from abc import ABCMeta, abstractmethod
 from lightx2v.utils.registry_factory import ATTN_WEIGHT_REGISTER
-from lightx2v.attentions import attention
-from spas_sage_attn.autotune import SparseAttentionMeansim
+import torch.nn.functional as F
+
+try:
+    from spas_sage_attn.autotune import SparseAttentionMeansim
+except ImportError:
+    print("SparseAttentionMeansim not found, please install sparge first")
+    SparseAttentionMeansim = None
+
+try:
+    from flash_attn.flash_attn_interface import flash_attn_varlen_func
+except ImportError:
+    print("flash_attn_varlen_func not found, please install flash_attn2 first")
+    flash_attn_varlen_func = None
+
+try:
+    from flash_attn_interface import flash_attn_varlen_func as flash_attn_varlen_func_v3
+except ImportError:
+    print("flash_attn_varlen_func_v3 not found, please install flash_attn3 first")
+    flash_attn_varlen_func_v3 = None
+
+if torch.cuda.get_device_capability(0) == (8, 9):
+    try:
+        from sageattention import sageattn_qk_int8_pv_fp16_triton as sageattn
+    except ImportError:
+        print("sageattn not found, please install sageattention first")
+        sageattn = None, None
+else:
+    try:
+        from sageattention import sageattn
+    except ImportError:
+        print("sageattn not found, please install sageattention first")
+        sageattn = None
 
 
 class AttnWeightTemplate(metaclass=ABCMeta):
@@ -29,21 +59,91 @@ class AttnWeightTemplate(metaclass=ABCMeta):
         self.weight = self.weight.cuda(non_blocking=non_blocking)
 
 
-@ATTN_WEIGHT_REGISTER("Default")
-class DefaultAttnWeightTemplate(AttnWeightTemplate):
-    def __init__(self, attn_type):
-        self.attn_type = attn_type
+@ATTN_WEIGHT_REGISTER("flash_attn2")
+class FlashAttn2Weight(AttnWeightTemplate):
+    def __init__(self):
         self.config = {}
 
-    def load(self, weight_dict):
-        pass
+    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None):
+        x = flash_attn_varlen_func(
+            q,
+            k,
+            v,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            max_seqlen_q,
+            max_seqlen_kv,
+        ).reshape(max_seqlen_q, -1)
+        return x
+
+
+@ATTN_WEIGHT_REGISTER("flash_attn3")
+class FlashAttn3Weight(AttnWeightTemplate):
+    def __init__(self):
+        self.config = {}
 
     def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None):
-        return attention(self.attn_type, q, k, v, cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv, max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv, model_cls=model_cls)
+        x = flash_attn_varlen_func_v3(
+            q,
+            k,
+            v,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            max_seqlen_q,
+            max_seqlen_kv,
+        )[0].reshape(max_seqlen_q, -1)
+        return x
 
-    def set_config(self, config=None):
-        if config is not None:
-            self.config = config
+
+@ATTN_WEIGHT_REGISTER("sage_attn2")
+class SageAttn2Weight(AttnWeightTemplate):
+    def __init__(self):
+        self.config = {}
+
+    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None):
+        q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
+        if model_cls == "hunyuan":
+            x1 = sageattn(
+                q[: cu_seqlens_q[1]].unsqueeze(0),
+                k[: cu_seqlens_kv[1]].unsqueeze(0),
+                v[: cu_seqlens_kv[1]].unsqueeze(0),
+                tensor_layout="NHD",
+            )
+            x2 = sageattn(
+                q[cu_seqlens_q[1] :].unsqueeze(0),
+                k[cu_seqlens_kv[1] :].unsqueeze(0),
+                v[cu_seqlens_kv[1] :].unsqueeze(0),
+                tensor_layout="NHD",
+            )
+            x = torch.cat((x1, x2), dim=1)
+            x = x.view(max_seqlen_q, -1)
+        elif model_cls in ["wan2.1", "wan2.1_causvid", "wan2.1_df"]:
+            x = sageattn(
+                q.unsqueeze(0),
+                k.unsqueeze(0),
+                v.unsqueeze(0),
+                tensor_layout="NHD",
+            )
+            x = x.view(max_seqlen_q, -1)
+        return x
+
+
+@ATTN_WEIGHT_REGISTER("torch_sdpa")
+class TorchSDPAWeight(AttnWeightTemplate):
+    def __init__(self):
+        self.config = {}
+
+    def apply(self, q, k, v, drop_rate=0, attn_mask=None, causal=False):
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        if attn_mask is not None and attn_mask.dtype != torch.bool:
+            attn_mask = attn_mask.to(q.dtype)
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal)
+        x = x.transpose(1, 2)
+        b, s, a, d = x.shape
+        out = x.reshape(b, s, -1)
+        return out
 
 
 @ATTN_WEIGHT_REGISTER("Sparge")
