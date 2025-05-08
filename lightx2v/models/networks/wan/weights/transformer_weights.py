@@ -62,7 +62,6 @@ class WanTransformerAttentionBlock(WeightModule):
         # load attn weights
         if self.config["sparge"]:
             assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
-            # breakpoint()
             sparge_ckpt = torch.load(self.config["sparge_ckpt"])
             self.self_attn_1.load(sparge_ckpt)
         else:
