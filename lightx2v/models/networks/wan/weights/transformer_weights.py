@@ -24,6 +24,7 @@ class WanTransformerAttentionBlock(WeightModule):
         self.mm_type = mm_type
         self.task = task
         self.config = config
+        self.quant_method = config["mm_config"].get("quant_method", None)
 
         self.add_module("self_attn_q", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.q.weight", f"blocks.{self.block_index}.self_attn.q.bias"))
         self.add_module("self_attn_k", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.k.weight", f"blocks.{self.block_index}.self_attn.k.bias"))
@@ -67,5 +68,14 @@ class WanTransformerAttentionBlock(WeightModule):
         else:
             # do not load weights
             pass
+
+        # For smoothquant or awq
+        if self.quant_method in ["smoothquant", "awq"]:
+            self.register_parameter("smooth_norm1_weight", TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.affine_norm1.weight"))
+            self.register_parameter("smooth_norm1_bias", TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.affine_norm1.bias"))
+            self.register_parameter("smooth_norm2_weight", TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.affine_norm3.weight"))
+            self.register_parameter("smooth_norm2_bias", TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.affine_norm3.bias"))
+        elif self.quant_method is not None:
+            raise NotImplementedError(f"This {self.quant_method} method is not implemented yet.")
 
         self.register_parameter("modulation", TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.modulation"))

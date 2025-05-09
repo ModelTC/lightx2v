@@ -2,6 +2,7 @@ import os
 import sys
 import torch
 import glob
+import json
 from lightx2v.models.networks.wan.weights.pre_weights import WanPreWeights
 from lightx2v.models.networks.wan.weights.post_weights import WanPostWeights
 from lightx2v.models.networks.wan.weights.transformer_weights import (
@@ -83,7 +84,7 @@ class WanModel:
             weight_dict.update(file_weights)
         return weight_dict
 
-    def _load_ckpt_quant_model(self):
+    def _load_quant_ckpt(self):
         assert self.config.get("naive_quant_path") is not None, "naive_quant_path is None"
         ckpt_path = self.config.naive_quant_path
         logger.info(f"Loading quant model from {ckpt_path}")
@@ -107,9 +108,12 @@ class WanModel:
             weight_dict = {}
             for filename in set(index_data["weight_map"].values()):
                 safetensor_path = os.path.join(ckpt_path, filename)
-                logger.info(f"Loading weights from {safetensor_path}")
-                partial_weights = load_file(safetensor_path, device=self.device)
-                weight_dict.update(partial_weights)
+                with safe_open(safetensor_path, framework="pt", device=str(self.device)) as f:
+                    logger.info(f"Loading weights from {safetensor_path}")
+                    for k in f.keys():
+                        weight_dict[k] = f.get_tensor(k)
+                        if weight_dict[k].dtype == torch.float:
+                            weight_dict[k] = weight_dict[k].to(torch.bfloat16)
 
         return weight_dict
 
@@ -118,7 +122,7 @@ class WanModel:
             if GET_RUNNING_FLAG() == "save_naive_quant" or self.config["mm_config"].get("weight_auto_quant", False) or self.config["mm_config"].get("mm_type", "Default") == "Default":
                 self.original_weight_dict = self._load_ckpt()
             else:
-                self.original_weight_dict = self._load_ckpt_quant_model()
+                self.original_weight_dict = self._load_quant_ckpt()
         else:
             self.original_weight_dict = weight_dict
         # init weights

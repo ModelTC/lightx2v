@@ -107,7 +107,7 @@ class MMWeightQuantTemplate(MMWeightTemplate):
 
     def load_quantized(self, weight_dict):
         self.weight = weight_dict[self.weight_name].cuda()
-        self.weight_scale = weight_dict[self.weight_name.rstrip(".weight") + ".weight_scale"].cuda()
+        self.weight_scale = weight_dict[self.weight_name.removesuffix(".weight") + ".weight_scale"].float().cuda()
 
     def load_fp8_perchannel_sym(self, weight_dict):
         if GET_RUNNING_FLAG() == "save_naive_quant" or self.config.get("weight_auto_quant", False):
@@ -192,7 +192,7 @@ class MMWeightQuantTemplate(MMWeightTemplate):
         if self.bias is not None:
             destination[self.bias_name] = self.bias.cpu().detach().clone()
         if hasattr(self, "weight_scale"):
-            destination[self.weight_name.rstrip(".weight") + ".weight_scale"] = self.weight_scale.cpu().detach().clone()
+            destination[self.weight_name.removesuffix(".weight") + ".weight_scale"] = self.weight_scale.cpu().detach().clone()
         return destination
 
 

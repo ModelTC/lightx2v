@@ -86,8 +86,15 @@ class WanTransformerInfer:
         elif embed0.dim() == 2:
             embed0 = (weights.modulation.tensor + embed0).chunk(6, dim=1)
 
+        if hasattr(weights, "smooth_norm1_weight"):
+            norm1_weight = (1 + embed0[1]) * weights.smooth_norm1_weight.tensor
+            norm1_bias = embed0[0] * weights.smooth_norm1_bias.tensor
+        else:
+            norm1_weight = 1 + embed0[1]
+            norm1_bias = embed0[0]
+
         norm1_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
-        norm1_out = (norm1_out * (1 + embed0[1]) + embed0[0]).squeeze(0)
+        norm1_out = (norm1_out * norm1_weight + norm1_bias).squeeze(0)
 
         s, n, d = *norm1_out.shape[:1], self.num_heads, self.head_dim
         q = weights.self_attn_norm_q.apply(weights.self_attn_q.apply(norm1_out)).view(s, n, d)
@@ -105,7 +112,16 @@ class WanTransformerInfer:
         cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q, k, k_lens=seq_lens)
 
         if not self.parallel_attention:
-            attn_out = weights.self_attn_1.apply(q=q, k=k, v=v, cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_k, max_seqlen_q=lq, max_seqlen_kv=lk, model_cls=self.config["model_cls"])
+            attn_out = weights.self_attn_1.apply(
+                q=q,
+                k=k,
+                v=v,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=lq,
+                max_seqlen_kv=lk,
+                model_cls=self.config["model_cls"],
+            )
         else:
             attn_out = self.parallel_attention(
                 attention_type=self.attention_type,
@@ -134,7 +150,16 @@ class WanTransformerInfer:
 
         cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q, k, k_lens=torch.tensor([k.size(0)], dtype=torch.int32, device=k.device))
 
-        attn_out = weights.cross_attn_1.apply(q=q, k=k, v=v, cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_k, max_seqlen_q=lq, max_seqlen_kv=lk, model_cls=self.config["model_cls"])
+        attn_out = weights.cross_attn_1.apply(
+            q=q,
+            k=k,
+            v=v,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_k,
+            max_seqlen_q=lq,
+            max_seqlen_kv=lk,
+            model_cls=self.config["model_cls"],
+        )
 
         if self.task == "i2v":
             k_img = weights.cross_attn_norm_k_img.apply(weights.cross_attn_k_img.apply(context_img)).view(-1, n, d)
@@ -147,7 +172,14 @@ class WanTransformerInfer:
             )
 
             img_attn_out = weights.cross_attn_2.apply(
-                attention_type=self.attention_type, q=q, k=k_img, v=v_img, cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_k, max_seqlen_q=lq, max_seqlen_kv=lk, model_cls=self.config["model_cls"]
+                q=q,
+                k=k_img,
+                v=v_img,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=lq,
+                max_seqlen_kv=lk,
+                model_cls=self.config["model_cls"],
             )
 
             attn_out = attn_out + img_attn_out
@@ -155,8 +187,17 @@ class WanTransformerInfer:
         attn_out = weights.cross_attn_o.apply(attn_out)
 
         x = x + attn_out
+
+        if hasattr(weights, "smooth_norm2_weight"):
+            norm2_weight = (1 + embed0[4].squeeze(0)) * weights.smooth_norm2_weight.tensor
+            norm2_bias = embed0[3].squeeze(0) * weights.smooth_norm2_bias.tensor
+        else:
+            norm2_weight = 1 + embed0[4].squeeze(0)
+            norm2_bias = embed0[3].squeeze(0)
+
         norm2_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
-        y = weights.ffn_0.apply(norm2_out * (1 + embed0[4].squeeze(0)) + embed0[3].squeeze(0))
+        y = weights.ffn_0.apply(norm2_out * norm2_weight + norm2_bias)
+
         y = torch.nn.functional.gelu(y, approximate="tanh")
         y = weights.ffn_2.apply(y)
         x = x + y * embed0[5].squeeze(0)
