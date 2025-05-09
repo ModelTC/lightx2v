@@ -1,7 +1,6 @@
 import torch
 import math
 from ..utils import compute_freqs, compute_freqs_causvid, compute_freqs_dist, apply_rotary_emb
-from lightx2v.attentions import attention
 from lightx2v.common.offload.manager import WeightStreamManager
 from lightx2v.utils.envs import *
 from ..transformer_infer import WanTransformerInfer
@@ -125,8 +124,7 @@ class WanTransformerInferCausVid(WanTransformerInfer):
         cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q=q, k=self.kv_cache[block_idx]["k"][:kv_end], k_lens=torch.tensor([kv_end], dtype=torch.int32, device=k.device))
 
         if not self.parallel_attention:
-            attn_out = attention(
-                attention_type=self.attention_type,
+            attn_out = weights.self_attn_1.apply(
                 q=q,
                 k=self.kv_cache[block_idx]["k"][:kv_end],
                 v=self.kv_cache[block_idx]["v"][:kv_end],
@@ -164,8 +162,15 @@ class WanTransformerInferCausVid(WanTransformerInfer):
 
         cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q, k, k_lens=torch.tensor([k.size(0)], dtype=torch.int32, device=k.device))
 
-        attn_out = attention(
-            attention_type=self.attention_type, q=q, k=k, v=v, cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_k, max_seqlen_q=lq, max_seqlen_kv=lk, model_cls=self.config["model_cls"]
+        attn_out = weights.cross_attn_1.apply(
+            q=q,
+            k=k,
+            v=v,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_k,
+            max_seqlen_q=lq,
+            max_seqlen_kv=lk,
+            model_cls=self.config["model_cls"],
         )
 
         # TODO: Implement I2V inference for causvid model

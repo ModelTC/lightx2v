@@ -1,7 +1,6 @@
 import torch
 import math
 from einops import rearrange
-from lightx2v.attentions import attention
 
 
 class HunyuanPreInfer:
@@ -107,7 +106,7 @@ class HunyuanPreInfer:
         normx = weights.txt_in_individual_token_refiner_blocks_0_norm1.apply(txt_in_input_embed)
         qkv = weights.txt_in_individual_token_refiner_blocks_0_self_attn_qkv.apply(normx)
         q, k, v = rearrange(qkv.unsqueeze(0), "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
-        attn = attention(attention_type="torch_sdpa", q=q, k=k, v=v, attn_mask=self_attn_mask)[0]
+        attn = weights.txt_in_attn_1.apply(q=q, k=k, v=v, attn_mask=self_attn_mask)[0]
         out = weights.txt_in_individual_token_refiner_blocks_0_self_attn_proj.apply(attn)
         out_1 = txt_in_input_embed + out * gate_msa
         out = weights.txt_in_individual_token_refiner_blocks_0_norm2.apply(out_1)
@@ -126,7 +125,7 @@ class HunyuanPreInfer:
 
         q, k, v = rearrange(qkv.unsqueeze(0), "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
 
-        attn = attention(attention_type="torch_sdpa", q=q, k=k, v=v, attn_mask=self_attn_mask)[0]
+        attn = weights.txt_in_attn_1.apply(q=q, k=k, v=v, attn_mask=self_attn_mask)[0]
         out = weights.txt_in_individual_token_refiner_blocks_1_self_attn_proj.apply(attn)
         out_1 = txt_in_input_embed + out * gate_msa
 

@@ -1,6 +1,5 @@
 import torch
 from .utils import compute_freqs, compute_freqs_dist, apply_rotary_emb
-from lightx2v.attentions import attention
 from lightx2v.common.offload.manager import WeightStreamManager
 from lightx2v.utils.envs import *
 

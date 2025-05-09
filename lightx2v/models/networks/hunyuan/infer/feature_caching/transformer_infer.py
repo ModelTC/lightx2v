@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from einops import rearrange
-from lightx2v.attentions import attention
 from .utils import taylor_cache_init, derivative_approximation, taylor_formula
 from ..utils_bf16 import apply_rotary_emb
 from ..transformer_infer import HunyuanTransformerInfer
@@ -118,8 +117,7 @@ class HunyuanTransformerInferTaylorCaching(HunyuanTransformerInfer):
             v = torch.cat((img_v, txt_v), dim=0)
 
             if not self.parallel_attention:
-                attn = attention(
-                    attention_type=self.attention_type,
+                attn = weights.double_attn.apply(
                     q=q,
                     k=k,
                     v=v,
@@ -284,8 +282,7 @@ class HunyuanTransformerInferTaylorCaching(HunyuanTransformerInfer):
             k = torch.cat((img_k, txt_k), dim=0)
 
             if not self.parallel_attention:
-                attn = attention(
-                    attention_type=self.attention_type,
+                attn = weights.single_attn.apply(
                     q=q,
                     k=k,
                     v=v,

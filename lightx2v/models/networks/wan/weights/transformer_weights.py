@@ -25,6 +25,7 @@ class WanTransformerAttentionBlock(WeightModule):
         self.task = task
         self.config = config
         self.quant_method = config["mm_config"].get("quant_method", None)
+        self.sparge = config.get("sparge", False)
 
         self.add_module("self_attn_q", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.q.weight", f"blocks.{self.block_index}.self_attn.q.bias"))
         self.add_module("self_attn_k", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.k.weight", f"blocks.{self.block_index}.self_attn.k.bias"))
@@ -44,8 +45,8 @@ class WanTransformerAttentionBlock(WeightModule):
         self.add_module("ffn_0", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.0.weight", f"blocks.{self.block_index}.ffn.0.bias"))
         self.add_module("ffn_2", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.ffn.2.weight", f"blocks.{self.block_index}.ffn.2.bias"))
 
-        # attention weights
-        if self.config["sparge"]:
+        # attention weights section
+        if self.sparge:
             assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
             self.add_module("self_attn_1", ATTN_WEIGHT_REGISTER["Sparge"](f"blocks.{self.block_index}"))
             self.add_module("cross_attn_1", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
@@ -61,7 +62,7 @@ class WanTransformerAttentionBlock(WeightModule):
             self.add_module("cross_attn_2", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
 
         # load attn weights
-        if self.config["sparge"]:
+        if self.sparge:
             assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
             sparge_ckpt = torch.load(self.config["sparge_ckpt"])
             self.self_attn_1.load(sparge_ckpt)
