@@ -64,11 +64,11 @@ class WanTransformerAttentionBlock(WeightModule):
             self.add_module("cross_attn_2", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
 
         # load attn weights
-        if self.sparge and not self.config["sparge_tune"]:
+        if self.sparge and not self.sparge_tune:
             assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
             sparge_ckpt = torch.load(self.config["sparge_ckpt"])
             self.self_attn_1.load(sparge_ckpt)
-        elif self.config["sparge_tune"]:
+        elif self.sparge_tune:
             # enable tune mode
             if not os.getenv("TUNE_MODE"):
                 os.environ["TUNE_MODE"] = "True"
