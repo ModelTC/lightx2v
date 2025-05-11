@@ -194,7 +194,7 @@ class WanModel:
         if self.sparge_tune:
             saved_state_dict = {}
             for k, v in self.transformer_weights.named_parameters():
-                if isinstance(v, ATTN_WEIGHT_REGISTER['Sparge']):
+                if isinstance(v, ATTN_WEIGHT_REGISTER["Sparge"]):
                     for model_key, model_param in v.inner_cls.state_dict().items():
                         if k in model_key:
                             saved_state_dict[model_key] = model_param
