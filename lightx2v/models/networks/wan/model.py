@@ -187,6 +187,19 @@ class WanModel:
         x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
         noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
+        # Final infer stage
+        # 1. extract super parameters
+        self.sparge_tune = self.config.get("sparse_tune", False)
+        if self.sparge_tune:
+            saved_state_dict = {}
+            for k, v in self.transformer_weights.named_parameters():
+                if isinstance(v, SparseAttentionMeansim):
+                    for model_key, model_param in v.state_dict().items():
+                        if k in model_key:
+                            saved_state_dict[model_key] = model_param
+            # save to file
+            torch.save(saved_state_dict, self.config.get("sparse_ckpt", "sparse_tune.pth"))
+
         if self.config["feature_caching"] == "Tea":
             self.scheduler.cnt += 1
             if self.scheduler.cnt >= self.scheduler.num_steps:
