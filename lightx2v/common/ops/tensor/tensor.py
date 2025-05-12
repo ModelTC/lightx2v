@@ -14,3 +14,9 @@ class DefaultTensor:
 
     def to_cuda(self, non_blocking=False):
         self.tensor = self.tensor.cuda(non_blocking=non_blocking)
+
+    def state_dict(self, destination=None):
+        if destination is None:
+            destination = {}
+        destination[self.tensor_name] = self.tensor.cpu().detach().clone()
+        return destination

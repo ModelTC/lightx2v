@@ -38,6 +38,12 @@ class RMSWeight(RMSWeightTemplate):
         input_tensor = input_tensor * self.weight
         return input_tensor
 
+    def state_dict(self, destination=None):
+        if destination is None:
+            destination = {}
+        destination[self.weight_name] = self.weight.cpu().detach().clone()
+        return destination
+
 
 @RMS_WEIGHT_REGISTER("FP32")
 class RMSWeightFP32(RMSWeight):

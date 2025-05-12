@@ -1,4 +1,5 @@
 import os
+import gc
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
@@ -7,19 +8,19 @@ from lightx2v.utils.registry_factory import RUNNER_REGISTER
 from lightx2v.models.runners.wan.wan_runner import WanRunner
 from lightx2v.models.runners.default_runner import DefaultRunner
 from lightx2v.models.schedulers.wan.scheduler import WanScheduler
-from lightx2v.models.schedulers.wan.causal.scheduler import WanCausalScheduler
+from lightx2v.models.schedulers.wan.causvid.scheduler import WanCausVidScheduler
 from lightx2v.utils.profiler import ProfilingContext4Debug, ProfilingContext
 from lightx2v.models.input_encoders.hf.t5.model import T5EncoderModel
 from lightx2v.models.input_encoders.hf.xlm_roberta.model import CLIPModel
-from lightx2v.models.networks.wan.causal_model import WanCausalModel
+from lightx2v.models.networks.wan.causvid_model import WanCausVidModel
 from lightx2v.models.networks.wan.lora_adapter import WanLoraWrapper
 from lightx2v.models.video_encoders.hf.wan.vae import WanVAE
 from loguru import logger
 import torch.distributed as dist
 
 
-@RUNNER_REGISTER("wan2.1_causal")
-class WanCausalRunner(WanRunner):
+@RUNNER_REGISTER("wan2.1_causvid")
+class WanCausVidRunner(WanRunner):
     def __init__(self, config):
         super().__init__(config)
         self.denoising_step_list = self.model.config.denoising_step_list
@@ -49,7 +50,7 @@ class WanCausalRunner(WanRunner):
             shard_fn=None,
         )
         text_encoders = [text_encoder]
-        model = WanCausalModel(self.config.model_path, self.config, init_device)
+        model = WanCausVidModel(self.config.model_path, self.config, init_device)
 
         if self.config.lora_path:
             lora_wrapper = WanLoraWrapper(model)
@@ -68,8 +69,13 @@ class WanCausalRunner(WanRunner):
 
         return model, text_encoders, vae_model, image_encoder
 
+    def set_inputs(self, inputs):
+        super().set_inputs(inputs)
+        self.config["num_fragments"] = inputs.get("num_fragments", 1)
+        self.num_fragments = self.config["num_fragments"]
+
     def init_scheduler(self):
-        scheduler = WanCausalScheduler(self.config)
+        scheduler = WanCausVidScheduler(self.config)
         self.model.set_scheduler(scheduler)
 
     def set_target_shape(self):
@@ -96,7 +102,7 @@ class WanCausalRunner(WanRunner):
         start_block_idx = 0
 
         for fragment_idx in range(self.num_fragments):
-            logger.info(f"=======> fragment_idx: {fragment_idx + 1} / {self.num_fragments}")
+            logger.info(f"========> fragment_idx: {fragment_idx + 1} / {self.num_fragments}")
 
             kv_start = 0
             kv_end = kv_start + self.num_frame_per_block * self.frame_seq_length
@@ -116,8 +122,8 @@ class WanCausalRunner(WanRunner):
             infer_blocks = self.infer_blocks - (fragment_idx > 0)
 
             for block_idx in range(infer_blocks):
-                logger.info(f"=======> block_idx: {block_idx + 1} / {infer_blocks}")
-                logger.info(f"=======> kv_start: {kv_start}, kv_end: {kv_end}")
+                logger.info(f"=====> block_idx: {block_idx + 1} / {infer_blocks}")
+                logger.info(f"=====> kv_start: {kv_start}, kv_end: {kv_end}")
                 self.model.scheduler.reset()
 
                 for step_index in range(self.model.scheduler.infer_steps):
@@ -139,3 +145,9 @@ class WanCausalRunner(WanRunner):
                 start_block_idx += 1
 
         return output_latents, self.model.scheduler.generator
+
+    def end_run(self):
+        self.model.scheduler.clear()
+        del self.inputs, self.model.scheduler, self.model.transformer_infer.kv_cache, self.model.transformer_infer.crossattn_cache
+        gc.collect()
+        torch.cuda.empty_cache()

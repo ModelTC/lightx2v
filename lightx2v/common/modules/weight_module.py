@@ -24,15 +24,15 @@ class WeightModule:
             if hasattr(parameter, "load"):
                 parameter.load(weight_dict)
 
-    def state_dict(self, destination=None, prefix=""):
+    def state_dict(self, destination=None):
         if destination is None:
             destination = {}
         for name, param in self._parameters.items():
             if param is not None:
-                destination[prefix + name] = param.detach().cpu().clone()
+                param.state_dict(destination)
         for name, module in self._modules.items():
             if module is not None:
-                module.state_dict(destination, prefix + name + ".")
+                module.state_dict(destination)
         return destination
 
     def named_parameters(self, prefix=""):
@@ -45,17 +45,24 @@ class WeightModule:
 
     def to_cpu(self):
         for name, param in self._parameters.items():
-            if param is not None and hasattr(param, "cpu"):
-                self._parameters[name] = param.cpu()
-                setattr(self, name, self._parameters[name])
+            if param is not None:
+                if hasattr(param, "cpu"):
+                    self._parameters[name] = param.cpu()
+                    setattr(self, name, self._parameters[name])
+                elif hasattr(param, "to_cpu"):
+                    self._parameters[name].to_cpu()
+                    setattr(self, name, self._parameters[name])
         for module in self._modules.values():
             if module is not None and hasattr(module, "to_cpu"):
                 module.to_cpu()
 
     def to_cuda(self):
         for name, param in self._parameters.items():
-            if param is not None and hasattr(param, "cuda"):
-                self._parameters[name] = param.cuda()
+            if param is not None:
+                if hasattr(param, "cuda"):
+                    self._parameters[name] = param.cuda()
+                elif hasattr(param, "to_cuda"):
+                    self._parameters[name].to_cuda()
                 setattr(self, name, self._parameters[name])
         for module in self._modules.values():
             if module is not None and hasattr(module, "to_cuda"):
@@ -63,21 +70,28 @@ class WeightModule:
 
     def to_cpu_sync(self):
         for name, param in self._parameters.items():
-            if param is not None and hasattr(param, "to"):
-                self._parameters[name] = param.to("cpu", non_blocking=True)
-                setattr(self, name, self._parameters[name])
+            if param is not None:
+                if hasattr(param, "cpu"):
+                    self._parameters[name] = param.cpu(non_blocking=True)
+                    setattr(self, name, self._parameters[name])
+                elif hasattr(param, "to_cpu"):
+                    self._parameters[name].to_cpu(non_blocking=True)
+                    setattr(self, name, self._parameters[name])
         for module in self._modules.values():
-            if module is not None and hasattr(module, "to_cpu_sync"):
-                module.to_cpu_sync()
+            if module is not None and hasattr(module, "to_cpu"):
+                module.to_cpu(non_blocking=True)
 
     def to_cuda_sync(self):
         for name, param in self._parameters.items():
-            if param is not None and hasattr(param, "cuda"):
-                self._parameters[name] = param.cuda(non_blocking=True)
+            if param is not None:
+                if hasattr(param, "cuda"):
+                    self._parameters[name] = param.cuda(non_blocking=True)
+                elif hasattr(param, "to_cuda"):
+                    self._parameters[name].to_cuda(non_blocking=True)
                 setattr(self, name, self._parameters[name])
         for module in self._modules.values():
-            if module is not None and hasattr(module, "to_cuda_sync"):
-                module.to_cuda_sync()
+            if module is not None and hasattr(module, "to_cuda"):
+                module.to_cuda(non_blocking=True)
 
 
 class WeightModuleList(WeightModule):

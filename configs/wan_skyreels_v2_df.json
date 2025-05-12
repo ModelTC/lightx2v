@@ -12,9 +12,5 @@
     "attention_type": "flash_attn3",
     "seed": 42,
     "sample_guide_scale": 5,
-    "sample_shift": 3,
-    "mm_config": {
-        "mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Sgl",
-        "weight_auto_quant": true
-    }
+    "sample_shift": 3
 }

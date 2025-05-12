@@ -49,6 +49,14 @@ class Conv3dWeight(Conv3dWeightTemplate):
         if self.bias is not None:
             self.bias = self.bias.cuda()
 
+    def state_dict(self, destination=None):
+        if destination is None:
+            destination = {}
+        destination[self.weight_name] = self.weight.cpu().detach().clone()
+        if self.bias is not None:
+            destination[self.bias_name] = self.bias.cpu().detach().clone()
+        return destination
+
 
 @CONV3D_WEIGHT_REGISTER("Defaultt-Force-BF16")
 class Conv3dWeightForceBF16(Conv3dWeight):

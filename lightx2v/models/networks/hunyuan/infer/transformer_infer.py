@@ -1,6 +1,5 @@
 import torch
 from einops import rearrange
-from lightx2v.attentions import attention
 from .utils_bf16 import apply_rotary_emb
 from lightx2v.common.offload.manager import WeightStreamManager
 from lightx2v.utils.envs import *
@@ -120,8 +119,7 @@ class HunyuanTransformerInfer:
         v = torch.cat((img_v, txt_v), dim=0)
 
         if not self.parallel_attention:
-            attn = attention(
-                attention_type=self.attention_type,
+            attn = weights.double_attn.apply(
                 q=q,
                 k=k,
                 v=v,
@@ -263,8 +261,7 @@ class HunyuanTransformerInfer:
         k = torch.cat((img_k, txt_k), dim=0)
 
         if not self.parallel_attention:
-            attn = attention(
-                attention_type=self.attention_type,
+            attn = weights.single_attn.apply(
                 q=q,
                 k=k,
                 v=v,

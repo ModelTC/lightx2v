@@ -12,3 +12,9 @@ def CHECK_ENABLE_PROFILING_DEBUG():
 def CHECK_ENABLE_GRAPH_MODE():
     ENABLE_GRAPH_MODE = os.getenv("ENABLE_GRAPH_MODE", "false").lower() == "true"
     return ENABLE_GRAPH_MODE
+
+
+@lru_cache(maxsize=None)
+def GET_RUNNING_FLAG():
+    RUNNING_FLAG = os.getenv("RUNNING_FLAG", "infer")
+    return RUNNING_FLAG

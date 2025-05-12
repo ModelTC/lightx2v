@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Union
 from lightx2v.models.schedulers.wan.scheduler import WanScheduler
 
 
-class WanCausalScheduler(WanScheduler):
+class WanCausVidScheduler(WanScheduler):
     def __init__(self, config):
         super().__init__(config)
         self.denoising_step_list = config.denoising_step_list

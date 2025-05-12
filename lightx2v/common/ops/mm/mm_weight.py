@@ -4,6 +4,7 @@ from vllm import _custom_ops as ops
 import sgl_kernel
 from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER
 from lightx2v.utils.quant_utils import IntegerQuantizer, FloatQuantizer
+from lightx2v.utils.envs import *
 from loguru import logger
 
 try:
@@ -31,9 +32,8 @@ class MMWeightTemplate(metaclass=ABCMeta):
     def apply(self, input_tensor):
         pass
 
-    def set_config(self, config=None):
-        if config is not None:
-            self.config = config
+    def set_config(self, config={}):
+        self.config = config
 
     def to_cpu(self, non_blocking=False):
         self.weight = self.weight.to("cpu", non_blocking=non_blocking)
@@ -68,6 +68,14 @@ class MMWeight(MMWeightTemplate):
             return torch.mm(input_tensor, self.weight, out=output_tensor)
         return torch.addmm(self.bias, input_tensor, self.weight, out=output_tensor)
 
+    def state_dict(self, destination=None):
+        if destination is None:
+            destination = {}
+        destination[self.weight_name] = self.weight.cpu().detach().clone().t().contiguous()
+        if self.bias is not None:
+            destination[self.bias_name] = self.bias.cpu().detach().clone()
+        return destination
+
 
 @MM_WEIGHT_REGISTER("Default-Force-FP32")
 class MMWeightForceFP32(MMWeight):
@@ -99,10 +107,10 @@ class MMWeightQuantTemplate(MMWeightTemplate):
 
     def load_quantized(self, weight_dict):
         self.weight = weight_dict[self.weight_name].cuda()
-        self.weight_scale = weight_dict[self.weight_name.rstrip(".weight") + ".weight_scale"].cuda()
+        self.weight_scale = weight_dict[self.weight_name.removesuffix(".weight") + ".weight_scale"].float().cuda()
 
     def load_fp8_perchannel_sym(self, weight_dict):
-        if self.config.get("weight_auto_quant", True):
+        if GET_RUNNING_FLAG() == "save_naive_quant" or self.config.get("weight_auto_quant", False):
             self.weight = weight_dict[self.weight_name].to(torch.float32).cuda()
             w_quantizer = FloatQuantizer("e4m3", True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
@@ -113,7 +121,7 @@ class MMWeightQuantTemplate(MMWeightTemplate):
         self.bias = weight_dict[self.bias_name].cuda() if self.bias_name is not None else None
 
     def load_int8_perchannel_sym(self, weight_dict):
-        if self.config.get("weight_auto_quant", True):
+        if GET_RUNNING_FLAG() == "save_naive_quant" or self.config.get("weight_auto_quant", False):
             self.weight = weight_dict[self.weight_name].to(torch.float32).cuda()
             w_quantizer = IntegerQuantizer(8, True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
@@ -124,7 +132,7 @@ class MMWeightQuantTemplate(MMWeightTemplate):
         self.bias = weight_dict[self.bias_name].cuda() if self.bias_name is not None else None
 
     def load_fp8_perblock128_sym(self, weight_dict):
-        if self.config.get("weight_auto_quant", True):
+        if GET_RUNNING_FLAG() == "save_naive_quant" or self.config.get("weight_auto_quant", False):
             self.weight = weight_dict[self.weight_name].cuda()
             self.weight, self.weight_scale = self.per_block_cast_to_fp8(self.weight)
         else:
@@ -173,6 +181,19 @@ class MMWeightQuantTemplate(MMWeightTemplate):
         input_tensor_scale = torch.empty((m, k // 128), dtype=torch.float32, device="cuda", requires_grad=False)
         sgl_kernel.sgl_per_token_group_quant_fp8(x, input_tensor_quant, input_tensor_scale, group_size=128, eps=1e-10, fp8_min=-448.0, fp8_max=448.0)
         return input_tensor_quant, input_tensor_scale
+
+    def state_dict(self, destination=None):
+        if destination is None:
+            destination = {}
+        if self.weight_need_transpose:
+            destination[self.weight_name] = self.weight.cpu().detach().clone().t().contiguous()
+        else:
+            destination[self.weight_name] = self.weight.cpu().detach().clone().contiguous()
+        if self.bias is not None:
+            destination[self.bias_name] = self.bias.cpu().detach().clone()
+        if hasattr(self, "weight_scale"):
+            destination[self.weight_name.removesuffix(".weight") + ".weight_scale"] = self.weight_scale.cpu().detach().clone()
+        return destination
 
 
 @MM_WEIGHT_REGISTER("W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Vllm")

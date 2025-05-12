@@ -21,52 +21,11 @@
 ✅ [Wan2.1-T2V-CausVid](https://huggingface.co/lightx2v/Wan2.1-T2V-14B-CausVid)
 
 ✅ [SkyReels-V2-DF](https://huggingface.co/Skywork/SkyReels-V2-DF-14B-540P)
-## Build Env With Conda
 
-```shell
-# clone repo and submodules
-git clone https://github.com/ModelTC/lightx2v.git lightx2v && cd lightx2v
-git submodule update --init --recursive
 
-# create conda env and install requirments
-conda create -n lightx2v python=3.11 && conda activate lightx2v
-pip install -r requirements.txt
+## How to Run
 
-# Install again separately to bypass the version conflict check
-pip install transformers==4.45.2
-
-# install flash-attention 2
-cd lightx2v/3rd/flash-attention && pip install --no-cache-dir -v -e .
-
-# install flash-attention 3, only if hopper
-cd lightx2v/3rd/flash-attention/hopper && pip install --no-cache-dir -v -e .
-```
-
-## Build Env With Docker
-
-```shell
-docker pull lightx2v/lightx2v:latest
-docker run -it --rm --name lightx2v --gpus all --ipc=host lightx2v/lightx2v:latest
-```
-
-## Run
-
-Infer
-
-```shell
-# modify the parameters of the running script
-bash scripts/run_hunyuan_t2v.sh
-```
-
-Start A Server
-
-```shell
-# modify the parameters of the running script
-bash scripts/start_server.sh
-
-# modify the message of the post.py
-python post.py
-```
+Please refer to the [documentation](https://github.com/ModelTC/lightx2v/tree/main/docs) in lightx2v
 
 ## Contributing Guidelines
 

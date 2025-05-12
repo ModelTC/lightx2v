@@ -1,4 +1,4 @@
-from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, CONV3D_WEIGHT_REGISTER
+from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, CONV3D_WEIGHT_REGISTER, ATTN_WEIGHT_REGISTER
 from lightx2v.common.modules.weight_module import WeightModule
 
 
@@ -79,3 +79,6 @@ class HunyuanPreWeights(WeightModule):
         self.add_module("vector_in_out_layer", MM_WEIGHT_REGISTER["Default"]("vector_in.out_layer.weight", "vector_in.out_layer.bias"))
         self.add_module("guidance_in_mlp_0", MM_WEIGHT_REGISTER["Default"]("guidance_in.mlp.0.weight", "guidance_in.mlp.0.bias"))
         self.add_module("guidance_in_mlp_2", MM_WEIGHT_REGISTER["Default"]("guidance_in.mlp.2.weight", "guidance_in.mlp.2.bias"))
+
+        # attention weights section
+        self.add_module("txt_in_attn_1", ATTN_WEIGHT_REGISTER["torch_sdpa"]())

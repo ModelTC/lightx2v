@@ -6,7 +6,9 @@ from PIL import Image
 from lightx2v.utils.registry_factory import RUNNER_REGISTER
 from lightx2v.models.runners.default_runner import DefaultRunner
 from lightx2v.models.schedulers.wan.scheduler import WanScheduler
-from lightx2v.models.schedulers.wan.feature_caching.scheduler import WanSchedulerTeaCaching
+from lightx2v.models.schedulers.wan.feature_caching.scheduler import (
+    WanSchedulerTeaCaching,
+)
 from lightx2v.utils.profiler import ProfilingContext
 from lightx2v.models.input_encoders.hf.t5.model import T5EncoderModel
 from lightx2v.models.input_encoders.hf.xlm_roberta.model import CLIPModel
@@ -50,12 +52,19 @@ class WanRunner(DefaultRunner):
             lora_wrapper.apply_lora(lora_name, self.config.strength_model)
             logger.info(f"Loaded LoRA: {lora_name}")
 
-        vae_model = WanVAE(vae_pth=os.path.join(self.config.model_path, "Wan2.1_VAE.pth"), device=init_device, parallel=self.config.parallel_vae)
+        vae_model = WanVAE(
+            vae_pth=os.path.join(self.config.model_path, "Wan2.1_VAE.pth"),
+            device=init_device,
+            parallel=self.config.parallel_vae,
+        )
         if self.config.task == "i2v":
             image_encoder = CLIPModel(
                 dtype=torch.float16,
                 device=init_device,
-                checkpoint_path=os.path.join(self.config.model_path, "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"),
+                checkpoint_path=os.path.join(
+                    self.config.model_path,
+                    "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth",
+                ),
                 tokenizer_path=os.path.join(self.config.model_path, "xlm-roberta-large"),
             )
 
@@ -94,23 +103,38 @@ class WanRunner(DefaultRunner):
         config.lat_h = lat_h
         config.lat_w = lat_w
 
-        msk = torch.ones(1, 81, lat_h, lat_w, device=torch.device("cuda"))
+        msk = torch.ones(1, config.target_video_length, lat_h, lat_w, device=torch.device("cuda"))
         msk[:, 1:] = 0
         msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
         msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
         msk = msk.transpose(1, 2)[0]
         vae_encode_out = vae_model.encode(
-            [torch.concat([torch.nn.functional.interpolate(img[None].cpu(), size=(h, w), mode="bicubic").transpose(0, 1), torch.zeros(3, 80, h, w)], dim=1).cuda()], config
+            [
+                torch.concat(
+                    [
+                        torch.nn.functional.interpolate(img[None].cpu(), size=(h, w), mode="bicubic").transpose(0, 1),
+                        torch.zeros(3, 80, h, w),
+                    ],
+                    dim=1,
+                ).cuda()
+            ],
+            config,
         )[0]
         vae_encode_out = torch.concat([msk, vae_encode_out]).to(torch.bfloat16)
         return {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
 
     def set_target_shape(self):
+        num_channels_latents = self.config.get("num_channels_latents", 16)
         if self.config.task == "i2v":
-            self.config.target_shape = (16, 21, self.config.lat_h, self.config.lat_w)
+            self.config.target_shape = (
+                num_channels_latents,
+                (self.config.target_video_length - 1) // 4 + 1,
+                self.config.lat_h,
+                self.config.lat_w,
+            )
         elif self.config.task == "t2v":
             self.config.target_shape = (
-                16,
+                num_channels_latents,
                 (self.config.target_video_length - 1) // 4 + 1,
                 int(self.config.target_height) // self.config.vae_stride[1],
                 int(self.config.target_width) // self.config.vae_stride[2],
