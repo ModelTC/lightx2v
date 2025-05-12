@@ -25,15 +25,13 @@ class HunyuanTransformerInferTeaCaching(HunyuanTransformerInfer):
         inp = img.clone()
         vec_ = vec.clone()
 
-        weights.double_blocks[0].to_cuda()
         img_mod1_shift, img_mod1_scale, _, _, _, _ = weights.double_blocks[0].img_mod.apply(vec_).chunk(6, dim=-1)
-        weights.double_blocks[0].to_cpu_sync()
 
         normed_inp = torch.nn.functional.layer_norm(inp, (inp.shape[1],), None, None, 1e-6)
         modulated_inp = normed_inp * (1 + img_mod1_scale) + img_mod1_shift
         del normed_inp, inp, vec_
 
-        if self.scheduler.step_index == 0 or self.scheduler.step_index == self.scheduler.infer_steps - 1:
+        if self.scheduler.cnt == 0 or self.scheduler.cnt == self.scheduler.num_steps - 1:
             should_calc = True
             self.scheduler.accumulated_rel_l1_distance = 0
         else:
