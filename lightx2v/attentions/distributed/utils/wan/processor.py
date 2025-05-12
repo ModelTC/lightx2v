@@ -1,11 +1,20 @@
 from re import split
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
+
+PADDING_SIZE = None
 
 
 def pre_process(x):
     world_size = dist.get_world_size()
     cur_rank = dist.get_rank()
+
+    padding_size = (world_size - (x.shape[0] % world_size)) % world_size
+
+    if padding_size > 0:
+        # 使用 F.pad 填充第一维
+        x = F.pad(x, (0, 0, 0, padding_size))  # (后维度填充, 前维度填充)
 
     x = torch.chunk(x, world_size, dim=0)[cur_rank]
 
