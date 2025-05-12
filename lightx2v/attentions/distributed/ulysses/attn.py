@@ -58,13 +58,13 @@ def ulysses_attn(q, k, v, img_qkv_len, cu_seqlens_qkv, attention_type="flash_att
     v = torch.cat((img_v, txt_v), dim=0)
 
     # 初始化累积序列长度张量
-    cu_seqlens_qkv = torch.zeros([3], dtype=torch.int32, device="cuda")
+    cu_seqlens_qkv = torch.zeros([2], dtype=torch.int32, device="cuda")
     s = txt_qkv_len + img_q.shape[0]  # 计算文本和图像的总长度
     s1 = s  # 当前样本的结束位置
     cu_seqlens_qkv[1] = s1  # 设置累积序列长度
     if txt_mask_len:
         s2 = txt_mask_len + img_q.shape[0]  # 文本掩码的结束位置
-        cu_seqlens_qkv[2] = s2  # 设置累积序列长度
+        cu_seqlens_qkv = torch.cat(cu_seqlens_qkv, s2)
     max_seqlen_qkv = img_q.shape[0] + txt_q.shape[0]  # 最大序列长度
 
     # 调用注意力函数计算注意力结果
