@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Default values
-num_gpus=
 lightx2v_path=
 model_path=
 
