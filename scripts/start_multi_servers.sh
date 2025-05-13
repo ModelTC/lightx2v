@@ -1,24 +1,20 @@
 #!/bin/bash
 
 # Default values
-num_gpus=1
+num_gpus=
 lightx2v_path=
 model_path=
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --num_gpus)
-            num_gpus="$2"
-            shift 2
-            ;;
-        *)
-            echo "Unknown parameter: $1"
-            echo "Usage: $0 [--num_gpus <number_of_gpus>]"
-            exit 1
-            ;;
-    esac
-done
+# check section
+if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
+    cuda_devices=0,1,2,3,4,5,6,7
+    echo "Warn: CUDA_VISIBLE_DEVICES is not set, using default value: ${cuda_devices}, change at shell script or set env variable."
+    export CUDA_VISIBLE_DEVICES=${cuda_devices}
+fi
+
+if [ -z "${num_gpus}" ]; then
+    num_gpus=8
+fi
 
 # Check required parameters
 if [ -z "$lightx2v_path" ]; then
@@ -38,7 +34,7 @@ export ENABLE_PROFILING_DEBUG=true
 export ENABLE_GRAPH_MODE=false
 
 # Start multiple servers
-python -m lightx2v.api_multi_server \
+python -m lightx2v.api_multi_servers \
     --num_gpus $num_gpus \
     --start_port 8000 \
     --model_cls wan2.1 \
