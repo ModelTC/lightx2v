@@ -53,11 +53,9 @@ class AttnWeightTemplate(metaclass=ABCMeta):
             self.config = config
 
     def to_cpu(self, non_blocking=False):
-        # self.weight = self.weight.to("cpu", non_blocking=non_blocking)
         pass
 
     def to_cuda(self, non_blocking=False):
-        # self.weight = self.weight.cuda(non_blocking=non_blocking)
         pass
 
     def state_dict(self, destination=None):
