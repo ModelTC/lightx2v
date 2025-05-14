@@ -16,6 +16,7 @@ from lightx2v.models.networks.wan.model import WanModel
 from lightx2v.models.networks.wan.lora_adapter import WanLoraWrapper
 from lightx2v.models.video_encoders.hf.wan.vae import WanVAE
 import torch.distributed as dist
+from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 
@@ -79,6 +80,7 @@ class WanRunner(DefaultRunner):
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config.feature_caching}")
         self.model.set_scheduler(scheduler)
 
+    @peak_memory_decorator
     def run_text_encoder(self, text, text_encoders, config, image_encoder_output):
         text_encoder_output = {}
         n_prompt = config.get("negative_prompt", "")
@@ -88,6 +90,7 @@ class WanRunner(DefaultRunner):
         text_encoder_output["context_null"] = context_null
         return text_encoder_output
 
+    @peak_memory_decorator
     def run_image_encoder(self, config, image_encoder, vae_model):
         img = Image.open(config.image_path).convert("RGB")
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()

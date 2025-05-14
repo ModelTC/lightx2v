@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .tokenizer import HuggingfaceTokenizer
+from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 __all__ = [
@@ -460,6 +461,7 @@ def umt5_xxl(**kwargs):
 
 
 class T5EncoderModel:
+    @peak_memory_decorator
     def __init__(
         self,
         text_len,
