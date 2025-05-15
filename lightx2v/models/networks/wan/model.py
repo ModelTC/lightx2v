@@ -22,6 +22,7 @@ import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
 from lightx2v.utils.envs import *
 from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
+from lightx2v.utils.registry_factory import ATTN_WEIGHT_REGISTER
 
 
 class WanModel:
@@ -190,6 +191,22 @@ class WanModel:
         embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=True)
         x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
         noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
+
+        # Final infer stage
+        # sparge region start
+        self.sparge_tune = self.config.get("sparse_tune", False)
+        if self.sparge_tune:
+            saved_state_dict = {}
+            for k, v in self.transformer_weights.named_parameters():
+                if isinstance(v, ATTN_WEIGHT_REGISTER["Sparge"]):
+                    for model_key, model_param in v.inner_cls.state_dict().items():
+                        if k in model_key:
+                            saved_state_dict[model_key] = model_param
+            # save to file
+            torch.save(saved_state_dict, self.config.get("sparse_ckpt", "sparse_tune.pt"))
+        else:
+            pass
+        # sparge region end
 
         if self.config["feature_caching"] == "Tea":
             self.scheduler.cnt += 1

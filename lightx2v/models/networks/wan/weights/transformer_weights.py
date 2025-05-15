@@ -1,3 +1,4 @@
+import os
 import torch
 from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, RMS_WEIGHT_REGISTER, TENSOR_REGISTER, ATTN_WEIGHT_REGISTER
 from lightx2v.common.modules.weight_module import WeightModule, WeightModuleList
@@ -26,6 +27,7 @@ class WanTransformerAttentionBlock(WeightModule):
         self.config = config
         self.quant_method = config["mm_config"].get("quant_method", None)
         self.sparge = config.get("sparge", False)
+        self.sparge_tune = config.get("sparse_tune", False)
 
         self.add_module("self_attn_q", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.q.weight", f"blocks.{self.block_index}.self_attn.q.bias"))
         self.add_module("self_attn_k", MM_WEIGHT_REGISTER[self.mm_type](f"blocks.{self.block_index}.self_attn.k.weight", f"blocks.{self.block_index}.self_attn.k.bias"))
@@ -62,10 +64,14 @@ class WanTransformerAttentionBlock(WeightModule):
             self.add_module("cross_attn_2", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
 
         # load attn weights
-        if self.sparge:
+        if self.sparge and not self.sparge_tune:
             assert self.config["sparge_ckpt"], "sparge_ckpt must be set when sparge is True"
             sparge_ckpt = torch.load(self.config["sparge_ckpt"])
             self.self_attn_1.load(sparge_ckpt)
+        elif self.sparge_tune:
+            # enable tune mode
+            if not os.getenv("TUNE_MODE"):
+                os.environ["TUNE_MODE"] = "True"
         else:
             # do not load weights
             pass
