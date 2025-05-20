@@ -5,7 +5,6 @@ from lightx2v.utils.profiler import ProfilingContext4Debug, ProfilingContext
 from lightx2v.utils.utils import save_videos_grid, cache_video
 from lightx2v.utils.prompt_enhancer import PromptEnhancer
 from lightx2v.utils.envs import *
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 
@@ -46,7 +45,6 @@ class DefaultRunner:
         gc.collect()
         torch.cuda.empty_cache()
 
-    @peak_memory_decorator
     def run(self):
         for step_index in range(self.model.scheduler.infer_steps):
             logger.info(f"==> step_index: {step_index + 1} / {self.model.scheduler.infer_steps}")
@@ -76,7 +74,6 @@ class DefaultRunner:
         torch.cuda.empty_cache()
 
     @ProfilingContext("Run VAE")
-    @peak_memory_decorator
     def run_vae(self, latents, generator):
         images = self.vae_model.decode(latents, generator=generator, config=self.config)
         return images

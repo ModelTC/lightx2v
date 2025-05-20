@@ -10,7 +10,6 @@ import torchvision.transforms as T
 
 from lightx2v.attentions import attention
 from lightx2v.models.input_encoders.hf.t5.tokenizer import HuggingfaceTokenizer
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 from .xlm_roberta import XLMRoberta
@@ -429,7 +428,6 @@ def clip_xlm_roberta_vit_h_14(pretrained=False, pretrained_name="open-clip-xlm-r
 
 
 class CLIPModel:
-    @peak_memory_decorator
     def __init__(self, dtype, device, checkpoint_path, tokenizer_path):
         self.dtype = dtype
         self.device = device

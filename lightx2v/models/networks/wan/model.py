@@ -20,7 +20,6 @@ from safetensors import safe_open
 import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
 from lightx2v.utils.envs import *
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 
@@ -29,7 +28,6 @@ class WanModel:
     post_weight_class = WanPostWeights
     transformer_weight_class = WanTransformerWeights
 
-    @peak_memory_decorator
     def __init__(self, model_path, config, device):
         self.model_path = model_path
         self.config = config
