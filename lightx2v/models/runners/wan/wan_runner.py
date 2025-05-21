@@ -88,6 +88,18 @@ class WanRunner(DefaultRunner):
         context_null = text_encoders[0].infer([n_prompt if n_prompt else ""], config)
         text_encoder_output["context"] = context
         text_encoder_output["context_null"] = context_null
+
+        '''
+        peak_memory = torch.cuda.max_memory_allocated() / (1024**3)  # 转换为GB
+        logger.info(f"Peak Memory: {peak_memory:.2f} GB")
+        del text_encoders[0]
+        torch.cuda.empty_cache()  # 释放未使用但被缓存的显存
+        torch.cuda.ipc_collect()  # 可选，强制释放跨进程缓存
+
+        torch.cuda.reset_peak_memory_stats()
+        peak_memory = torch.cuda.max_memory_allocated() / (1024**3)  # 转换为GB
+        logger.info(f"Peak Memory: {peak_memory:.2f} GB")
+        '''
         return text_encoder_output
 
     @peak_memory_decorator
@@ -124,6 +136,18 @@ class WanRunner(DefaultRunner):
             config,
         )[0]
         vae_encode_out = torch.concat([msk, vae_encode_out]).to(torch.bfloat16)
+
+
+        peak_memory = torch.cuda.max_memory_allocated() / (1024**3)  # 转换为GB
+        logger.info(f"Peak Memory: {peak_memory:.2f} GB")
+        del image_encoder
+        torch.cuda.empty_cache()  # 释放未使用但被缓存的显存
+        torch.cuda.ipc_collect()  # 可选，强制释放跨进程缓存
+
+        torch.cuda.reset_peak_memory_stats()
+        peak_memory = torch.cuda.max_memory_allocated() / (1024**3)  # 转换为GB
+        logger.info(f"Peak Memory: {peak_memory:.2f} GB")
+
         return {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
 
     def set_target_shape(self):

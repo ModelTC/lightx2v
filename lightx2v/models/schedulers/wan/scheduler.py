@@ -344,3 +344,12 @@ class WanScheduler(BaseScheduler):
             self.lower_order_nums += 1
 
         self.latents = prev_sample
+
+    def reset(self):
+        self.model_outputs = [None] * self.solver_order
+        self.timestep_list = [None] * self.solver_order
+        self.last_sample = None
+        self.noise_pred = None
+        self.this_order = None
+        self.lower_order_nums = 0
+        self.prepare_latents(self.config.target_shape, dtype=torch.float32)

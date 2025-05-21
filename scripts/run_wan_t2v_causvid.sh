@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # set path and first
-lightx2v_path=
-model_path=
+lightx2v_path="/mnt/Text2Video/wangshankun/lightx2v/"
+model_path="/mnt/Text2Video/wangshankun/HF_Cache/Wan2.1-T2V-14B-CausVid/"
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then

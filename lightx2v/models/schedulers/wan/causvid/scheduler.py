@@ -12,7 +12,7 @@ class WanCausVidScheduler(WanScheduler):
         self.infer_steps = self.config.infer_steps
         self.sample_shift = self.config.sample_shift
 
-    def prepare(self, image_encoder_output):
+    def prepare(self, image_encoder_output=None):
         self.generator = torch.Generator(device=self.device)
         self.generator.manual_seed(self.config.seed)
 
@@ -66,3 +66,9 @@ class WanCausVidScheduler(WanScheduler):
         self.this_order = None
         self.lower_order_nums = 0
         self.prepare_latents(self.config.target_shape, dtype=torch.float32)
+
+    def step_pre(self, step_index, block_idx=None):
+        self.step_index = step_index
+        if self.step_index == 0:#每一个block开始时候重置
+            self.reset()
+        self.latents    = self.latents.to(dtype=torch.bfloat16)

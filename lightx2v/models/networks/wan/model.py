@@ -182,7 +182,7 @@ class WanModel:
         self.transformer_weights.to_cuda()
 
     @torch.no_grad()
-    def infer(self, inputs):
+    def infer(self, inputs, kv_start=0, kv_end=0):
         if self.config["cpu_offload"]:
             self.pre_weight.to_cuda()
             self.post_weight.to_cuda()

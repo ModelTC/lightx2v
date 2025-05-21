@@ -4,23 +4,28 @@ from ..utils import compute_freqs, compute_freqs_causvid, compute_freqs_dist, ap
 from lightx2v.common.offload.manager import WeightStreamManager
 from lightx2v.utils.envs import *
 from ..transformer_infer import WanTransformerInfer
-
+from lightx2v.utils.memory_profiler import peak_memory_decorator
+from loguru import logger
 
 class WanTransformerInferCausVid(WanTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
-        self.num_frames = config["num_frames"]
         self.num_frame_per_block = config["num_frame_per_block"]
         self.frame_seq_length = config["frame_seq_length"]
         self.text_len = config["text_len"]
         self.kv_cache = None
         self.crossattn_cache = None
 
-    def _init_kv_cache(self, dtype, device):
+    @peak_memory_decorator
+    def _init_kv_cache(self, total_num_frames, dtype, device):
         kv_cache = []
-        kv_size = self.num_frames * self.frame_seq_length
+        kv_size = total_num_frames * self.frame_seq_length
+        logger.info(f"kv_size: {kv_size}, total_num_frames:{total_num_frames}")
 
-        for _ in range(self.blocks_num):
+        for idx in range(self.blocks_num):
+            print(f"idx:{idx}, dtype:{dtype}")
+            peak_memory = torch.cuda.max_memory_allocated() / (1024**3)  # 转换为GB
+            logger.info(f"Peak Memory: {peak_memory:.2f} GB")
             kv_cache.append(
                 {
                     "k": torch.zeros([kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
@@ -117,9 +122,15 @@ class WanTransformerInferCausVid(WanTransformerInfer):
 
         q = apply_rotary_emb(q, freqs_i)
         k = apply_rotary_emb(k, freqs_i)
-
-        self.kv_cache[block_idx]["k"][kv_start:kv_end] = k
-        self.kv_cache[block_idx]["v"][kv_start:kv_end] = v
+        #logger.info(f"k:{k.shape}, kv_start:{kv_start}, kv_end:{kv_end}, self.kv_cache:{self.kv_cache[block_idx]['k'][kv_start:kv_end].shape}")
+         
+        if kv_end - kv_start == k.size(0):
+            self.kv_cache[block_idx]["k"][kv_start:kv_end] = k
+            self.kv_cache[block_idx]["v"][kv_start:kv_end] = v
+        else:
+            overlap_latent_len = (k.size(0) - (kv_end - kv_start))
+            self.kv_cache[block_idx]["k"][kv_start:kv_end] = k[overlap_latent_len:]
+            self.kv_cache[block_idx]["v"][kv_start:kv_end] = v[overlap_latent_len:]
 
         cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(q=q, k=self.kv_cache[block_idx]["k"][:kv_end], k_lens=torch.tensor([kv_end], dtype=torch.int32, device=k.device))
 
