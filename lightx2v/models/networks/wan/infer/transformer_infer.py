@@ -15,7 +15,11 @@ class WanTransformerInfer:
         self.window_size = config.get("window_size", (-1, -1))
         self.parallel_attention = None
         if self.config["cpu_offload"]:
-            self.weights_stream_mgr = WeightStreamManager()
+            if "offload_ratio" in self.config:
+                offload_ratio = self.config["offload_ratio"]
+            else:
+                offload_ratio = 1
+            self.weights_stream_mgr = WeightStreamManager(blocks_num=self.blocks_num, offload_ratio=offload_ratio)
             self.infer_func = self._infer_with_offload
         else:
             self.infer_func = self._infer_without_offload
