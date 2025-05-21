@@ -80,12 +80,13 @@ class WanCausVidDfScheduler(WanScheduler):
             scheduler.reset()
 
         
-    def step_pre(self, step_index, block_idx):
+    def step_pre(self, step_index, block_idx, prefix_video=None):
         self.step_index = step_index
         self.block_idx  = block_idx
         if self.step_index == 0:#每一个block开始时候重置
             if block_idx > 0:
-                self.pre_block_tail = self.latents[:, -self.overlap:]
+               # self.pre_block_tail = self.latents[:, -self.overlap:]
+               pass#换解码前的实物图做Overlap
 
             self.reset()
 
@@ -95,7 +96,9 @@ class WanCausVidDfScheduler(WanScheduler):
         self.latents    = self.latents.to(dtype=torch.bfloat16)
         
         if block_idx > 0 and self.overlap > 0:
-            self.latents[:, :self.overlap] = self.pre_block_tail
+            assert prefix_video is not None, "prefix_video should not be None when block_idx > 0 and overlap > 0"
+            self.latents[:, :self.overlap] = prefix_video
+            #pass#换解码前的实物图做Overlap
 
     def step_post(self):
         if self.block_idx == 0:

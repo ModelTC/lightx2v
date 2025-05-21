@@ -22,6 +22,9 @@ from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 import torch.distributed as dist
 import pdb, os
+import torchvision
+import numpy as np
+import imageio
 
 def save_first_frame(videos: torch.Tensor, output_path: str):
     # 假设 videos 形状为 [B, C, T, H, W]
@@ -114,6 +117,7 @@ class WanCausVidRunner(WanRunner):
 
     def init_scheduler(self):
         scheduler = WanCausVidDfScheduler(self.config)
+        #scheduler = WanCausVidDfScheduler(self.config)
         #scheduler = WanCausVidScheduler(self.config)
         self.model.set_scheduler(scheduler)
 
@@ -137,16 +141,13 @@ class WanCausVidRunner(WanRunner):
         #self.model.transformer_infer._init_kv_cache(self.config.total_latens_frames_num, dtype=torch.bfloat16, device="cuda")
        # self.model.transformer_infer._init_crossattn_cache(dtype=torch.bfloat16, device="cuda")
 
-        output_latents = torch.zeros(
-            (self.model.config.target_shape[0], self.config.total_latens_frames_num, *self.model.config.target_shape[2:]),
-            device="cuda",
-            dtype=torch.bfloat16,
-        )
+        output_images = [] 
         #pdb.set_trace()
         #breakpoint()
         kv_start = 0
         kv_end = kv_start + self.num_frame_per_block * self.frame_seq_length
 
+        pre_block_tail = None
         for block_idx in range(self.num_blocks):
 
             s, e = self.block_ranges[block_idx] 
@@ -156,11 +157,21 @@ class WanCausVidRunner(WanRunner):
             logger.info(f"=====> block_idx: {block_idx + 1} / {self.num_blocks}")
             logger.info(f"=====> kv_start: {kv_start}, kv_end: {kv_end}")
 
+            if pre_block_tail is not None:
+                #prefix_video = torch.tensor(pre_block_tail).unsqueeze(1)  # .to(image_embeds.dtype).unsqueeze(1)
+                pre_block_tail = torch.einsum("fhwc->cfhw", pre_block_tail)
+                if pre_block_tail.dtype == torch.uint8:
+                    pre_block_tail = (pre_block_tail.float() / (255.0 / 2.0)) - 1.0
+                logger.info(f"pre_block_tail shape: {pre_block_tail.shape}")
+                pre_block_tail = self.vae_model.encode([pre_block_tail.cuda()], self.config)[0]
+                logger.info(f"prefix_video shape: {pre_block_tail.shape}")
+                assert pre_block_tail.shape[1] == self.block_overlap_frame
+
             for step_index in range(self.model.scheduler.infer_steps):
                 logger.info(f"==> step_index: {step_index + 1} / {self.model.scheduler.infer_steps}")
 
                 with ProfilingContext4Debug("step_pre"):
-                    self.model.scheduler.step_pre(step_index, block_idx)
+                    self.model.scheduler.step_pre(step_index, block_idx, pre_block_tail)
 
                 with ProfilingContext4Debug("infer"):
                     self.model.infer(self.inputs, kv_start, kv_end)
@@ -168,12 +179,47 @@ class WanCausVidRunner(WanRunner):
                 with ProfilingContext4Debug("step_post"):
                     self.model.scheduler.step_post()
 
-            if block_idx == 0:
-                output_latents[:, s:e] = self.model.scheduler.latents
-            else:
-                output_latents[:, s:e] = self.model.scheduler.latents[:, self.block_overlap_frame:]
 
-        return output_latents, self.model.scheduler.generator
+            images = self.run_vae(self.model.scheduler.latents, self.model.scheduler.generator)
+            logger.info(f"images: {images.shape}, latents:{self.model.scheduler.latents.shape}")
+            value_range=(-1,1)
+            images = images.clamp(min(value_range), max(value_range))
+            images = torch.stack(
+                [torchvision.utils.make_grid(u, nrow=1, normalize=True, value_range=value_range) for u in images.unbind(2)],
+                dim=1,
+            ).permute(1, 2, 3, 0)
+            images = (images * 255).type(torch.uint8).cpu()
+            logger.info(f"images: {images.shape}")
+
+            pre_block_tail = images[-4*self.block_overlap_frame:]
+
+            if pre_block_tail.dim() == 4:
+                logger.info(f"pre_block_tail: {pre_block_tail.shape}")
+                debug_image = torch.einsum("fhwc->fchw", pre_block_tail)
+                logger.info(f"images: {debug_image.shape}")
+                for x in range(debug_image.size(0)):
+                    ttt = to_pil_image(debug_image[x]) 
+                    ttt.save(f"./{block_idx}_{x}.jpg")
+            else:
+                logger.info(f"pre_block_tail: {pre_block_tail.shape}")
+                debug_image = torch.einsum("hwc->chw", pre_block_tail)
+                logger.info(f"images: {debug_image.shape}")
+                debug_image = to_pil_image(debug_image)  # 转为 CPU 并转成 PIL 图像
+                debug_image.save(f"./{block_idx}.jpg")
+
+
+            if block_idx == 0:
+                output_images.append(images)
+            else:
+                output_images.append(images[4*self.block_overlap_frame:])
+
+
+
+        writer = imageio.get_writer(self.config.save_video_path, fps=16, codec="libx264", quality=8)
+        for block_frames in output_images:
+            for frame in block_frames.numpy():
+                writer.append_data(frame)
+        writer.close()
 
     def end_run(self):
         self.model.scheduler.clear()
@@ -182,8 +228,9 @@ class WanCausVidRunner(WanRunner):
         torch.cuda.empty_cache()
 
 
-    def run_image_encoder(self, config, image_encoder, vae_model):
-        img = Image.open(config.image_path).convert("RGB")
+    def run_image_encoder(self, config, image_encoder, vae_model, img=None):
+        if img is None:
+            img = Image.open(config.image_path).convert("RGB")
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
         clip_encoder_out = image_encoder.visual([img[:, None, :, :]], config).squeeze(0).to(torch.bfloat16)
         h, w = img.shape[1:]
@@ -240,10 +287,7 @@ class WanCausVidRunner(WanRunner):
         self.init_scheduler()
         self.run_input_encoder()
         self.model.scheduler.prepare(self.inputs["image_encoder_output"])
-        latents, generator = self.run()
+        self.run()
         self.end_run()
-        images = self.run_vae(latents, generator)
-        self.save_video(images)
-        del latents, generator, images
         gc.collect()
         torch.cuda.empty_cache()
