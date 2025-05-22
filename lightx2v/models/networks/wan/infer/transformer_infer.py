@@ -43,10 +43,10 @@ class WanTransformerInfer:
         return cu_seqlens_q, cu_seqlens_k
 
     @torch.compile(disable=not CHECK_ENABLE_GRAPH_MODE())
-    def infer(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        return self.infer_func(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
+    def infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+        return self.infer_func(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
 
-    def _infer_with_offload(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+    def _infer_with_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         for block_idx in range(self.blocks_num):
             if block_idx == 0:
                 self.weights_stream_mgr.active_weights[0] = weights.blocks[0]
@@ -59,6 +59,7 @@ class WanTransformerInfer:
                 x = self.infer_block(
                     self.weights_stream_mgr.active_weights[0],
                     grid_sizes,
+                    embed,
                     x,
                     embed0,
                     seq_lens,
@@ -70,7 +71,7 @@ class WanTransformerInfer:
 
         return x
 
-    def _infer_with_phases_offload(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+    def _infer_with_phases_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         for block_idx in range(weights.blocks_num):
             weights.blocks[block_idx].modulation.to_cuda()
 
@@ -121,11 +122,12 @@ class WanTransformerInfer:
 
         return x
 
-    def _infer_without_offload(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+    def _infer_without_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         for block_idx in range(self.blocks_num):
             x = self.infer_block(
                 weights.blocks[block_idx],
                 grid_sizes,
+                embed,
                 x,
                 embed0,
                 seq_lens,
@@ -256,7 +258,7 @@ class WanTransformerInfer:
         x.add_(y * c_gate_msa.squeeze(0))
         return x
 
-    def infer_block(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+    def infer_block(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         if embed0.dim() == 3:
             modulation = weights.modulation.tensor.unsqueeze(2)
             embed0 = (modulation + embed0).chunk(6, dim=1)
@@ -265,7 +267,7 @@ class WanTransformerInfer:
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.modulation.tensor + embed0).chunk(6, dim=1)
 
         x = self._infer_self_attn(
-            weights.compute_phases[1],
+            weights.compute_phases[0],
             x,
             shift_msa,
             scale_msa,
@@ -274,6 +276,6 @@ class WanTransformerInfer:
             freqs,
             seq_lens,
         )
-        x = self._infer_cross_attn(weights.compute_phases[2], x, context)
-        x = self._infer_ffn(weights.compute_phases[3], x, c_shift_msa, c_scale_msa, c_gate_msa)
+        x = self._infer_cross_attn(weights.compute_phases[1], x, context)
+        x = self._infer_ffn(weights.compute_phases[2], x, c_shift_msa, c_scale_msa, c_gate_msa)
         return x
