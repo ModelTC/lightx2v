@@ -116,9 +116,9 @@ class WanCausVidRunner(WanRunner):
         self.num_fragments = self.config["num_fragments"]
 
     def init_scheduler(self):
-        scheduler = WanCausVidDfScheduler(self.config)
         #scheduler = WanCausVidDfScheduler(self.config)
-        #scheduler = WanCausVidScheduler(self.config)
+        #scheduler = WanCausVidDfScheduler(self.config)
+        scheduler = WanCausVidScheduler(self.config)
         self.model.set_scheduler(scheduler)
 
     def set_target_shape(self):
@@ -147,7 +147,7 @@ class WanCausVidRunner(WanRunner):
         kv_start = 0
         kv_end = kv_start + self.num_frame_per_block * self.frame_seq_length
 
-        pre_block_tail = None
+        debug_image = None
         for block_idx in range(self.num_blocks):
 
             s, e = self.block_ranges[block_idx] 
@@ -157,24 +157,17 @@ class WanCausVidRunner(WanRunner):
             logger.info(f"=====> block_idx: {block_idx + 1} / {self.num_blocks}")
             logger.info(f"=====> kv_start: {kv_start}, kv_end: {kv_end}")
 
-            if pre_block_tail is not None:
-                #prefix_video = torch.tensor(pre_block_tail).unsqueeze(1)  # .to(image_embeds.dtype).unsqueeze(1)
-                pre_block_tail = torch.einsum("fhwc->cfhw", pre_block_tail)
-                if pre_block_tail.dtype == torch.uint8:
-                    pre_block_tail = (pre_block_tail.float() / (255.0 / 2.0)) - 1.0
-                logger.info(f"pre_block_tail shape: {pre_block_tail.shape}")
-                pre_block_tail = self.vae_model.encode([pre_block_tail.cuda()], self.config)[0]
-                logger.info(f"prefix_video shape: {pre_block_tail.shape}")
-                assert pre_block_tail.shape[1] == self.block_overlap_frame
+            if block_idx > 0:
+                self.run_input_encoder(debug_image)
 
             for step_index in range(self.model.scheduler.infer_steps):
                 logger.info(f"==> step_index: {step_index + 1} / {self.model.scheduler.infer_steps}")
 
                 with ProfilingContext4Debug("step_pre"):
-                    self.model.scheduler.step_pre(step_index, block_idx, pre_block_tail)
+                    self.model.scheduler.step_pre(step_index, block_idx)
 
                 with ProfilingContext4Debug("infer"):
-                    self.model.infer(self.inputs, kv_start, kv_end)
+                    self.model.infer(self.inputs,kv_start, kv_end)
 
                 with ProfilingContext4Debug("step_post"):
                     self.model.scheduler.step_post()
@@ -191,29 +184,19 @@ class WanCausVidRunner(WanRunner):
             images = (images * 255).type(torch.uint8).cpu()
             logger.info(f"images: {images.shape}")
 
-            pre_block_tail = images[-4*self.block_overlap_frame:]
+            pre_block_tail = images[-self.block_overlap_frame:]
 
             if pre_block_tail.dim() == 4:
                 logger.info(f"pre_block_tail: {pre_block_tail.shape}")
                 debug_image = torch.einsum("fhwc->fchw", pre_block_tail)
                 logger.info(f"images: {debug_image.shape}")
-                for x in range(debug_image.size(0)):
-                    ttt = to_pil_image(debug_image[x]) 
-                    ttt.save(f"./{block_idx}_{x}.jpg")
-            else:
-                logger.info(f"pre_block_tail: {pre_block_tail.shape}")
-                debug_image = torch.einsum("hwc->chw", pre_block_tail)
-                logger.info(f"images: {debug_image.shape}")
-                debug_image = to_pil_image(debug_image)  # 转为 CPU 并转成 PIL 图像
+                debug_image = to_pil_image(debug_image[0]) 
                 debug_image.save(f"./{block_idx}.jpg")
-
 
             if block_idx == 0:
                 output_images.append(images)
             else:
-                output_images.append(images[4*self.block_overlap_frame:])
-
-
+                output_images.append(images[self.block_overlap_frame:])
 
         writer = imageio.get_writer(self.config.save_video_path, fps=16, codec="libx264", quality=8)
         for block_frames in output_images:
@@ -227,11 +210,11 @@ class WanCausVidRunner(WanRunner):
         gc.collect()
         torch.cuda.empty_cache()
 
-
     def run_image_encoder(self, config, image_encoder, vae_model, img=None):
         if img is None:
             img = Image.open(config.image_path).convert("RGB")
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
+        logger.info(f"image_path: {config.image_path}, img:{img.shape}")
         clip_encoder_out = image_encoder.visual([img[:, None, :, :]], config).squeeze(0).to(torch.bfloat16)
         h, w = img.shape[1:]
         aspect_ratio = h / w
@@ -244,39 +227,38 @@ class WanCausVidRunner(WanRunner):
         config.lat_h = lat_h
         config.lat_w = lat_w
 
-        msk = torch.ones(1, config.target_video_length, lat_h, lat_w, device=torch.device("cuda"))
+        logger.info(f"config.target_video_length:{config.target_video_length}")
+        msk = torch.ones(1,25, lat_h, lat_w, device=torch.device("cuda"))
         msk[:, 1:] = 0
         msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
-        msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
+        logger.info(f"msk:{msk.shape}")
+        msk = msk.view(1, 7, 4, lat_h, lat_w)
         msk = msk.transpose(1, 2)[0]
-        vae_encode_out = vae_model.encode(
-            [
-                torch.concat(
+
+        padding = torch.concat(
                     [
                         torch.nn.functional.interpolate(img[None].cpu(), size=(h, w), mode="bicubic").transpose(0, 1),
-                        torch.zeros(3, config.target_video_length - 1, h, w),
+                        torch.zeros(3, 27, h, w),
                     ],
                     dim=1,
                 ).cuda()
-            ],
-            config,
-        )[0]
+        logger.info(f"vae_encodepadding_out:{padding.shape}, msk:{msk.shape}")
+        vae_encode_out = vae_model.encode([padding], config)[0]
         logger.info(f"vae_encode_out:{vae_encode_out.shape}, msk:{msk.shape}")
         vae_encode_out = torch.concat([msk, vae_encode_out]).to(torch.bfloat16)
 
         return {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
     
 
-    def run_input_encoder(self, fragment_idx = 0):
+    def run_input_encoder(self, img=None):
         image_encoder_output = None
         if os.path.isfile(self.config.image_path):
             with ProfilingContext("Run Img Encoder"):
-                image_encoder_output = self.run_image_encoder(self.config, self.image_encoder, self.vae_model)
+                image_encoder_output = self.run_image_encoder(self.config, self.image_encoder, self.vae_model, img=img)
         with ProfilingContext("Run Text Encoder"):
                 text_encoder_output = self.run_text_encoder(self.config["prompt"], self.text_encoders, self.config, image_encoder_output)
         self.set_target_shape()
         self.inputs = {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
-
         gc.collect()
         torch.cuda.empty_cache()
 

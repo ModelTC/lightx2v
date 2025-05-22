@@ -44,18 +44,9 @@ class WanPreInfer:
             clip_fea = inputs["image_encoder_output"]["clip_encoder_out"]
 
             image_encoder = inputs["image_encoder_output"]["vae_encode_out"]
-            frame_seq_length = (image_encoder.size(2) // 2) * (image_encoder.size(3) // 2)
-            if kv_end - kv_start >= frame_seq_length:  # 如果是CausalVid, image_encoder取片段
-                idx_s = kv_start // frame_seq_length
-                idx_e = kv_end // frame_seq_length
-
-                if idx_e - idx_s < x[0].shape[1]:
-                    assert overlap!=0
-                    idx_s = idx_s - overlap
-                image_encoder = image_encoder[:, idx_s:idx_e, :, :]
                 
             y = [image_encoder]
-            #logger.info(f"y[0]:{y[0].shape}, x[0]:{x[0].shape}, kv_start:{kv_start}, kv_end:{kv_end}, image_encoder:{image_encoder.shape}")
+            logger.info(f"y[0]:{y[0].shape}, x[0]:{x[0].shape}, image_encoder:{image_encoder.shape}")
             x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
 
         # embeddings
