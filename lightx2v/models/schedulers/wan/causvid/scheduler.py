@@ -9,6 +9,8 @@ class WanCausVidScheduler(WanScheduler):
     def __init__(self, config):
         super().__init__(config)
         self.denoising_step_list = config.denoising_step_list
+        self.infer_steps = self.config.infer_steps
+        self.sample_shift = self.config.sample_shift
 
     def prepare(self, image_encoder_output):
         self.generator = torch.Generator(device=self.device)
@@ -19,7 +21,7 @@ class WanCausVidScheduler(WanScheduler):
         if self.config.task in ["t2v"]:
             self.seq_len = math.ceil((self.config.target_shape[2] * self.config.target_shape[3]) / (self.config.patch_size[1] * self.config.patch_size[2]) * self.config.target_shape[1])
         elif self.config.task in ["i2v"]:
-            self.seq_len = ((self.config.target_video_length - 1) // self.config.vae_stride[0] + 1) * self.config.lat_h * self.config.lat_w // (self.config.patch_size[1] * self.config.patch_size[2])
+            self.seq_len = self.config.lat_h * self.config.lat_w // (self.config.patch_size[1] * self.config.patch_size[2]) * self.config.target_shape[1]
 
         alphas = np.linspace(1, 1 / self.num_train_timesteps, self.num_train_timesteps)[::-1].copy()
         sigmas = 1.0 - alphas
@@ -38,7 +40,10 @@ class WanCausVidScheduler(WanScheduler):
         self.sigma_min = self.sigmas[-1].item()
         self.sigma_max = self.sigmas[0].item()
 
-        self.set_denoising_timesteps(device=self.device)
+        if len(self.denoising_step_list) == self.infer_steps:  # 如果denoising_step_list有效既使用
+            self.set_denoising_timesteps(device=self.device)
+        else:
+            self.set_timesteps(self.infer_steps, device=self.device, shift=self.sample_shift)
 
     def set_denoising_timesteps(self, device: Union[str, torch.device] = None):
         self.timesteps = torch.tensor(self.denoising_step_list, device=device, dtype=torch.int64)

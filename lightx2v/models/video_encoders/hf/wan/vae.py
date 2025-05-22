@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 from einops import rearrange
+from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 __all__ = [
@@ -516,7 +517,15 @@ class WanVAE_(nn.Module):
         self.attn_scales = attn_scales
         self.temperal_downsample = temperal_downsample
         self.temperal_upsample = temperal_downsample[::-1]
+        self.spatial_compression_ratio = 2 ** len(self.temperal_downsample)
 
+        # The minimal tile height and width for spatial tiling to be used
+        self.tile_sample_min_height = 256
+        self.tile_sample_min_width = 256
+
+        # The minimal distance between two spatial tiles
+        self.tile_sample_stride_height = 192
+        self.tile_sample_stride_width = 192
         # modules
         self.encoder = Encoder3d(
             dim,
@@ -544,6 +553,134 @@ class WanVAE_(nn.Module):
         z = self.reparameterize(mu, log_var)
         x_recon = self.decode(z)
         return x_recon, mu, log_var
+
+    def blend_v(self, a, b, blend_extent):
+        blend_extent = min(a.shape[-2], b.shape[-2], blend_extent)
+        for y in range(blend_extent):
+            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (y / blend_extent)
+        return b
+
+    def blend_h(self, a, b, blend_extent):
+        blend_extent = min(a.shape[-1], b.shape[-1], blend_extent)
+        for x in range(blend_extent):
+            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (x / blend_extent)
+        return b
+
+    def tiled_encode(self, x, scale):
+        _, _, num_frames, height, width = x.shape
+        latent_height = height // self.spatial_compression_ratio
+        latent_width = width // self.spatial_compression_ratio
+
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        blend_height = tile_latent_min_height - tile_latent_stride_height
+        blend_width = tile_latent_min_width - tile_latent_stride_width
+
+        # Split x into overlapping tiles and encode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        rows = []
+        for i in range(0, height, self.tile_sample_stride_height):
+            row = []
+            for j in range(0, width, self.tile_sample_stride_width):
+                self.clear_cache()
+                time = []
+                frame_range = 1 + (num_frames - 1) // 4
+                for k in range(frame_range):
+                    self._enc_conv_idx = [0]
+                    if k == 0:
+                        tile = x[:, :, :1, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
+                    else:
+                        tile = x[
+                            :,
+                            :,
+                            1 + 4 * (k - 1) : 1 + 4 * k,
+                            i : i + self.tile_sample_min_height,
+                            j : j + self.tile_sample_min_width,
+                        ]
+                    tile = self.encoder(tile, feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx)
+                    mu, log_var = self.conv1(tile).chunk(2, dim=1)
+                    if isinstance(scale[0], torch.Tensor):
+                        mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
+                    else:
+                        mu = (mu - scale[0]) * scale[1]
+
+                    time.append(mu)
+
+                row.append(torch.cat(time, dim=2))
+            rows.append(row)
+        self.clear_cache()
+
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
+            result_rows.append(torch.cat(result_row, dim=-1))
+
+        enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
+        return enc
+
+    def tiled_decode(self, z, scale):
+        if isinstance(scale[0], torch.Tensor):
+            z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(1, self.z_dim, 1, 1, 1)
+        else:
+            z = z / scale[1] + scale[0]
+
+        _, _, num_frames, height, width = z.shape
+        sample_height = height * self.spatial_compression_ratio
+        sample_width = width * self.spatial_compression_ratio
+
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
+        blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
+
+        # Split z into overlapping tiles and decode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        rows = []
+        for i in range(0, height, tile_latent_stride_height):
+            row = []
+            for j in range(0, width, tile_latent_stride_width):
+                self.clear_cache()
+                time = []
+                for k in range(num_frames):
+                    self._conv_idx = [0]
+                    tile = z[:, :, k : k + 1, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
+                    tile = self.conv2(tile)
+                    decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                    time.append(decoded)
+                row.append(torch.cat(time, dim=2))
+            rows.append(row)
+        self.clear_cache()
+
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :, : self.tile_sample_stride_height, : self.tile_sample_stride_width])
+            result_rows.append(torch.cat(result_row, dim=-1))
+
+        dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
+
+        return dec
 
     def encode(self, x, scale):
         self.clear_cache()
@@ -651,6 +788,7 @@ def _video_vae(pretrained_path=None, z_dim=None, device="cpu", **kwargs):
 
 
 class WanVAE:
+    @peak_memory_decorator
     def __init__(
         self,
         z_dim=16,
@@ -658,10 +796,12 @@ class WanVAE:
         dtype=torch.float,
         device="cuda",
         parallel=False,
+        use_tiling=False,
     ):
         self.dtype = dtype
         self.device = device
         self.parallel = parallel
+        self.use_tiling = use_tiling
 
         mean = [
             -0.7571,
@@ -733,7 +873,10 @@ class WanVAE:
         if args.cpu_offload:
             self.to_cuda()
 
-        out = [self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0) for u in videos]
+        if self.use_tiling:
+            out = [self.model.tiled_encode(u.unsqueeze(0), self.scale).float().squeeze(0) for u in videos]
+        else:
+            out = [self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0) for u in videos]
 
         if args.cpu_offload:
             self.to_cpu()
@@ -804,6 +947,8 @@ class WanVAE:
             else:
                 logger.info("Fall back to naive decode mode")
                 images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
+        elif self.use_tiling:
+            images = self.model.tiled_decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
         else:
             images = self.model.decode(zs.unsqueeze(0), self.scale).float().clamp_(-1, 1)
 

@@ -23,7 +23,6 @@ import torch.distributed as dist
 class WanCausVidRunner(WanRunner):
     def __init__(self, config):
         super().__init__(config)
-        self.denoising_step_list = self.model.config.denoising_step_list
         self.num_frame_per_block = self.model.config.num_frame_per_block
         self.num_frames = self.model.config.num_frames
         self.frame_seq_length = self.model.config.frame_seq_length
@@ -80,7 +79,11 @@ class WanCausVidRunner(WanRunner):
 
     def set_target_shape(self):
         if self.config.task == "i2v":
-            self.config.target_shape = (16, 3, self.config.lat_h, self.config.lat_w)
+            self.config.target_shape = (16, self.config.num_frame_per_block, self.config.lat_h, self.config.lat_w)
+            # i2v需根据input shape重置frame_seq_length
+            frame_seq_length = (self.config.lat_h // 2) * (self.config.lat_w // 2)
+            self.model.transformer_infer.frame_seq_length = frame_seq_length
+            self.frame_seq_length = frame_seq_length
         elif self.config.task == "t2v":
             self.config.target_shape = (
                 16,

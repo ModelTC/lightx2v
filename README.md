@@ -25,7 +25,7 @@
 
 ## How to Run
 
-Please refer to the [documentation](https://github.com/ModelTC/lightx2v/tree/main/docs) in lightx2v
+Please refer to the [documentation](https://github.com/ModelTC/lightx2v/tree/main/docs) in lightx2v.
 
 ## Contributing Guidelines
 

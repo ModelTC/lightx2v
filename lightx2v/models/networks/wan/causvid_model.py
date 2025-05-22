@@ -34,7 +34,12 @@ class WanCausVidModel(WanModel):
 
     def _load_ckpt(self):
         use_bfloat16 = self.config.get("use_bfloat16", True)
-        weight_dict = torch.load(os.path.join(self.model_path, "causal_model.pt"), map_location="cpu", weights_only=True)
+        ckpt_path = os.path.join(self.model_path, "causal_model.pt")
+        if not os.path.exists(ckpt_path):
+            # 文件不存在，调用父类的 _load_ckpt 方法
+            return super()._load_ckpt()
+
+        weight_dict = torch.load(ckpt_path, map_location="cpu", weights_only=True)
 
         dtype = torch.bfloat16 if use_bfloat16 else None
         for key, value in weight_dict.items():
@@ -48,7 +53,7 @@ class WanCausVidModel(WanModel):
             self.pre_weight.to_cuda()
             self.post_weight.to_cuda()
 
-        embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=True)
+        embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=True, kv_start=kv_start, kv_end=kv_end)
 
         x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out, kv_start, kv_end)
         self.scheduler.noise_pred = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]

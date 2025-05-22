@@ -20,6 +20,7 @@ from safetensors import safe_open
 import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
 from lightx2v.utils.envs import *
+from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 
@@ -28,6 +29,7 @@ class WanModel:
     post_weight_class = WanPostWeights
     transformer_weight_class = WanTransformerWeights
 
+    @peak_memory_decorator
     def __init__(self, model_path, config, device):
         self.model_path = model_path
         self.config = config
@@ -49,9 +51,6 @@ class WanModel:
                 ring_dist_wrap.parallelize_wan(self)
             else:
                 raise Exception(f"Unsuppotred parallel_attn_type")
-
-        if self.config["cpu_offload"]:
-            self.to_cpu()
 
     def _init_infer_class(self):
         self.pre_infer_class = WanPreInfer
@@ -184,7 +183,7 @@ class WanModel:
             self.post_weight.to_cuda()
 
         embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=True)
-        x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+        x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, *pre_infer_out)
         noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
         if self.config["feature_caching"] == "Tea":
@@ -195,7 +194,7 @@ class WanModel:
 
         if self.config["enable_cfg"]:
             embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=False)
-            x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+            x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, *pre_infer_out)
             noise_pred_uncond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
             if self.config["feature_caching"] == "Tea":

@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .tokenizer import HuggingfaceTokenizer
+from lightx2v.utils.memory_profiler import peak_memory_decorator
 from loguru import logger
 
 __all__ = [
@@ -255,8 +256,10 @@ class T5Encoder(nn.Module):
         num_buckets,
         shared_pos=True,
         dropout=0.1,
+        cpu_offload=False,
     ):
         super(T5Encoder, self).__init__()
+        self.cpu_offload = cpu_offload
         self.dim = dim
         self.dim_attn = dim_attn
         self.dim_ffn = dim_ffn
@@ -276,12 +279,28 @@ class T5Encoder(nn.Module):
         self.apply(init_weights)
 
     def forward(self, ids, mask=None):
+        if self.cpu_offload:
+            self.token_embedding = self.token_embedding.cuda()
         x = self.token_embedding(ids)
+        if self.cpu_offload:
+            self.token_embedding = self.token_embedding.cpu()
         x = self.dropout(x)
+        if self.cpu_offload and self.pos_embedding is not None:
+            self.pos_embedding = self.pos_embedding.cuda()
         e = self.pos_embedding(x.size(1), x.size(1)) if self.shared_pos else None
+        if self.cpu_offload and self.pos_embedding is not None:
+            self.pos_embedding = self.pos_embedding.cpu()
         for block in self.blocks:
+            if self.cpu_offload:
+                block = block.cuda()
             x = block(x, mask, pos_bias=e)
+            if self.cpu_offload:
+                block = block.cpu()
+        if self.cpu_offload:
+            self.norm = self.norm.cuda()
         x = self.norm(x)
+        if self.cpu_offload:
+            self.norm = self.norm.cpu()
         x = self.dropout(x)
         return x
 
@@ -431,15 +450,7 @@ def _t5(
 
     # set device
     model = model.to(dtype=dtype, device=device)
-
-    # init tokenizer
-    if return_tokenizer:
-        from .tokenizers import HuggingfaceTokenizer
-
-        tokenizer = HuggingfaceTokenizer(f"google/{name}", **tokenizer_kwargs)
-        return model, tokenizer
-    else:
-        return model
+    return model
 
 
 def umt5_xxl(**kwargs):
@@ -460,6 +471,7 @@ def umt5_xxl(**kwargs):
 
 
 class T5EncoderModel:
+    @peak_memory_decorator
     def __init__(
         self,
         text_len,
@@ -468,15 +480,33 @@ class T5EncoderModel:
         checkpoint_path=None,
         tokenizer_path=None,
         shard_fn=None,
+        cpu_offload=False,
+        offload_granularity="model",
     ):
         self.text_len = text_len
         self.dtype = dtype
         self.device = device
         self.checkpoint_path = checkpoint_path
         self.tokenizer_path = tokenizer_path
+        self.offload_granularity = offload_granularity
+
+        # sync cpu offload
+        self.cpu_offload = cpu_offload
+        if self.cpu_offload:
+            assert self.offload_granularity in ["block", "model"]
 
         # init model
-        model = umt5_xxl(encoder_only=True, return_tokenizer=False, dtype=dtype, device=device).eval().requires_grad_(False)
+        model = (
+            umt5_xxl(
+                encoder_only=True,
+                return_tokenizer=False,
+                dtype=dtype,
+                device=device,
+                cpu_offload=cpu_offload if self.offload_granularity == "block" else False,
+            )
+            .eval()
+            .requires_grad_(False)
+        )
         logging.info(f"loading {checkpoint_path}")
         model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
         self.model = model
@@ -493,8 +523,8 @@ class T5EncoderModel:
     def to_cuda(self):
         self.model = self.model.to("cuda")
 
-    def infer(self, texts, config):
-        if config.cpu_offload:
+    def infer(self, texts):
+        if self.cpu_offload and self.offload_granularity == "model":
             self.to_cuda()
 
         ids, mask = self.tokenizer(texts, return_mask=True, add_special_tokens=True)
@@ -503,7 +533,7 @@ class T5EncoderModel:
         seq_lens = mask.gt(0).sum(dim=1).long()
         context = self.model(ids, mask)
 
-        if config.cpu_offload:
+        if self.cpu_offload and self.offload_granularity == "model":
             self.to_cpu()
 
         return [u[:v] for u, v in zip(context, seq_lens)]

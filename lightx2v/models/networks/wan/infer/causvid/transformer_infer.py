@@ -1,7 +1,6 @@
 import torch
 import math
 from ..utils import compute_freqs, compute_freqs_causvid, compute_freqs_dist, apply_rotary_emb
-from lightx2v.common.offload.manager import WeightStreamManager
 from lightx2v.utils.envs import *
 from ..transformer_infer import WanTransformerInfer
 
@@ -13,18 +12,18 @@ class WanTransformerInferCausVid(WanTransformerInfer):
         self.num_frame_per_block = config["num_frame_per_block"]
         self.frame_seq_length = config["frame_seq_length"]
         self.text_len = config["text_len"]
-        self.kv_size = self.num_frames * self.frame_seq_length
         self.kv_cache = None
         self.crossattn_cache = None
 
     def _init_kv_cache(self, dtype, device):
         kv_cache = []
+        kv_size = self.num_frames * self.frame_seq_length
 
         for _ in range(self.blocks_num):
             kv_cache.append(
                 {
-                    "k": torch.zeros([self.kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
-                    "v": torch.zeros([self.kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
+                    "k": torch.zeros([kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
+                    "v": torch.zeros([kv_size, self.num_heads, self.head_dim], dtype=dtype, device=device),
                 }
             )
 
@@ -144,9 +143,9 @@ class WanTransformerInferCausVid(WanTransformerInfer):
 
         norm3_out = weights.norm3.apply(x)
 
-        # TODO: Implement I2V inference for causvid model
         if self.task == "i2v":
-            raise NotImplementedError("I2V inference for causvid model is not implemented")
+            context_img = context[:257]
+            context = context[257:]
 
         n, d = self.num_heads, self.head_dim
         q = weights.cross_attn_norm_q.apply(weights.cross_attn_q.apply(norm3_out)).view(-1, n, d)
@@ -173,9 +172,28 @@ class WanTransformerInferCausVid(WanTransformerInfer):
             model_cls=self.config["model_cls"],
         )
 
-        # TODO: Implement I2V inference for causvid model
         if self.task == "i2v":
-            raise NotImplementedError("I2V inference for causvid model is not implemented")
+            k_img = weights.cross_attn_norm_k_img.apply(weights.cross_attn_k_img.apply(context_img)).view(-1, n, d)
+            v_img = weights.cross_attn_v_img.apply(context_img).view(-1, n, d)
+
+            cu_seqlens_q, cu_seqlens_k, lq, lk = self._calculate_q_k_len(
+                q,
+                k_img,
+                k_lens=torch.tensor([k_img.size(0)], dtype=torch.int32, device=k.device),
+            )
+
+            img_attn_out = weights.cross_attn_2.apply(
+                q=q,
+                k=k_img,
+                v=v_img,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=lq,
+                max_seqlen_kv=lk,
+                model_cls=self.config["model_cls"],
+            )
+
+            attn_out = attn_out + img_attn_out
 
         attn_out = weights.cross_attn_o.apply(attn_out)
 

@@ -56,8 +56,8 @@ class MMWeight(MMWeightTemplate):
         super().__init__(weight_name, bias_name)
 
     def load(self, weight_dict):
-        self.weight = weight_dict[self.weight_name].t().cuda()
-        self.bias = weight_dict[self.bias_name].cuda() if self.bias_name is not None else None
+        self.weight = weight_dict[self.weight_name].t()
+        self.bias = weight_dict[self.bias_name] if self.bias_name is not None else None
 
     def apply(self, input_tensor):
         shape = (input_tensor.shape[0], self.weight.shape[1])
@@ -106,38 +106,38 @@ class MMWeightQuantTemplate(MMWeightTemplate):
             self.weight = self.weight.t()
 
     def load_quantized(self, weight_dict):
-        self.weight = weight_dict[self.weight_name].cuda()
-        self.weight_scale = weight_dict[self.weight_name.removesuffix(".weight") + ".weight_scale"].float().cuda()
+        self.weight = weight_dict[self.weight_name]
+        self.weight_scale = weight_dict[self.weight_name.removesuffix(".weight") + ".weight_scale"].float()
 
     def load_fp8_perchannel_sym(self, weight_dict):
         if GET_RUNNING_FLAG() == "save_naive_quant" or self.config.get("weight_auto_quant", False):
-            self.weight = weight_dict[self.weight_name].to(torch.float32).cuda()
+            self.weight = weight_dict[self.weight_name].to(torch.float32)
             w_quantizer = FloatQuantizer("e4m3", True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
             self.weight = self.weight.to(torch.float8_e4m3fn)
             self.weight_scale = self.weight_scale.to(torch.float32)
         else:
             self.load_quantized(weight_dict)
-        self.bias = weight_dict[self.bias_name].cuda() if self.bias_name is not None else None
+        self.bias = weight_dict[self.bias_name] if self.bias_name is not None else None
 
     def load_int8_perchannel_sym(self, weight_dict):
         if GET_RUNNING_FLAG() == "save_naive_quant" or self.config.get("weight_auto_quant", False):
-            self.weight = weight_dict[self.weight_name].to(torch.float32).cuda()
+            self.weight = weight_dict[self.weight_name].to(torch.float32)
             w_quantizer = IntegerQuantizer(8, True, "per_channel")
             self.weight, self.weight_scale, _ = w_quantizer.real_quant_tensor(self.weight)
             self.weight = self.weight.to(torch.int8)
             self.weight_scale = self.weight_scale.to(torch.float32)
         else:
             self.load_quantized(weight_dict)
-        self.bias = weight_dict[self.bias_name].cuda() if self.bias_name is not None else None
+        self.bias = weight_dict[self.bias_name] if self.bias_name is not None else None
 
     def load_fp8_perblock128_sym(self, weight_dict):
         if GET_RUNNING_FLAG() == "save_naive_quant" or self.config.get("weight_auto_quant", False):
-            self.weight = weight_dict[self.weight_name].cuda()
+            self.weight = weight_dict[self.weight_name]
             self.weight, self.weight_scale = self.per_block_cast_to_fp8(self.weight)
         else:
             self.load_quantized(weight_dict)
-        self.bias = weight_dict[self.bias_name].cuda() if self.bias_name is not None else None
+        self.bias = weight_dict[self.bias_name] if self.bias_name is not None else None
 
     def per_block_cast_to_fp8(self, x):
         assert x.dim() == 2

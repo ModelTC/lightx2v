@@ -1,7 +1,6 @@
 import torch
 import math
 from .utils import rope_params, sinusoidal_embedding_1d
-import torch.cuda.amp as amp
 
 
 class WanPreInfer:
@@ -25,7 +24,7 @@ class WanPreInfer:
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
 
-    def infer(self, weights, inputs, positive):
+    def infer(self, weights, inputs, positive, kv_start=0, kv_end=0):
         x = [self.scheduler.latents]
 
         if self.scheduler.flag_df:
@@ -42,7 +41,14 @@ class WanPreInfer:
 
         if self.task == "i2v":
             clip_fea = inputs["image_encoder_output"]["clip_encoder_out"]
-            y = [inputs["image_encoder_output"]["vae_encode_out"]]
+
+            image_encoder = inputs["image_encoder_output"]["vae_encode_out"]
+            frame_seq_length = (image_encoder.size(2) // 2) * (image_encoder.size(3) // 2)
+            if kv_end - kv_start >= frame_seq_length:  # 如果是CausalVid, image_encoder取片段
+                idx_s = kv_start // frame_seq_length
+                idx_e = kv_end // frame_seq_length
+                image_encoder = image_encoder[:, idx_s:idx_e, :, :]
+            y = [image_encoder]
             x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
 
         # embeddings
