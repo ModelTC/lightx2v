@@ -21,6 +21,13 @@ class HunyuanRunner(DefaultRunner):
     def __init__(self, config):
         super().__init__(config)
 
+    def load_transformer(self):
+        if self.config.cpu_offload:
+            init_device = torch.device("cpu")
+        else:
+            init_device = torch.device("cuda")
+        return HunyuanModel(self.config.model_path, self.config, init_device, self.config)
+
     @ProfilingContext("Load models")
     def load_model(self):
         if self.config["parallel_attn_type"]:
@@ -64,7 +71,8 @@ class HunyuanRunner(DefaultRunner):
             text_encoder_output[f"text_encoder_{i + 1}_attention_mask"] = attention_mask
         return text_encoder_output
 
-    def get_closest_ratio(self, height: float, width: float, ratios: list, buckets: list):
+    @staticmethod
+    def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
         aspect_ratio = float(height) / float(width)
         diff_ratios = ratios - aspect_ratio
 
@@ -79,7 +87,8 @@ class HunyuanRunner(DefaultRunner):
 
         return closest_size, closest_ratio
 
-    def generate_crop_size_list(self, base_size=256, patch_size=32, max_ratio=4.0):
+    @staticmethod
+    def generate_crop_size_list(base_size=256, patch_size=32, max_ratio=4.0):
         num_patches = round((base_size / patch_size) ** 2)
         assert max_ratio >= 1.0
         crop_size_list = []

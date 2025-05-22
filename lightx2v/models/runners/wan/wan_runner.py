@@ -25,6 +25,19 @@ class WanRunner(DefaultRunner):
     def __init__(self, config):
         super().__init__(config)
 
+    def load_transformer(self):
+        if self.config.cpu_offload:
+            init_device = torch.device("cpu")
+        else:
+            init_device = torch.device("cuda")
+        model = WanModel(self.config.model_path, self.config, init_device)
+        if self.config.lora_path:
+            lora_wrapper = WanLoraWrapper(model)
+            lora_name = lora_wrapper.load_lora(self.config.lora_path)
+            lora_wrapper.apply_lora(lora_name, self.config.strength_model)
+            logger.info(f"Loaded LoRA: {lora_name}")
+        return model
+
     @ProfilingContext("Load models")
     def load_model(self):
         if self.config["parallel_attn_type"]:
