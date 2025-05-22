@@ -1,4 +1,3 @@
-import torch
 from lightx2v.utils.registry_factory import MM_WEIGHT_REGISTER, LN_WEIGHT_REGISTER, CONV3D_WEIGHT_REGISTER
 from lightx2v.common.modules.weight_module import WeightModule
 

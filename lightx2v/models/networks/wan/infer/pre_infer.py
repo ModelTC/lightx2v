@@ -1,7 +1,6 @@
 import torch
 import math
 from .utils import rope_params, sinusoidal_embedding_1d
-import torch.cuda.amp as amp
 
 
 class WanPreInfer:
