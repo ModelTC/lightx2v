@@ -53,7 +53,7 @@ class WanTransformerInfer:
 
             if block_idx < self.blocks_num - 1:
                 self.weights_stream_mgr.prefetch_weights(block_idx + 1, weights.blocks)
-            
+
             with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
                 x = self.infer_block(
                     self.weights_stream_mgr.active_weights[0],

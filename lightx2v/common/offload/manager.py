@@ -37,7 +37,7 @@ class WeightAsyncStreamManager(object):
             new_phase.to_cuda_async()
             self.active_weights[2] = (phase_idx, blocks[block_idx].compute_phases[phase_idx])
         with torch.cuda.stream(self.cpu_load_stream):
-            if block_idx*self.phases_num + phase_idx < self.offload_phases_num:
+            if block_idx * self.phases_num + phase_idx < self.offload_phases_num:
                 if self.active_weights[1] is not None:
                     _, old_phase = self.active_weights[1]
                     old_phase.to_cpu_async()
