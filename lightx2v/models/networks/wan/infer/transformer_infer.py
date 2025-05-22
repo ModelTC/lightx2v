@@ -10,6 +10,7 @@ class WanTransformerInfer:
         self.task = config["task"]
         self.attention_type = config.get("attention_type", "flash_attn2")
         self.blocks_num = config["num_layers"]
+        self.phases_num = 3
         self.num_heads = config["num_heads"]
         self.head_dim = config["dim"] // config["num_heads"]
         self.window_size = config.get("window_size", (-1, -1))
@@ -22,11 +23,9 @@ class WanTransformerInfer:
             offload_granularity = self.config.get("offload_granularity", "block")
             if offload_granularity == "block":
                 self.infer_func = self._infer_with_offload
-                blocks_num = self.blocks_num
             elif offload_granularity == "phase":
                 self.infer_func = self._infer_with_phases_offload
-                blocks_num = self.blocks_num * 3
-            self.weights_stream_mgr = WeightAsyncStreamManager(blocks_num=blocks_num, offload_ratio=offload_ratio)
+            self.weights_stream_mgr = WeightAsyncStreamManager(blocks_num=self.blocks_num, offload_ratio=offload_ratio, phases_num=self.phases_num)
         else:
             self.infer_func = self._infer_without_offload
 
@@ -82,7 +81,7 @@ class WanTransformerInfer:
             elif embed0.dim() == 2:
                 shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.blocks[block_idx].modulation.tensor + embed0).chunk(6, dim=1)
 
-            for phase_idx in range(3):
+            for phase_idx in range(self.phases_num):
                 if block_idx == 0 and phase_idx == 0:
                     phase = weights.blocks[block_idx].compute_phases[phase_idx]
                     phase.to_cuda()
