@@ -16,11 +16,11 @@ class WeightAsyncStreamManager(object):
     def prefetch_weights(self, block_idx, blocks_weights):
         with torch.cuda.stream(self.cuda_load_stream):
             self.active_weights[2] = blocks_weights[block_idx]
-            self.active_weights[2].to_cuda_sync()
+            self.active_weights[2].to_cuda_async()
         with torch.cuda.stream(self.cpu_load_stream):
             if block_idx < self.offload_block_num:
                 if self.active_weights[1] is not None:
-                    self.active_weights[1].to_cpu_sync()
+                    self.active_weights[1].to_cpu_async()
         # with torch.cuda.stream(self.load_stream):
         #     if self.active_weights[1] is not None:
         #         self.active_weights[1].to_cpu_async()
@@ -43,10 +43,9 @@ class WeightAsyncStreamManager(object):
             self.active_weights[2] = blocks[block_idx].compute_phases[phase_idx]
             self.active_weights[2].to_cuda_async()
         with torch.cuda.stream(self.cpu_load_stream):
-            if block_idx < self.offload_block_num:
-                if self.active_weights[1] is not None:
-                    _, old_phase = self.active_weights[1]
-                    old_phase.to_cpu_async()
+            if self.active_weights[1] is not None:
+                _, old_phase = self.active_weights[1]
+                old_phase.to_cpu_async()
 
     def swap_phases(self):
         self.compute_stream.synchronize()
