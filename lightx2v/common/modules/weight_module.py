@@ -53,8 +53,14 @@ class WeightModule:
                     self._parameters[name].to_cpu()
                     setattr(self, name, self._parameters[name])
         for module in self._modules.values():
-            if module is not None and hasattr(module, "to_cpu"):
-                module.to_cpu()
+            if isinstance(module, WeightModuleList):
+                for i in range(len(module)):
+                    for m in module[i]._modules.values():
+                        if m is not None and hasattr(m, "to_cpu"):
+                            m.to_cpu()
+            else:
+                if module is not None and hasattr(module, "to_cpu"):
+                    module.to_cpu()
 
     def to_cuda(self):
         for name, param in self._parameters.items():
@@ -65,10 +71,16 @@ class WeightModule:
                     self._parameters[name].to_cuda()
                 setattr(self, name, self._parameters[name])
         for module in self._modules.values():
-            if module is not None and hasattr(module, "to_cuda"):
-                module.to_cuda()
+            if isinstance(module, WeightModuleList):
+                for i in range(len(module)):
+                    for m in module[i]._modules.values():
+                        if m is not None and hasattr(m, "to_cuda"):
+                            m.to_cuda()
+            else:
+                if module is not None and hasattr(module, "to_cuda"):
+                    module.to_cuda()
 
-    def to_cpu_sync(self):
+    def to_cpu_async(self):
         for name, param in self._parameters.items():
             if param is not None:
                 if hasattr(param, "cpu"):
@@ -78,10 +90,16 @@ class WeightModule:
                     self._parameters[name].to_cpu(non_blocking=True)
                     setattr(self, name, self._parameters[name])
         for module in self._modules.values():
-            if module is not None and hasattr(module, "to_cpu"):
-                module.to_cpu(non_blocking=True)
+            if isinstance(module, WeightModuleList):
+                for i in range(len(module)):
+                    for m in module[i]._modules.values():
+                        if m is not None and hasattr(m, "to_cpu"):
+                            m.to_cpu(non_blocking=True)
+            else:
+                if module is not None and hasattr(module, "to_cpu"):
+                    module.to_cpu(non_blocking=True)
 
-    def to_cuda_sync(self):
+    def to_cuda_async(self):
         for name, param in self._parameters.items():
             if param is not None:
                 if hasattr(param, "cuda"):
@@ -90,8 +108,14 @@ class WeightModule:
                     self._parameters[name].to_cuda(non_blocking=True)
                 setattr(self, name, self._parameters[name])
         for module in self._modules.values():
-            if module is not None and hasattr(module, "to_cuda"):
-                module.to_cuda(non_blocking=True)
+            if isinstance(module, WeightModuleList):
+                for i in range(len(module)):
+                    for m in module[i]._modules.values():
+                        if m is not None and hasattr(m, "to_cuda"):
+                            m.to_cuda(non_blocking=True)
+            else:
+                if module is not None and hasattr(module, "to_cuda"):
+                    module.to_cuda(non_blocking=True)
 
 
 class WeightModuleList(WeightModule):

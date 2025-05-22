@@ -39,15 +39,15 @@ class Conv3dWeight(Conv3dWeightTemplate):
         input_tensor = torch.nn.functional.conv3d(input_tensor, weight=self.weight, bias=self.bias, stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups)
         return input_tensor
 
-    def to_cpu(self):
-        self.weight = self.weight.cpu()
+    def to_cpu(self, non_blocking=False):
+        self.weight = self.weight.to("cpu", non_blocking=non_blocking)
         if self.bias is not None:
-            self.bias = self.bias.cpu()
+            self.bias = self.bias.to("cpu", non_blocking=non_blocking)
 
-    def to_cuda(self):
-        self.weight = self.weight.cuda()
+    def to_cuda(self, non_blocking=False):
+        self.weight = self.weight.cuda(non_blocking=non_blocking)
         if self.bias is not None:
-            self.bias = self.bias.cuda()
+            self.bias = self.bias.cuda(non_blocking=non_blocking)
 
     def state_dict(self, destination=None):
         if destination is None:
