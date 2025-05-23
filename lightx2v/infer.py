@@ -1,3 +1,4 @@
+import asyncio
 import argparse
 import torch
 import torch.distributed as dist
@@ -33,7 +34,7 @@ def init_runner(config):
     return runner
 
 
-if __name__ == "__main__":
+async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
@@ -54,4 +55,8 @@ if __name__ == "__main__":
         logger.info(f"config:\n{json.dumps(config, ensure_ascii=False, indent=4)}")
         runner = init_runner(config)
 
-        runner.run_pipeline()
+        await runner.run_pipeline()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
