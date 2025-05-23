@@ -1,6 +1,8 @@
 import asyncio
 import gc
 import aiohttp
+import requests
+from requests.exceptions import RequestException
 import torch
 import torch.distributed as dist
 import torchvision.transforms.functional as TF
@@ -16,18 +18,45 @@ from loguru import logger
 class DefaultRunner:
     def __init__(self, config):
         self.config = config
-        # TODO: implement prompt enhancer
         self.has_prompt_enhancer = False
-        # if self.config.prompt_enhancer is not None and self.config.task == "t2v":
-        #     self.config["use_prompt_enhancer"] = True
-        #     self.has_prompt_enhancer = True
+        if self.config["task"] == "t2v" and self.config.get("sub_servers", {}).get("prompt_enhancer") is not None:
+            self.has_prompt_enhancer = True
+            if not self.check_sub_servers("prompt_enhancer"):
+                self.has_prompt_enhancer = False
+                logger.warning("No prompt enhancer server available, disable prompt enhancer.")
+
         if self.config["mode"] == "split_server":
             self.model = self.load_transformer()
             self.text_encoders, self.vae_model, self.image_encoder = None, None, None
             self.tensor_transporter = TensorTransporter()
             self.image_transporter = ImageTransporter()
+            if not self.check_sub_servers("text_encoders"):
+                raise ValueError("No text encoder server available")
+            if "wan_2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
+                raise ValueError("No image encoder server available")
+            if not self.check_sub_servers("vae_model"):
+                raise ValueError("No vae model server available")
         else:
             self.model, self.text_encoders, self.vae_model, self.image_encoder = self.load_model()
+
+    def check_sub_servers(self, task_type):
+        urls = self.config.get("sub_servers", {}).get(task_type, [])
+        available_servers = []
+        for url in urls:
+            try:
+                status_url = f"{url}/v1/local/{task_type}/generate/service_status"
+                response = requests.get(status_url, timeout=2)
+                if response.status_code == 200:
+                    available_servers.append(url)
+                else:
+                    logger.warning(f"Service {url} returned status code {response.status_code}")
+
+            except RequestException as e:
+                logger.warning(f"Failed to connect to {url}: {str(e)}")
+                continue
+        logger.info(f"{task_type} available servers: {available_servers}")
+        self.config["sub_servers"][task_type] = available_servers
+        return len(available_servers) > 0
 
     def set_inputs(self, inputs):
         self.config["prompt"] = inputs.get("prompt", "")
