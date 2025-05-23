@@ -110,6 +110,8 @@ class TensorTransporter:
     def to_device(self, data, device):
         if isinstance(data, dict):
             return {key: self.to_device(value, device) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self.to_device(item, device) for item in data]
         elif isinstance(data, torch.Tensor):
             return data.to(device)
         else:

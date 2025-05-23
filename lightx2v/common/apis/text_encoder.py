@@ -35,6 +35,7 @@ class Message(BaseModel):
 
     text: str
     img: Optional[bytes] = None
+    n_prompt: Optional[str] = None
 
     def get(self, key, default=None):
         return getattr(self, key, default)
@@ -71,12 +72,11 @@ class TextEncoderRunner:
             raise ValueError(f"Unsupported model class: {self.config.model_cls}")
         return text_encoders
 
-    def _run_text_encoder(self, text, img):
+    def _run_text_encoder(self, text, img, n_prompt):
         if "wan2.1" in self.config.model_cls:
             text_encoder_output = {}
-            n_prompt = self.config.get("negative_prompt", "")
-            context = self.text_encoders[0].infer([text], self.config)
-            context_null = self.text_encoders[0].infer([n_prompt if n_prompt else ""], self.config)
+            context = self.text_encoders[0].infer([text])
+            context_null = self.text_encoders[0].infer([n_prompt if n_prompt else ""])
             text_encoder_output["context"] = context
             text_encoder_output["context_null"] = context_null
         elif self.config.model_cls in ["hunyuan"]:
@@ -97,7 +97,7 @@ class TextEncoderRunner:
 def run_text_encoder(message: Message):
     try:
         global runner
-        text_encoder_output = runner._run_text_encoder(message.text, message.img)
+        text_encoder_output = runner._run_text_encoder(message.text, message.img, message.n_prompt)
         TextEncoderServiceStatus.complete_task(message)
         return text_encoder_output
     except Exception as e:
@@ -105,7 +105,7 @@ def run_text_encoder(message: Message):
         TextEncoderServiceStatus.record_failed_task(message, error=str(e))
 
 
-@app.post("/v1/local/text_encoder/generate")
+@app.post("/v1/local/text_encoders/generate")
 def v1_local_text_encoder_generate(message: Message):
     try:
         task_id = TextEncoderServiceStatus.start_task(message)
@@ -117,17 +117,17 @@ def v1_local_text_encoder_generate(message: Message):
         return {"error": str(e)}
 
 
-@app.get("/v1/local/text_encoder/generate/service_status")
+@app.get("/v1/local/text_encoders/generate/service_status")
 async def get_service_status():
     return TextEncoderServiceStatus.get_status_service()
 
 
-@app.get("/v1/local/text_encoder/generate/get_all_tasks")
+@app.get("/v1/local/text_encoders/generate/get_all_tasks")
 async def get_all_tasks():
     return TextEncoderServiceStatus.get_all_tasks()
 
 
-@app.post("/v1/local/text_encoder/generate/task_status")
+@app.post("/v1/local/text_encoders/generate/task_status")
 async def get_task_status(message: TaskStatusMessage):
     return TextEncoderServiceStatus.get_status_task_id(message.task_id)
 

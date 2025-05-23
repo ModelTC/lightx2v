@@ -187,6 +187,11 @@ def v1_local_vae_model_decoder_generate(message: Message):
         return {"error": str(e)}
 
 
+@app.get("/v1/local/vae_model/generate/service_status")
+async def get_service_status():
+    return VAEServiceStatus.get_status_service()
+
+
 @app.get("/v1/local/vae_model/encoder/generate/service_status")
 async def get_service_status():
     return VAEServiceStatus.get_status_service()

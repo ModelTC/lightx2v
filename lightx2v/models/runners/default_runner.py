@@ -32,7 +32,7 @@ class DefaultRunner:
             self.image_transporter = ImageTransporter()
             if not self.check_sub_servers("text_encoders"):
                 raise ValueError("No text encoder server available")
-            if "wan_2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
+            if "wan2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
                 raise ValueError("No image encoder server available")
             if not self.check_sub_servers("vae_model"):
                 raise ValueError("No vae model server available")
@@ -66,7 +66,7 @@ class DefaultRunner:
         self.config["image_path"] = inputs.get("image_path", "")
         self.config["save_video_path"] = inputs.get("save_video_path", "")
 
-    async def post_encoders(self, prompt, img=None, i2v=False):
+    async def post_encoders(self, prompt, img=None, n_prompt=None, i2v=False):
         tasks = []
         img_byte = self.image_transporter.prepare_image(img) if img is not None else None
         if i2v:
@@ -83,11 +83,16 @@ class DefaultRunner:
             )
         tasks.append(
             asyncio.create_task(
-                self.post_task(task_type="text_encoder", urls=self.config["sub_servers"]["text_encoders"], message={"task_id": generate_task_id(), "text": prompt, "img": img_byte}, device="cuda")
+                self.post_task(
+                    task_type="text_encoders",
+                    urls=self.config["sub_servers"]["text_encoders"],
+                    message={"task_id": generate_task_id(), "text": prompt, "img": img_byte, "n_prompt": n_prompt},
+                    device="cuda",
+                )
             )
         )
         results = await asyncio.gather(*tasks)
-        # clip_encoder, vae_encoder, text_encoder
+        # clip_encoder, vae_encoder, text_encoders
         if not i2v:
             return None, None, results[0]
         if "wan2.1" in self.config["model_cls"]:
@@ -98,11 +103,12 @@ class DefaultRunner:
     async def run_input_encoder(self):
         image_encoder_output = None
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
+        n_prompt = self.config.get("negative_prompt", "")
         i2v = self.config["task"] == "i2v"
         img = Image.open(self.config["image_path"]).convert("RGB") if i2v else None
         with ProfilingContext("Run Encoders"):
             if self.config["mode"] == "split_server":
-                clip_encoder_out, vae_encode_out, text_encoder_output = await self.post_encoders(prompt, img, i2v)
+                clip_encoder_out, vae_encode_out, text_encoder_output = await self.post_encoders(prompt, img, n_prompt, i2v)
                 if i2v:
                     if self.config["model_cls"] in ["hunyuan"]:
                         image_encoder_output = {"img": img, "img_latents": vae_encode_out}
