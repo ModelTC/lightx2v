@@ -15,7 +15,6 @@ from lightx2v.models.input_encoders.hf.llava.model import TextEncoderHFLlavaMode
 
 from lightx2v.utils.profiler import ProfilingContext
 from lightx2v.utils.set_config import set_config
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 from lightx2v.utils.service_utils import TaskStatusMessage, BaseServiceStatus, ProcessManager, TensorTransporter, ImageTransporter
 
 tensor_transporter = TensorTransporter()
@@ -72,7 +71,6 @@ class TextEncoderRunner:
             raise ValueError(f"Unsupported model class: {self.config.model_cls}")
         return text_encoders
 
-    @peak_memory_decorator
     def _run_text_encoder(self, text, img):
         if "wan2.1" in self.config.model_cls:
             text_encoder_output = {}

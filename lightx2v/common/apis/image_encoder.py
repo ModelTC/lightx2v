@@ -12,7 +12,6 @@ from lightx2v.models.input_encoders.hf.xlm_roberta.model import CLIPModel
 
 from lightx2v.utils.profiler import ProfilingContext
 from lightx2v.utils.set_config import set_config
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 from lightx2v.utils.service_utils import TaskStatusMessage, BaseServiceStatus, ProcessManager, TensorTransporter, ImageTransporter
 
 tensor_transporter = TensorTransporter()
@@ -61,7 +60,6 @@ class ImageEncoderRunner:
             raise ValueError(f"Unsupported model class: {self.config.model_cls}")
         return image_encoder
 
-    @peak_memory_decorator
     def _run_image_encoder(self, img):
         if "wan2.1" in self.config.model_cls:
             img = image_transporter.load_image(img)

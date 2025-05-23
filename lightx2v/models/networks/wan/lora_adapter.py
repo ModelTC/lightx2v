@@ -3,11 +3,9 @@ import torch
 from safetensors import safe_open
 from loguru import logger
 import gc
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 
 
 class WanLoraWrapper:
-    @peak_memory_decorator
     def __init__(self, wan_model):
         self.model = wan_model
         self.lora_metadata = {}

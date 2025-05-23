@@ -17,7 +17,6 @@ from lightx2v.models.runners.hunyuan.hunyuan_runner import HunyuanRunner
 
 from lightx2v.utils.profiler import ProfilingContext
 from lightx2v.utils.set_config import set_config
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 from lightx2v.utils.service_utils import TaskStatusMessage, BaseServiceStatus, ProcessManager, TensorTransporter, ImageTransporter
 
 tensor_transporter = TensorTransporter()
@@ -65,7 +64,6 @@ class VAEEncoderRunner:
             raise ValueError(f"Unsupported model class: {self.config.model_cls}")
         return vae_model
 
-    @peak_memory_decorator
     def _run_vae_encoder(self, img):
         img = image_transporter.load_image(img)
         kwargs = {}

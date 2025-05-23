@@ -9,7 +9,6 @@ from lightx2v.utils.profiler import ProfilingContext4Debug, ProfilingContext
 from lightx2v.utils.utils import save_videos_grid, cache_video
 from lightx2v.utils.generate_task_id import generate_task_id
 from lightx2v.utils.envs import *
-from lightx2v.utils.memory_profiler import peak_memory_decorator
 from lightx2v.utils.service_utils import TensorTransporter, ImageTransporter
 from loguru import logger
 
@@ -92,7 +91,6 @@ class DefaultRunner:
         gc.collect()
         torch.cuda.empty_cache()
 
-    @peak_memory_decorator
     def run(self):
         for step_index in range(self.model.scheduler.infer_steps):
             logger.info(f"==> step_index: {step_index + 1} / {self.model.scheduler.infer_steps}")
@@ -122,7 +120,6 @@ class DefaultRunner:
         torch.cuda.empty_cache()
 
     @ProfilingContext("Run VAE")
-    @peak_memory_decorator
     async def run_vae(self, latents, generator):
         if self.config["mode"] == "split_server":
             images = await self.post_task(

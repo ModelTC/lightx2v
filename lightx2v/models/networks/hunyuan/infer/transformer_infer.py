@@ -1,7 +1,7 @@
 import torch
 from einops import rearrange
 from .utils_bf16 import apply_rotary_emb
-from lightx2v.common.offload.manager import WeightStreamManager
+from lightx2v.common.offload.manager import WeightAsyncStreamManager
 from lightx2v.utils.envs import *
 
 
@@ -16,8 +16,12 @@ class HunyuanTransformerInfer:
         self.mlp_hidden_dim = 12288
         self.parallel_attention = None
         if self.config["cpu_offload"]:
-            self.double_weights_stream_mgr = WeightStreamManager()
-            self.single_weights_stream_mgr = WeightStreamManager()
+            if "offload_ratio" in self.config:
+                offload_ratio = self.config["offload_ratio"]
+            else:
+                offload_ratio = 1
+            self.double_weights_stream_mgr = WeightAsyncStreamManager(blocks_num=self.double_blocks_num, offload_ratio=offload_ratio)
+            self.single_weights_stream_mgr = WeightAsyncStreamManager(blocks_num=self.single_blocks_num, offload_ratio=offload_ratio)
             self.infer_func = self._infer_with_offload
         else:
             self.infer_func = self._infer_without_offload
