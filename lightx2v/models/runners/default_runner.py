@@ -60,11 +60,21 @@ class DefaultRunner:
 
     def set_inputs(self, inputs):
         self.config["prompt"] = inputs.get("prompt", "")
-        if self.has_prompt_enhancer and self.config["mode"] != "infer":
+        if self.has_prompt_enhancer:
             self.config["use_prompt_enhancer"] = inputs.get("use_prompt_enhancer", False)  # Reset use_prompt_enhancer from clinet side.
         self.config["negative_prompt"] = inputs.get("negative_prompt", "")
         self.config["image_path"] = inputs.get("image_path", "")
         self.config["save_video_path"] = inputs.get("save_video_path", "")
+
+    def post_prompt_enhancer(self):
+        while True:
+            for url in self.config["sub_servers"]["prompt_enhancer"]:
+                response = requests.get(f"{url}/v1/local/prompt_enhancer/generate/service_status").json()
+                if response["service_status"] == "idle":
+                    response = requests.post(f"{url}/v1/local/prompt_enhancer/generate", json={"task_id": generate_task_id(), "prompt": self.config["prompt"]})
+                    self.config["prompt_enhanced"] = response.json()["output"]
+                    logger.info(f"Enhanced prompt: {self.config['prompt_enhanced']}")
+                    return
 
     async def post_encoders(self, prompt, img=None, n_prompt=None, i2v=False):
         tasks = []
@@ -192,7 +202,7 @@ class DefaultRunner:
 
     async def run_pipeline(self):
         if self.config["use_prompt_enhancer"]:
-            self.config["prompt_enhanced"] = self.prompt_enhancer(self.config["prompt"])
+            self.config["prompt_enhanced"] = self.post_prompt_enhancer()
         self.init_scheduler()
         await self.run_input_encoder()
         self.model.scheduler.prepare(self.inputs["image_encoder_output"])
