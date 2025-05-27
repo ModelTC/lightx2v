@@ -77,7 +77,7 @@ class MMWeight(MMWeightTemplate):
         if self.bias is not None:
             destination[self.bias_name] = self.bias.cpu().detach().clone()
         return destination
-    
+
     def to_cpu(self, non_blocking=False):
         # self.weight = self.weight.to("cpu", non_blocking=non_blocking)
         self.weight = self.pinned_weight.copy_(self.weight, non_blocking=non_blocking).cpu()
