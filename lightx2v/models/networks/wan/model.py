@@ -64,9 +64,9 @@ class WanModel:
         use_bfloat16 = self.config.get("use_bfloat16", True)
         with safe_open(file_path, framework="pt") as f:
             if use_bfloat16:
-                tensor_dict = {key: f.get_tensor(key).to(torch.bfloat16).to(self.device) for key in f.keys()}
+                tensor_dict = {key: f.get_tensor(key).to(torch.bfloat16).pin_memory().to(self.device) for key in f.keys()}
             else:
-                tensor_dict = {key: f.get_tensor(key).to(self.device) for key in f.keys()}
+                tensor_dict = {key: f.get_tensor(key).pin_memory().to(self.device) for key in f.keys()}
         return tensor_dict
 
     def _load_ckpt(self):

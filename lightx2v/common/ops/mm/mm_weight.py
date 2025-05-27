@@ -57,7 +57,9 @@ class MMWeight(MMWeightTemplate):
 
     def load(self, weight_dict):
         self.weight = weight_dict[self.weight_name].t()
+        self.pinned_weight = torch.empty(self.weight.shape, pin_memory=True, dtype=self.weight.dtype)
         self.bias = weight_dict[self.bias_name] if self.bias_name is not None else None
+        self.pinned_bias = torch.empty(self.bias.shape, pin_memory=True, dtype=self.bias.dtype) if self.bias is not None else None
 
     def apply(self, input_tensor):
         shape = (input_tensor.shape[0], self.weight.shape[1])
@@ -75,6 +77,15 @@ class MMWeight(MMWeightTemplate):
         if self.bias is not None:
             destination[self.bias_name] = self.bias.cpu().detach().clone()
         return destination
+    
+    def to_cpu(self, non_blocking=False):
+        # self.weight = self.weight.to("cpu", non_blocking=non_blocking)
+        self.weight = self.pinned_weight.copy_(self.weight, non_blocking=non_blocking).cpu()
+        if hasattr(self, "weight_scale"):
+            self.weight_scale = self.weight_scale.to("cpu", non_blocking=non_blocking)
+        if self.bias is not None:
+            # self.bias = self.bias.to("cpu", non_blocking=non_blocking)
+            self.bias = self.pinned_bias.copy_(self.bias, non_blocking=non_blocking).cpu()
 
 
 @MM_WEIGHT_REGISTER("Default-Force-FP32")
