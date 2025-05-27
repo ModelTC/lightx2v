@@ -1,9 +1,14 @@
 # LightX2V: Light Video Generation Inference Framework
 
-<div align="center">
-  <picture>
-    <img alt="LightLLM" src="assets/img_lightx2v.jpg" width=75%>
-  </picture>
+<div align="center" id="lightx2v">
+<img alt="logo" src="assets/img_lightx2v.jpg" width=75%></img>
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ModelTC/lightx2v)
+[![Doc](https://img.shields.io/badge/docs-English-99cc2)](https://github.com/ModelTC/lightx2v/tree/main/docs/en_US)
+[![Doc](https://img.shields.io/badge/文档-中文-99cc2)](https://github.com/ModelTC/lightx2v/tree/main/docs/zh_CN)
+[![Docker](https://badgen.net/badge/icon/docker?icon=docker&label)](https://hub.docker.com/r/lightx2v/lightx2v/tags)
+
 </div>
 
 --------------------------------------------------------------------------------
@@ -22,6 +27,7 @@
 
 ✅ [SkyReels-V2-DF](https://huggingface.co/Skywork/SkyReels-V2-DF-14B-540P)
 
+✅ [CogVideoX1.5-5B-T2V](https://huggingface.co/THUDM/CogVideoX1.5-5B)
 
 ## How to Run
 
@@ -29,7 +35,7 @@ Please refer to the [documentation](https://github.com/ModelTC/lightx2v/tree/mai
 
 ## Contributing Guidelines
 
-We have prepared a `pre-commit` hook to enforce consistent code formatting across the project. If your code complies with the standards, you should not see any errors, you can clean up your code following the steps below:
+We have prepared a `pre-commit` hook to enforce consistent code formatting across the project.
 
 1. Install the required dependencies:
 
@@ -43,9 +49,9 @@ pip install ruff pre-commit
 pre-commit run --all-files
 ```
 
-3. Finally, please double-check your code to ensure it complies with the following additional specifications as much as possible:
-  - Avoid hard-coding local paths: Make sure your submissions do not include hard-coded local paths, as these paths are specific to individual development environments and can cause compatibility issues. Use relative paths or configuration files instead.
-  - Clear error handling: Implement clear error-handling mechanisms in your code so that error messages can accurately indicate the location of the problem, possible causes, and suggested solutions, facilitating quick debugging.
-  - Detailed comments and documentation: Add comments to complex code sections and provide comprehensive documentation to explain the functionality of the code, input-output requirements, and potential error scenarios.
-
 Thank you for your contributions!
+
+
+## Acknowledgments
+
+We built the code for this repository by referencing the code repositories involved in all the models mentioned above.
