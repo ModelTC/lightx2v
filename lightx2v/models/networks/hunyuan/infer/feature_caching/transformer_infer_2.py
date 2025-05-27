@@ -23,8 +23,8 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformer):
             img, vec = self.infer_using_cache(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
         
         # 3. 更新数组
-        if index < self.scheduler.infer_steps:
-            should_calc = self.calculate_should_calc(img, vec, weights, )
+        if index <= self.scheduler.infer_steps - 2:
+            should_calc = self.calculate_should_calc(img, vec, weights)
             caching_records[index+1] = should_calc
 
         return img, vec
@@ -57,7 +57,7 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformer):
         return img, vec
 
     # 1. only in tea-cache, judge next step
-    def calculate_should_calc(self, img, vec, weights, ):
+    def calculate_should_calc(self, img, vec, weights):
         # 1. 时间步嵌入调制
         inp = img.clone()
         vec_ = vec.clone()
@@ -71,11 +71,11 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformer):
             should_calc = True
             self.accumulated_rel_l1_distance = 0
         else:
-            rescale_func = np.poly1d(self.scheduler.coefficients)
+            rescale_func = np.poly1d(self.coefficients)
             self.accumulated_rel_l1_distance += rescale_func(
                 ((modulated_inp -  self.previous_modulated_input).abs().mean() /  self.previous_modulated_input.abs().mean()).cpu().item()
             )
-            if self.accumulated_rel_l1_distance < self.scheduler.teacache_thresh:
+            if self.accumulated_rel_l1_distance < self.teacache_thresh:
                 should_calc = False
             else:
                 should_calc = True

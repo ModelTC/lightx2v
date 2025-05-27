@@ -143,7 +143,3 @@ class HunyuanModel:
         if self.config["cpu_offload"]:
             self.pre_weight.to_cpu()
             self.post_weight.to_cpu()
-        if self.config["feature_caching"] == "Tea":
-            self.scheduler.cnt += 1
-            if self.scheduler.cnt == self.scheduler.num_steps:
-                self.scheduler.cnt = 0
