@@ -211,7 +211,7 @@ def get_1d_rotary_pos_embed_riflex(
     if isinstance(pos, int):
         pos = torch.arange(pos)
     if isinstance(pos, np.ndarray):
-        pos = torch.from_numpy(pos)  # type: ignore  # [S]
+        pos = torch.from_numpy(pos)  # [S]
 
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, device=pos.device)[: (dim // 2)].float() / dim))  # [D/2]
 
@@ -223,7 +223,7 @@ def get_1d_rotary_pos_embed_riflex(
         freqs[k - 1] = 0.9 * 2 * torch.pi / L_test
     # === Riflex modification end ===
 
-    freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
+    freqs = torch.outer(pos, freqs)  # [S, D/2]
     if use_real:
         freqs_cos = freqs.cos().repeat_interleave(2, dim=1).float()  # [S, D]
         freqs_sin = freqs.sin().repeat_interleave(2, dim=1).float()  # [S, D]

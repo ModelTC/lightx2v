@@ -15,6 +15,7 @@ from lightx2v.models.runners.wan.wan_runner import WanRunner
 from lightx2v.models.runners.wan.wan_causvid_runner import WanCausVidRunner
 from lightx2v.models.runners.wan.wan_skyreels_v2_df_runner import WanSkyreelsV2DFRunner
 from lightx2v.models.runners.graph_runner import GraphRunner
+from lightx2v.models.runners.cogvideox.cogvidex_runner import CogvideoxRunner
 
 from lightx2v.common.ops import *
 from loguru import logger
@@ -36,7 +37,7 @@ def init_runner(config):
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df"], default="hunyuan")
+    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df", "cogvideox"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_json", type=str, required=True)
