@@ -13,7 +13,7 @@
 
 ## Supported Model List
 
-✅ [HunyuanVideo-T2V](https://huggingface.co/tencent/HunyuanVideo)  
+✅ [HunyuanVideo-T2V](https://huggingface.co/tencent/HunyuanVideo)
 
 ✅ [HunyuanVideo-I2V](https://huggingface.co/tencent/HunyuanVideo-I2V)
 
