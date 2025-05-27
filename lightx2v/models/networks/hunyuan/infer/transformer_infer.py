@@ -126,7 +126,7 @@ class BaseHunyuanTransformer(BaseTransformer):
         txt_out = torch.nn.functional.gelu(txt_out, approximate="tanh")
         txt_out = weights.txt_mlp_fc2.apply(txt_out)
 
-        return img_out, txt_out, img_mod2_gate, txt_mod2_gate
+        return img, txt, img_out, txt_out, img_mod2_gate, txt_mod2_gate
         
     def infer_double_block_3(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num, img_out, txt_out, img_mod2_gate, txt_mod2_gate):
         # img
