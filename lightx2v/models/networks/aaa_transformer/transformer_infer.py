@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
+import math
 
 class BaseTransformer(ABC):
     def set_scheduler(self, scheduler):

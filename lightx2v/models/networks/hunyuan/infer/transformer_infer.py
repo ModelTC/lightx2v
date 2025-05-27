@@ -1,6 +1,7 @@
-from .base_transformer_infer import BaseTransformer
+from lightx2v.models.networks.aaa_transformer.transformer_infer import BaseTransformer
 import torch
 from einops import rearrange
+from .utils_bf16 import apply_rotary_emb
 
 class BaseHunyuanTransformer(BaseTransformer):
     # 1. 初始化
@@ -149,6 +150,8 @@ class BaseHunyuanTransformer(BaseTransformer):
             token_replace_vec_out = torch.nn.functional.silu(token_replace_vec)
             token_replace_vec_out = weights.modulation.apply(token_replace_vec_out)
             tr_mod_shift, tr_mod_scale, tr_mod_gate = token_replace_vec_out.chunk(3, dim=-1)
+        else:
+            tr_mod_shift, tr_mod_scale, tr_mod_gate = None, None, None
 
         # norm + scale&shift + qk-norm + attention
         out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
@@ -201,9 +204,9 @@ class BaseHunyuanTransformer(BaseTransformer):
         out = torch.cat((attn, out), 1)
         out = weights.linear2.apply(out)
 
-        return out, mod_gate
+        return out, mod_gate, tr_mod_gate
 
-    def infer_single_block_2(self, weights, x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, out, mod_gate, token_replace_vec=None, frist_frame_token_num=None):
+    def infer_single_block_2(self, weights, x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, out, mod_gate, tr_mod_gate, token_replace_vec=None, frist_frame_token_num=None):
         if token_replace_vec is not None:
             x_zero = out[:frist_frame_token_num] * tr_mod_gate
             x_orig = out[frist_frame_token_num:] * mod_gate
