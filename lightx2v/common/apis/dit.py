@@ -50,7 +50,7 @@ class DiTRunner:
     def __init__(self, config):
         self.config = config
         self.runner_cls = RUNNER_REGISTER[self.config.model_cls]
-        
+
         self.runner = self.runner_cls.__new__(self.runner_cls)
         self.runner.config = config
         self.runner.model = self.runner.load_transformer()
