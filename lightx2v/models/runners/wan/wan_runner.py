@@ -25,11 +25,7 @@ class WanRunner(DefaultRunner):
     def __init__(self, config):
         super().__init__(config)
 
-    def load_transformer(self):
-        if self.config.cpu_offload:
-            init_device = torch.device("cpu")
-        else:
-            init_device = torch.device("cuda")
+    def load_transformer(self, init_device):
         model = WanModel(self.config.model_path, self.config, init_device)
         if self.config.lora_path:
             lora_wrapper = WanLoraWrapper(model)
@@ -38,49 +34,8 @@ class WanRunner(DefaultRunner):
             logger.info(f"Loaded LoRA: {lora_name}")
         return model
 
-    @ProfilingContext("Load models")
-    def load_model(self):
-        if self.config["parallel_attn_type"]:
-            cur_rank = dist.get_rank()
-            torch.cuda.set_device(cur_rank)
+    def load_image_encoder(self, init_device):
         image_encoder = None
-        if self.config.cpu_offload:
-            init_device = torch.device("cpu")
-        else:
-            init_device = torch.device("cuda")
-
-        text_encoder = T5EncoderModel(
-            text_len=self.config["text_len"],
-            dtype=torch.bfloat16,
-            device=init_device,
-            checkpoint_path=os.path.join(self.config.model_path, "models_t5_umt5-xxl-enc-bf16.pth"),
-            tokenizer_path=os.path.join(self.config.model_path, "google/umt5-xxl"),
-            shard_fn=None,
-            cpu_offload=self.config.cpu_offload,
-            offload_granularity=self.config.get("text_encoder_offload_granularity", "model"),
-        )
-        text_encoders = [text_encoder]
-        model = WanModel(self.config.model_path, self.config, init_device)
-
-        if self.config.lora_path:
-            lora_wrapper = WanLoraWrapper(model)
-            lora_name = lora_wrapper.load_lora(self.config.lora_path)
-            lora_wrapper.apply_lora(lora_name, self.config.strength_model)
-            logger.info(f"Loaded LoRA: {lora_name}")
-
-        if self.config.get("tiny_vae", False):
-            vae_model = WanVAE_tiny(
-                vae_pth=self.config.tiny_vae_path,
-                device=init_device,
-            )
-            vae_model = vae_model.to("cuda")
-        else:
-            vae_model = WanVAE(
-                vae_pth=os.path.join(self.config.model_path, "Wan2.1_VAE.pth"),
-                device=init_device,
-                parallel=self.config.parallel_vae,
-                use_tiling=self.config.get("use_tiling_vae", False),
-            )
         if self.config.task == "i2v":
             image_encoder = CLIPModel(
                 dtype=torch.float16,
@@ -99,8 +54,37 @@ class WanRunner(DefaultRunner):
                     use_tiling=self.config.get("use_tiling_vae", False),
                 )
                 image_encoder = [image_encoder, org_vae]
+        return image_encoder
 
-        return model, text_encoders, vae_model, image_encoder
+    def load_text_encoder(self, init_device):
+        text_encoder = T5EncoderModel(
+            text_len=self.config["text_len"],
+            dtype=torch.bfloat16,
+            device=init_device,
+            checkpoint_path=os.path.join(self.config.model_path, "models_t5_umt5-xxl-enc-bf16.pth"),
+            tokenizer_path=os.path.join(self.config.model_path, "google/umt5-xxl"),
+            shard_fn=None,
+            cpu_offload=self.config.cpu_offload,
+            offload_granularity=self.config.get("text_encoder_offload_granularity", "model"),
+        )
+        text_encoders = [text_encoder]
+        return text_encoders
+
+    def load_vae(self, init_device):
+        if self.config.get("tiny_vae", False):
+            vae_model = WanVAE_tiny(
+                vae_pth=self.config.tiny_vae_path,
+                device=init_device,
+            )
+            vae_model = vae_model.to("cuda")
+        else:
+            vae_model = WanVAE(
+                vae_pth=os.path.join(self.config.model_path, "Wan2.1_VAE.pth"),
+                device=init_device,
+                parallel=self.config.parallel_vae,
+                use_tiling=self.config.get("use_tiling_vae", False),
+            )
+        return vae_model
 
     def init_scheduler(self):
         if self.config.feature_caching == "NoCaching":
@@ -160,6 +144,7 @@ class WanRunner(DefaultRunner):
         return {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
 
     def set_target_shape(self):
+        ret = {}
         num_channels_latents = self.config.get("num_channels_latents", 16)
         if self.config.task == "i2v":
             self.config.target_shape = (
@@ -168,6 +153,8 @@ class WanRunner(DefaultRunner):
                 self.config.lat_h,
                 self.config.lat_w,
             )
+            ret["lat_h"] = self.config.lat_h
+            ret["lat_w"] = self.config.lat_w
         elif self.config.task == "t2v":
             self.config.target_shape = (
                 num_channels_latents,
@@ -175,3 +162,5 @@ class WanRunner(DefaultRunner):
                 int(self.config.target_height) // self.config.vae_stride[1],
                 int(self.config.target_width) // self.config.vae_stride[2],
             )
+        ret["target_shape"] = self.config.target_shape
+        return ret

@@ -26,18 +26,40 @@ class DefaultRunner:
                 logger.warning("No prompt enhancer server available, disable prompt enhancer.")
 
         if self.config["mode"] == "split_server":
-            self.model = self.load_transformer()
-            self.text_encoders, self.vae_model, self.image_encoder = None, None, None
+            # self.model = self.load_transformer()
+            self.model, self.text_encoders, self.vae_model, self.image_encoder = None, None, None, None
             self.tensor_transporter = TensorTransporter()
             self.image_transporter = ImageTransporter()
+            if not self.check_sub_servers("dit"):
+                raise ValueError("No dit server available")
             if not self.check_sub_servers("text_encoders"):
                 raise ValueError("No text encoder server available")
-            if "wan2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
+            if self.config["task"] == "i2v" and "wan2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
                 raise ValueError("No image encoder server available")
             if not self.check_sub_servers("vae_model"):
                 raise ValueError("No vae model server available")
         else:
             self.model, self.text_encoders, self.vae_model, self.image_encoder = self.load_model()
+
+    def get_init_device(self):
+        if self.config["parallel_attn_type"]:
+            cur_rank = dist.get_rank()
+            torch.cuda.set_device(cur_rank)
+        if self.config.cpu_offload:
+            init_device = torch.device("cpu")
+        else:
+            init_device = torch.device("cuda")
+        return init_device
+
+    @ProfilingContext("Load models")
+    def load_model(self):
+        init_device = self.get_init_device()
+        text_encoders = self.load_text_encoder(init_device)
+        model = self.load_transformer(init_device)
+        image_encoder = self.load_image_encoder(init_device)
+        vae_model = self.load_vae(init_device)
+
+        return model, text_encoders, vae_model, image_encoder
 
     def check_sub_servers(self, task_type):
         urls = self.config.get("sub_servers", {}).get(task_type, [])
@@ -72,9 +94,9 @@ class DefaultRunner:
                 response = requests.get(f"{url}/v1/local/prompt_enhancer/generate/service_status").json()
                 if response["service_status"] == "idle":
                     response = requests.post(f"{url}/v1/local/prompt_enhancer/generate", json={"task_id": generate_task_id(), "prompt": self.config["prompt"]})
-                    self.config["prompt_enhanced"] = response.json()["output"]
-                    logger.info(f"Enhanced prompt: {self.config['prompt_enhanced']}")
-                    return
+                    enhanced_prompt = response.json()["output"]
+                    logger.info(f"Enhanced prompt: {enhanced_prompt}")
+                    return enhanced_prompt
 
     async def post_encoders(self, prompt, img=None, n_prompt=None, i2v=False):
         tasks = []
@@ -129,12 +151,11 @@ class DefaultRunner:
             else:
                 if i2v:
                     image_encoder_output = self.run_image_encoder(self.config, self.image_encoder, self.vae_model)
+                    gc.collect()
+                    torch.cuda.empty_cache()
                 text_encoder_output = self.run_text_encoder(prompt, self.text_encoders, self.config, image_encoder_output)
-        self.set_target_shape()
-        self.inputs = {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
 
-        gc.collect()
-        torch.cuda.empty_cache()
+        return {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
 
     def run(self):
         for step_index in range(self.model.scheduler.infer_steps):
@@ -163,6 +184,25 @@ class DefaultRunner:
         self.model.scheduler.clear()
         del self.inputs, self.model.scheduler
         torch.cuda.empty_cache()
+
+    @ProfilingContext("Run DiT")
+    async def run_dit(self, kwargs):
+        if self.config["mode"] == "split_server":
+            if self.inputs.get("image_encoder_output", None) is not None:
+                self.inputs["image_encoder_output"].pop("img", None)
+            dit_output = await self.post_task(
+                task_type="dit",
+                urls=self.config["sub_servers"]["dit"],
+                message={"task_id": generate_task_id(), "inputs": self.tensor_transporter.prepare_tensor(self.inputs), "kwargs": self.tensor_transporter.prepare_tensor(kwargs)},
+                device="cuda",
+            )
+            return dit_output, None
+        else:
+            self.init_scheduler()
+            self.model.scheduler.prepare(self.inputs["image_encoder_output"])
+            latents, generator = self.run()
+            self.end_run()
+            return latents, generator
 
     @ProfilingContext("Run VAE")
     async def run_vae(self, latents, generator):
@@ -203,11 +243,9 @@ class DefaultRunner:
     async def run_pipeline(self):
         if self.config["use_prompt_enhancer"]:
             self.config["prompt_enhanced"] = self.post_prompt_enhancer()
-        self.init_scheduler()
-        await self.run_input_encoder()
-        self.model.scheduler.prepare(self.inputs["image_encoder_output"])
-        latents, generator = self.run()
-        self.end_run()
+        self.inputs = await self.run_input_encoder()
+        kwargs = self.set_target_shape()
+        latents, generator = await self.run_dit(kwargs)
         images = await self.run_vae(latents, generator)
         self.save_video(images)
         del latents, generator, images
