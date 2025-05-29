@@ -25,7 +25,7 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformer):
         # 3. 更新数组
         if index <= self.scheduler.infer_steps - 2:
             should_calc = self.calculate_should_calc(img, vec, weights)
-            caching_records[index+1] = should_calc
+            self.scheduler.caching_records[index+1] = should_calc
 
         return img, vec
 
