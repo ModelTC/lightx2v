@@ -46,14 +46,6 @@ class WanRunner(DefaultRunner):
                 ),
                 tokenizer_path=os.path.join(self.config.model_path, "xlm-roberta-large"),
             )
-            if self.config.get("tiny_vae", False):
-                org_vae = WanVAE(
-                    vae_pth=os.path.join(self.config.model_path, "Wan2.1_VAE.pth"),
-                    device=init_device,
-                    parallel=self.config.parallel_vae,
-                    use_tiling=self.config.get("use_tiling_vae", False),
-                )
-                image_encoder = [image_encoder, org_vae]
         return image_encoder
 
     def load_text_encoder(self, init_device):
@@ -71,20 +63,25 @@ class WanRunner(DefaultRunner):
         return text_encoders
 
     def load_vae(self, init_device):
-        if self.config.get("tiny_vae", False):
-            vae_model = WanVAE_tiny(
+        vae_config = {
+            "vae_pth": os.path.join(self.config.model_path, "Wan2.1_VAE.pth"),
+            "device": init_device,
+            "parallel": self.config.parallel_vae,
+            "use_tiling": self.config.get("use_tiling_vae", False),
+        }
+        use_tiny_decoder = self.config.get("tiny_vae", False)
+        is_i2v = self.config.task == "i2v"
+        if use_tiny_decoder:
+            vae_decoder = WanVAE_tiny(
                 vae_pth=self.config.tiny_vae_path,
                 device=init_device,
-            )
-            vae_model = vae_model.to("cuda")
+            ).to("cuda")
+            vae_encoder = WanVAE(**vae_config) if is_i2v else None
         else:
-            vae_model = WanVAE(
-                vae_pth=os.path.join(self.config.model_path, "Wan2.1_VAE.pth"),
-                device=init_device,
-                parallel=self.config.parallel_vae,
-                use_tiling=self.config.get("use_tiling_vae", False),
-            )
-        return vae_model
+            vae_decoder = WanVAE(**vae_config)
+            vae_encoder = vae_decoder if is_i2v else None
+
+        return vae_encoder, vae_decoder
 
     def init_scheduler(self):
         if self.config.feature_caching == "NoCaching":
@@ -95,53 +92,53 @@ class WanRunner(DefaultRunner):
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config.feature_caching}")
         self.model.set_scheduler(scheduler)
 
-    def run_text_encoder(self, text, text_encoders, config, image_encoder_output):
+    def run_text_encoder(self, text, img):
         text_encoder_output = {}
-        n_prompt = config.get("negative_prompt", "")
-        context = text_encoders[0].infer([text])
-        context_null = text_encoders[0].infer([n_prompt if n_prompt else ""])
+        n_prompt = self.config.get("negative_prompt", "")
+        context = self.text_encoders[0].infer([text])
+        context_null = self.text_encoders[0].infer([n_prompt if n_prompt else ""])
         text_encoder_output["context"] = context
         text_encoder_output["context_null"] = context_null
         return text_encoder_output
 
-    def run_image_encoder(self, config, image_encoder, vae_model):
-        if self.config.get("tiny_vae", False):
-            clip_image_encoder, vae_image_encoder = image_encoder[0], image_encoder[1]
-        else:
-            clip_image_encoder, vae_image_encoder = image_encoder, vae_model
-        img = Image.open(config.image_path).convert("RGB")
+    def run_clip_encoder(self, img):
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
-        clip_encoder_out = clip_image_encoder.visual([img[:, None, :, :]], config).squeeze(0).to(torch.bfloat16)
+        clip_encoder_out = self.image_encoder.visual([img[:, None, :, :]], self.config).squeeze(0).to(torch.bfloat16)
+        return clip_encoder_out
+
+    def run_vae_encoder(self, img):
+        kwargs = {}
+        img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
         h, w = img.shape[1:]
         aspect_ratio = h / w
-        max_area = config.target_height * config.target_width
-        lat_h = round(np.sqrt(max_area * aspect_ratio) // config.vae_stride[1] // config.patch_size[1] * config.patch_size[1])
-        lat_w = round(np.sqrt(max_area / aspect_ratio) // config.vae_stride[2] // config.patch_size[2] * config.patch_size[2])
-        h = lat_h * config.vae_stride[1]
-        w = lat_w * config.vae_stride[2]
+        max_area = self.config.target_height * self.config.target_width
+        lat_h = round(np.sqrt(max_area * aspect_ratio) // self.config.vae_stride[1] // self.config.patch_size[1] * self.config.patch_size[1])
+        lat_w = round(np.sqrt(max_area / aspect_ratio) // self.config.vae_stride[2] // self.config.patch_size[2] * self.config.patch_size[2])
+        h = lat_h * self.config.vae_stride[1]
+        w = lat_w * self.config.vae_stride[2]
 
-        config.lat_h = lat_h
-        config.lat_w = lat_w
+        self.config.lat_h, kwargs["lat_h"] = lat_h, lat_h
+        self.config.lat_w, kwargs["lat_w"] = lat_w, lat_w
 
-        msk = torch.ones(1, config.target_video_length, lat_h, lat_w, device=torch.device("cuda"))
+        msk = torch.ones(1, self.config.target_video_length, lat_h, lat_w, device=torch.device("cuda"))
         msk[:, 1:] = 0
         msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
         msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
         msk = msk.transpose(1, 2)[0]
-        vae_encode_out = vae_image_encoder.encode(
+        vae_encode_out = self.vae_encoder.encode(
             [
                 torch.concat(
                     [
                         torch.nn.functional.interpolate(img[None].cpu(), size=(h, w), mode="bicubic").transpose(0, 1),
-                        torch.zeros(3, config.target_video_length - 1, h, w),
+                        torch.zeros(3, self.config.target_video_length - 1, h, w),
                     ],
                     dim=1,
                 ).cuda()
             ],
-            config,
+            self.config,
         )[0]
         vae_encode_out = torch.concat([msk, vae_encode_out]).to(torch.bfloat16)
-        return {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
+        return vae_encode_out, kwargs
 
     def set_target_shape(self):
         ret = {}

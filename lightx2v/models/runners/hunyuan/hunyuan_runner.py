@@ -38,7 +38,7 @@ class HunyuanRunner(DefaultRunner):
 
     def load_vae(self, init_device):
         vae_model = VideoEncoderKLCausal3DModel(self.config.model_path, dtype=torch.float16, device=init_device, config=self.config)
-        return vae_model
+        return vae_model, vae_model
 
     def init_scheduler(self):
         if self.config.feature_caching == "NoCaching":
@@ -51,13 +51,13 @@ class HunyuanRunner(DefaultRunner):
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config.feature_caching}")
         self.model.set_scheduler(scheduler)
 
-    def run_text_encoder(self, text, text_encoders, config, image_encoder_output):
+    def run_text_encoder(self, text, img):
         text_encoder_output = {}
-        for i, encoder in enumerate(text_encoders):
-            if config.task == "i2v" and i == 0:
-                text_state, attention_mask = encoder.infer(text, image_encoder_output["img"], config)
+        for i, encoder in enumerate(self.text_encoders):
+            if self.config.task == "i2v" and i == 0:
+                text_state, attention_mask = encoder.infer(text, img, self.config)
             else:
-                text_state, attention_mask = encoder.infer(text, config)
+                text_state, attention_mask = encoder.infer(text, self.config)
             text_encoder_output[f"text_encoder_{i + 1}_text_states"] = text_state.to(dtype=torch.bfloat16)
             text_encoder_output[f"text_encoder_{i + 1}_attention_mask"] = attention_mask
         return text_encoder_output
@@ -93,17 +93,16 @@ class HunyuanRunner(DefaultRunner):
                 wp -= 1
         return crop_size_list
 
-    def run_image_encoder(self, config, image_encoder, vae_model):
-        img = Image.open(config.image_path).convert("RGB")
-
-        if config.i2v_resolution == "720p":
+    def run_vae_encoder(self, img):
+        kwargs = {}
+        if self.config.i2v_resolution == "720p":
             bucket_hw_base_size = 960
-        elif config.i2v_resolution == "540p":
+        elif self.config.i2v_resolution == "540p":
             bucket_hw_base_size = 720
-        elif config.i2v_resolution == "360p":
+        elif self.config.i2v_resolution == "360p":
             bucket_hw_base_size = 480
         else:
-            raise ValueError(f"config.i2v_resolution: {config.i2v_resolution} must be in [360p, 540p, 720p]")
+            raise ValueError(f"self.config.i2v_resolution: {self.config.i2v_resolution} must be in [360p, 540p, 720p]")
 
         origin_size = img.size
 
@@ -111,7 +110,8 @@ class HunyuanRunner(DefaultRunner):
         aspect_ratios = np.array([round(float(h) / float(w), 5) for h, w in crop_size_list])
         closest_size, closest_ratio = self.get_closest_ratio(origin_size[1], origin_size[0], aspect_ratios, crop_size_list)
 
-        config.target_height, config.target_width = closest_size
+        self.config.target_height, self.config.target_width = closest_size
+        kwargs["target_height"], kwargs["target_height"] = closest_size
 
         resize_param = min(closest_size)
         center_crop_param = closest_size
@@ -123,12 +123,12 @@ class HunyuanRunner(DefaultRunner):
         semantic_image_pixel_values = [ref_image_transform(img)]
         semantic_image_pixel_values = torch.cat(semantic_image_pixel_values).unsqueeze(0).unsqueeze(2).to(torch.float16).to(torch.device("cuda"))
 
-        img_latents = vae_model.encode(semantic_image_pixel_values, config).mode()
+        img_latents = self.vae_encoder.encode(semantic_image_pixel_values, self.config).mode()
 
         scaling_factor = 0.476986
         img_latents.mul_(scaling_factor)
 
-        return {"img": img, "img_latents": img_latents}
+        return img_latents, kwargs
 
     def set_target_shape(self):
         vae_scale_factor = 2 ** (4 - 1)

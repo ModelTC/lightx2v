@@ -26,20 +26,22 @@ class DefaultRunner:
                 logger.warning("No prompt enhancer server available, disable prompt enhancer.")
 
         if self.config["mode"] == "split_server":
-            # self.model = self.load_transformer()
-            self.model, self.text_encoders, self.vae_model, self.image_encoder = None, None, None, None
+            self.model, self.text_encoders, self.vae_encoder, self.vae_decoder, self.image_encoder = None, None, None, None, None
             self.tensor_transporter = TensorTransporter()
             self.image_transporter = ImageTransporter()
             if not self.check_sub_servers("dit"):
                 raise ValueError("No dit server available")
             if not self.check_sub_servers("text_encoders"):
                 raise ValueError("No text encoder server available")
-            if self.config["task"] == "i2v" and "wan2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
-                raise ValueError("No image encoder server available")
-            if not self.check_sub_servers("vae_model"):
-                raise ValueError("No vae model server available")
+            if self.config["task"] == "i2v":
+                if "wan2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
+                    raise ValueError("No image encoder server available")
+                if not self.check_sub_servers("vae_model/encoder"):
+                    raise ValueError("No vae encoder server available")
+            if not self.check_sub_servers("vae_model/decoder"):
+                raise ValueError("No vae decoder server available")
         else:
-            self.model, self.text_encoders, self.vae_model, self.image_encoder = self.load_model()
+            self.model, self.text_encoders, self.vae_encoder, self.vae_decoder, self.image_encoder = self.load_model()
 
     def get_init_device(self):
         if self.config["parallel_attn_type"]:
@@ -57,9 +59,9 @@ class DefaultRunner:
         text_encoders = self.load_text_encoder(init_device)
         model = self.load_transformer(init_device)
         image_encoder = self.load_image_encoder(init_device)
-        vae_model = self.load_vae(init_device)
+        vae_encoder, vae_decoder = self.load_vae(init_device)
 
-        return model, text_encoders, vae_model, image_encoder
+        return model, text_encoders, vae_encoder, vae_decoder, image_encoder
 
     def check_sub_servers(self, task_type):
         urls = self.config.get("sub_servers", {}).get(task_type, [])
@@ -141,19 +143,18 @@ class DefaultRunner:
         with ProfilingContext("Run Encoders"):
             if self.config["mode"] == "split_server":
                 clip_encoder_out, vae_encode_out, text_encoder_output = await self.post_encoders(prompt, img, n_prompt, i2v)
-                if i2v:
-                    if self.config["model_cls"] in ["hunyuan"]:
-                        image_encoder_output = {"img": img, "img_latents": vae_encode_out}
-                    elif "wan2.1" in self.config["model_cls"]:
-                        image_encoder_output = {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
-                    else:
-                        raise ValueError(f"Unsupported model class: {self.config['model_cls']}")
             else:
                 if i2v:
-                    image_encoder_output = self.run_image_encoder(self.config, self.image_encoder, self.vae_model)
-                    gc.collect()
-                    torch.cuda.empty_cache()
-                text_encoder_output = self.run_text_encoder(prompt, self.text_encoders, self.config, image_encoder_output)
+                    clip_encoder_out = self.run_clip_encoder(img)
+                    vae_encode_out, kwargs = self.run_vae_encoder(img)
+                text_encoder_output = self.run_text_encoder(prompt, img)
+            if i2v:
+                if self.config["model_cls"] in ["hunyuan"]:
+                    image_encoder_output = {"img": img, "img_latents": vae_encode_out}
+                elif "wan2.1" in self.config["model_cls"]:
+                    image_encoder_output = {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
+                else:
+                    raise ValueError(f"Unsupported model class: {self.config['model_cls']}")
 
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
 
@@ -204,8 +205,8 @@ class DefaultRunner:
             self.end_run()
             return latents, generator
 
-    @ProfilingContext("Run VAE")
-    async def run_vae(self, latents, generator):
+    @ProfilingContext("Run VAE Decoder")
+    async def run_vae_decoder(self, latents, generator):
         if self.config["mode"] == "split_server":
             images = await self.post_task(
                 task_type="vae_model/decoder",
@@ -214,7 +215,7 @@ class DefaultRunner:
                 device="cpu",
             )
         else:
-            images = self.vae_model.decode(latents, generator=generator, config=self.config)
+            images = self.vae_decoder.decode(latents, generator=generator, config=self.config)
         return images
 
     @ProfilingContext("Save video")
@@ -246,7 +247,7 @@ class DefaultRunner:
         self.inputs = await self.run_input_encoder()
         kwargs = self.set_target_shape()
         latents, generator = await self.run_dit(kwargs)
-        images = await self.run_vae(latents, generator)
+        images = await self.run_vae_decoder(latents, generator)
         self.save_video(images)
         del latents, generator, images
         gc.collect()
