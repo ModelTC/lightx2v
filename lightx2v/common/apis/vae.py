@@ -65,7 +65,7 @@ class VAERunner:
 
     def _run_vae_decoder(self, latents):
         latents = tensor_transporter.load_tensor(latents)
-        images = self.vae_model.decode(latents, generator=None, config=self.config)
+        images = self.runner.vae_decoder.decode(latents, generator=None, config=self.config)
         return images
 
 
