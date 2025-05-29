@@ -50,5 +50,5 @@ class LNWeight(LNWeightTemplate):
         super().__init__(weight_name, bias_name, eps)
 
     def apply(self, input_tensor):
-        input_tensor = torch.nn.functional.layer_norm(input_tensor, (input_tensor.shape[1],), self.weight, self.bias, self.eps)
+        input_tensor = torch.nn.functional.layer_norm(input_tensor, (input_tensor.shape[-1],), self.weight, self.bias, self.eps)
         return input_tensor

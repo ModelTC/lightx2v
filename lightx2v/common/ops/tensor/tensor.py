@@ -1,3 +1,4 @@
+import torch
 from lightx2v.utils.registry_factory import TENSOR_REGISTER
 
 
@@ -8,9 +9,11 @@ class DefaultTensor:
 
     def load(self, weight_dict):
         self.tensor = weight_dict[self.tensor_name]
+        self.pinned_tensor = torch.empty(self.tensor.shape, pin_memory=True, dtype=self.tensor.dtype)
 
     def to_cpu(self, non_blocking=False):
-        self.tensor = self.tensor.to("cpu", non_blocking=non_blocking)
+        # self.tensor = self.tensor.to("cpu", non_blocking=non_blocking)
+        self.tensor = self.pinned_tensor.copy_(self.tensor, non_blocking=non_blocking).cpu()
 
     def to_cuda(self, non_blocking=False):
         self.tensor = self.tensor.cuda(non_blocking=non_blocking)
