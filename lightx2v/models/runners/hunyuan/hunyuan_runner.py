@@ -93,6 +93,9 @@ class HunyuanRunner(DefaultRunner):
                 wp -= 1
         return crop_size_list
 
+    def run_image_encoder(self, img):
+        return None
+
     def run_vae_encoder(self, img):
         kwargs = {}
         if self.config.i2v_resolution == "720p":
@@ -111,7 +114,7 @@ class HunyuanRunner(DefaultRunner):
         closest_size, closest_ratio = self.get_closest_ratio(origin_size[1], origin_size[0], aspect_ratios, crop_size_list)
 
         self.config.target_height, self.config.target_width = closest_size
-        kwargs["target_height"], kwargs["target_height"] = closest_size
+        kwargs["target_height"], kwargs["target_width"] = closest_size
 
         resize_param = min(closest_size)
         center_crop_param = closest_size

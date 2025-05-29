@@ -101,7 +101,7 @@ class WanRunner(DefaultRunner):
         text_encoder_output["context_null"] = context_null
         return text_encoder_output
 
-    def run_clip_encoder(self, img):
+    def run_image_encoder(self, img):
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
         clip_encoder_out = self.image_encoder.visual([img[:, None, :, :]], self.config).squeeze(0).to(torch.bfloat16)
         return clip_encoder_out

@@ -53,7 +53,7 @@ class DiTRunner:
 
         self.runner = self.runner_cls.__new__(self.runner_cls)
         self.runner.config = config
-        self.runner.model = self.runner.load_transformer()
+        self.runner.model = self.runner.load_transformer(self.runner.get_init_device())
 
     def _run_dit(self, inputs, kwargs):
         self.runner.config.update(tensor_transporter.load_tensor(kwargs))

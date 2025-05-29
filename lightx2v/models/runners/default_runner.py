@@ -34,12 +34,10 @@ class DefaultRunner:
             if not self.check_sub_servers("text_encoders"):
                 raise ValueError("No text encoder server available")
             if self.config["task"] == "i2v":
-                if "wan2.1" in self.config["model_cls"] and not self.check_sub_servers("image_encoder"):
+                if not self.check_sub_servers("image_encoder"):
                     raise ValueError("No image encoder server available")
-                if not self.check_sub_servers("vae_model/encoder"):
-                    raise ValueError("No vae encoder server available")
-            if not self.check_sub_servers("vae_model/decoder"):
-                raise ValueError("No vae decoder server available")
+            if not self.check_sub_servers("vae_model"):
+                raise ValueError("No vae server available")
         else:
             self.model, self.text_encoders, self.vae_encoder, self.vae_decoder, self.image_encoder = self.load_model()
 
@@ -104,12 +102,11 @@ class DefaultRunner:
         tasks = []
         img_byte = self.image_transporter.prepare_image(img) if img is not None else None
         if i2v:
-            if "wan2.1" in self.config["model_cls"]:
-                tasks.append(
-                    asyncio.create_task(
-                        self.post_task(task_type="image_encoder", urls=self.config["sub_servers"]["image_encoder"], message={"task_id": generate_task_id(), "img": img_byte}, device="cuda")
-                    )
+            tasks.append(
+                asyncio.create_task(
+                    self.post_task(task_type="image_encoder", urls=self.config["sub_servers"]["image_encoder"], message={"task_id": generate_task_id(), "img": img_byte}, device="cuda")
                 )
+            )
             tasks.append(
                 asyncio.create_task(
                     self.post_task(task_type="vae_model/encoder", urls=self.config["sub_servers"]["vae_model"], message={"task_id": generate_task_id(), "img": img_byte}, device="cuda")
@@ -129,10 +126,8 @@ class DefaultRunner:
         # clip_encoder, vae_encoder, text_encoders
         if not i2v:
             return None, None, results[0]
-        if "wan2.1" in self.config["model_cls"]:
-            return results[0], results[1], results[2]
         else:
-            return None, results[0], results[1]
+            return results[0], results[1], results[2]
 
     async def run_input_encoder(self):
         image_encoder_output = None
@@ -145,7 +140,7 @@ class DefaultRunner:
                 clip_encoder_out, vae_encode_out, text_encoder_output = await self.post_encoders(prompt, img, n_prompt, i2v)
             else:
                 if i2v:
-                    clip_encoder_out = self.run_clip_encoder(img)
+                    clip_encoder_out = self.run_image_encoder(img)
                     vae_encode_out, kwargs = self.run_vae_encoder(img)
                 text_encoder_output = self.run_text_encoder(prompt, img)
             if i2v:
