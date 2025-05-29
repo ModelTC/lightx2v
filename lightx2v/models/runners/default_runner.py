@@ -149,6 +149,7 @@ class DefaultRunner:
                 elif "wan2.1" in self.config["model_cls"]:
                     image_encoder_output = {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
                 else:
+                    # TODO: Implement image encoder for Cogvideox-I2V
                     raise ValueError(f"Unsupported model class: {self.config['model_cls']}")
 
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
@@ -216,10 +217,7 @@ class DefaultRunner:
     @ProfilingContext("Save video")
     def save_video(self, images):
         if not self.config.parallel_attn_type or (self.config.parallel_attn_type and dist.get_rank() == 0):
-            if self.config.model_cls in ["wan2.1", "wan2.1_causvid", "wan2.1_skyreels_v2_df"]:
-                cache_video(tensor=images, save_file=self.config.save_video_path, fps=self.config.get("fps", 16), nrow=1, normalize=True, value_range=(-1, 1))
-            else:
-                save_videos_grid(images, self.config.save_video_path, fps=self.config.get("fps", 24))
+            self.save_video_func(images)
 
     async def post_task(self, task_type, urls, message, device="cuda"):
         while True:

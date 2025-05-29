@@ -12,7 +12,7 @@ from lightx2v.models.input_encoders.hf.clip.model import TextEncoderHFClipModel
 from lightx2v.models.input_encoders.hf.llava.model import TextEncoderHFLlavaModel
 from lightx2v.models.networks.hunyuan.model import HunyuanModel
 from lightx2v.models.video_encoders.hf.autoencoder_kl_causal_3d.model import VideoEncoderKLCausal3DModel
-import torch.distributed as dist
+from lightx2v.utils.utils import save_videos_grid
 from lightx2v.utils.profiler import ProfilingContext
 
 
@@ -143,3 +143,6 @@ class HunyuanRunner(DefaultRunner):
             int(self.config.target_width) // vae_scale_factor,
         )
         return {"target_height": self.config.target_height, "target_width": self.config.target_width, "target_shape": self.config.target_shape}
+
+    def save_video_func(self, images):
+        save_videos_grid(images, self.config.save_video_path, fps=self.config.get("fps", 24))

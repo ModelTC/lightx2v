@@ -16,7 +16,7 @@ from lightx2v.models.networks.wan.model import WanModel
 from lightx2v.models.networks.wan.lora_adapter import WanLoraWrapper
 from lightx2v.models.video_encoders.hf.wan.vae import WanVAE
 from lightx2v.models.video_encoders.hf.wan.vae_tiny import WanVAE_tiny
-import torch.distributed as dist
+from lightx2v.utils.utils import cache_video
 from loguru import logger
 
 
@@ -161,3 +161,6 @@ class WanRunner(DefaultRunner):
             )
         ret["target_shape"] = self.config.target_shape
         return ret
+
+    def save_video_func(self, images):
+        cache_video(tensor=images, save_file=self.config.save_video_path, fps=self.config.get("fps", 16), nrow=1, normalize=True, value_range=(-1, 1))
