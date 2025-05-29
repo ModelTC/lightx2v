@@ -18,15 +18,19 @@ class BaseTransformer(ABC):
     def infer_using_cache(self):
         pass
 
-    def taylor_formula(tensor, scheduler) -> torch.Tensor:
-        flag = scheduler.step_index
-        for i in range(scheduler.step_index, -1, -1):
-            if scheduler.caching_records[i]:
-                flag = i
-        x = scheduler.step_index - flag
+    def taylor_formula(self, tensor_dict):
+        x = self.get_taylor_step_diff()
 
         output = 0
-        for i in range(len(tensor)):
-            output += (1 / math.factorial(i)) * tensor[i] * (x**i)
+        for i in range(len(tensor_dict)):
+            output += (1 / math.factorial(i)) * tensor_dict[i] * (x**i)
 
         return output
+    
+    def get_taylor_step_diff(self):
+        current_step = self.scheduler.step_index
+        last_calc_step = current_step - 1
+        while last_calc_step >= 0 and not self.scheduler.caching_records[last_calc_step]:
+            last_calc_step -= 1
+        step_diff = current_step - last_calc_step
+        return step_diff
