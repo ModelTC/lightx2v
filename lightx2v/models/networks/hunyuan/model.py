@@ -9,7 +9,8 @@ from lightx2v.models.networks.hunyuan.infer.post_infer import HunyuanPostInfer
 from lightx2v.models.networks.hunyuan.infer.feature_caching.transformer_infer_1 import HunyuanTransformerInfer
 from lightx2v.models.networks.hunyuan.infer.feature_caching.transformer_infer_2 import HunyuanTransformerInferTeaCaching
 from lightx2v.models.networks.hunyuan.infer.feature_caching.transformer_infer_3 import HunyuanTransformerInferTaylorCaching
-from lightx2v.models.networks.hunyuan.infer.feature_caching.transformer_infer_5 import HunyuanTransformerInferAdaCaching
+from lightx2v.models.networks.hunyuan.infer.feature_caching.transformer_infer_4 import HunyuanTransformerInferAdaCaching
+from lightx2v.models.networks.hunyuan.infer.feature_caching.transformer_infer_5 import HunyuanTransformerInferCustomCaching
 
 import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
@@ -58,6 +59,8 @@ class HunyuanModel:
             self.transformer_infer_class = HunyuanTransformerInferTeaCaching
         elif self.config["feature_caching"] == "Ada":
             self.transformer_infer_class = HunyuanTransformerInferAdaCaching
+        elif self.config["feature_caching"] == "Custom":
+            self.transformer_infer_class = HunyuanTransformerInferCustomCaching
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")
 
