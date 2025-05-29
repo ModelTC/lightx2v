@@ -19,11 +19,11 @@ class HunyuanTransformerInferAdaCaching(BaseHunyuanTransformer):
         self.previous_moreg = 1.
         self.moreg_strides = [1]
         self.moreg_steps = [
-            0.1 * self.scheduler.infer_steps,
-            0.9 * self.scheduler.infer_steps
+            int(0.1 * config.infer_steps),
+            int(0.9 * config.infer_steps)
         ]
-        self.moreg.hyp = [0.385, 8, 1, 2]
-        self.moreg_mul = 10
+        self.moreg_hyp = [0.385, 8, 1, 2]
+        self.mograd_mul = 10
         self.spatial_dim = 3072
 
     def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
@@ -98,7 +98,7 @@ class HunyuanTransformerInferAdaCaching(BaseHunyuanTransformer):
             else:
                 moreg = 1.
 
-            mograd = self.mograd_mul * (moreg - self.prev_moreg) / self.skipped_step_length
+            mograd = self.mograd_mul * (moreg - self.previous_moreg) / self.skipped_step_length
             self.previous_moreg = moreg
             moreg = moreg + abs(mograd)
             cache_diff = cache_diff * moreg
