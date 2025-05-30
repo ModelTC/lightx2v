@@ -32,6 +32,7 @@ def init_runner(config):
         runner = GraphRunner(default_runner)
     else:
         runner = RUNNER_REGISTER[config.model_cls](config)
+    runner.init_modules()
     return runner
 
 

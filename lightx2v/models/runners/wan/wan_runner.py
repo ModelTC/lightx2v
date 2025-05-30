@@ -140,6 +140,10 @@ class WanRunner(DefaultRunner):
         vae_encode_out = torch.concat([msk, vae_encode_out]).to(torch.bfloat16)
         return vae_encode_out, kwargs
 
+    def get_encoder_output_i2v(self, clip_encoder_out, vae_encode_out, text_encoder_output, img):
+        image_encoder_output = {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
+        return {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
+
     def set_target_shape(self):
         ret = {}
         num_channels_latents = self.config.get("num_channels_latents", 16)

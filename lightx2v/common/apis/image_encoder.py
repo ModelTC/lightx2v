@@ -49,8 +49,7 @@ class ImageEncoderRunner:
         self.config = config
         self.runner_cls = RUNNER_REGISTER[self.config.model_cls]
 
-        self.runner = self.runner_cls.__new__(self.runner_cls)
-        self.runner.config = config
+        self.runner = self.runner_cls(config)
         self.runner.image_encoder = self.runner.load_image_encoder(self.runner.get_init_device())
 
     def _run_image_encoder(self, img):
