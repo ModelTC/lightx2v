@@ -1,8 +1,8 @@
 import os
 import glob
-import torch  # type: ignore
-from safetensors import safe_open  # type: ignore
-from diffusers.video_processor import VideoProcessor  # type: ignore
+import torch
+from safetensors import safe_open
+from diffusers.video_processor import VideoProcessor
 
 from lightx2v.models.video_encoders.hf.cogvideox.autoencoder_ks_cogvidex import AutoencoderKLCogVideoX
 
@@ -34,12 +34,18 @@ class CogvideoxVAE:
         self.vae_config = AutoencoderKLCogVideoX.load_config(vae_path)
         self.model = AutoencoderKLCogVideoX.from_config(self.vae_config)
         vae_ckpt = self._load_ckpt(vae_path)
-        self.vae_scale_factor_spatial = 2 ** (len(self.vae_config["block_out_channels"]) - 1)  # 8
-        self.vae_scale_factor_temporal = self.vae_config["temporal_compression_ratio"]  # 4
-        self.vae_scaling_factor_image = self.vae_config["scaling_factor"]  # 0.7
+        self.vae_scale_factor_spatial = 2 ** (len(self.vae_config["block_out_channels"]) - 1)
+        self.vae_scale_factor_temporal = self.vae_config["temporal_compression_ratio"]
+        self.vae_scaling_factor_image = self.vae_config["scaling_factor"]
         self.model.load_state_dict(vae_ckpt)
         self.model.to(torch.bfloat16).to(torch.device("cuda"))
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+
+    @torch.no_grad()
+    def encode(self, x, return_dict=True):
+        self.model.enable_tiling()
+        x = self.model.encode(x, return_dict)
+        return x
 
     @torch.no_grad()
     def decode(self, latents, generator, config):

@@ -1126,7 +1126,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = x.shape
-
         if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
             return self.tiled_encode(x)
 
@@ -1169,7 +1168,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             h = torch.cat(encoded_slices)
         else:
             h = self._encode(x)
-
         posterior = DiagonalGaussianDistribution(h)
 
         if not return_dict:

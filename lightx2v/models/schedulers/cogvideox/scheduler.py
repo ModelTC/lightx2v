@@ -56,6 +56,18 @@ def rescale_zero_terminal_snr(alphas_cumprod):
     return alphas_bar
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(encoder_output, generator=None, sample_mode="sample"):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class CogvideoxXDPMScheduler(BaseScheduler):
     def __init__(self, config):
         self.config = config
@@ -133,6 +145,8 @@ class CogvideoxXDPMScheduler(BaseScheduler):
 
     def prepare(self, image_encoder_output):
         self.image_encoder_output = image_encoder_output
+        if self.config.task in ["i2v"]:
+            self.prepare_image_latents(image=image_encoder_output, padding_shape=self.config.padding_shape, dtype=torch.bfloat16)
         self.prepare_latents(shape=self.config.target_shape, dtype=torch.bfloat16)
         self.prepare_guidance()
         self.prepare_rotary_pos_embedding()
@@ -143,6 +157,25 @@ class CogvideoxXDPMScheduler(BaseScheduler):
         latents = latents * self.init_noise_sigma
         self.latents = latents
         self.old_pred_original_sample = None
+
+    def prepare_image_latents(self, image, padding_shape, dtype):
+        image_latents = [retrieve_latents(img, self.generator) for img in image]
+        image_latents = torch.cat(image_latents, dim=0).to(torch.bfloat16).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
+
+        if not self.config.vae_invert_scale_latents:
+            image_latents = self.config.vae_scaling_factor_image * image_latents
+        else:
+            # This is awkward but required because the CogVideoX team forgot to multiply the
+            # scaling factor during training :)
+            image_latents = 1 / self.config.vae_scaling_factor_image * image_latents
+
+        latent_padding = torch.zeros(padding_shape, device=torch.device("cuda"), dtype=torch.bfloat16)
+        image_latents = torch.cat([image_latents, latent_padding], dim=1)
+        # Select the first frame along the second dimension
+        if self.config.patch_size_t is not None:
+            first_frame = image_latents[:, : image_latents.size(1) % self.config.patch_size_t, ...]
+            image_latents = torch.cat([first_frame, image_latents], dim=1)
+        self.image_latents = image_latents
 
     def prepare_guidance(self):
         self.guidance_scale = self.config.guidance_scale

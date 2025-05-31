@@ -33,7 +33,7 @@ class CogvideoxPreInfer:
 
         return joint_pos_embedding
 
-    def infer(self, weights, hidden_states, timestep, encoder_hidden_states):
+    def infer(self, weights, hidden_states, timestep, encoder_hidden_states, ofs=None):
         t_emb = get_timestep_embedding(
             timestep,
             self.inner_dim,
@@ -45,6 +45,20 @@ class CogvideoxPreInfer:
         sample = weights.time_embedding_linear_1.apply(t_emb)
         sample = torch.nn.functional.silu(sample)
         emb = weights.time_embedding_linear_2.apply(sample)
+
+        if ofs is not None:
+            ofs_emb = get_timestep_embedding(
+                ofs,
+                self.config.transformer_ofs_embed_dim,
+                flip_sin_to_cos=self.flip_sin_to_cos,
+                downscale_freq_shift=self.freq_shift,
+                scale=self.scale,
+            )
+            ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
+            ofs_sample = weights.ofs_embedding_linear_1.apply(ofs_emb)
+            ofs_sample = torch.nn.functional.silu(ofs_sample)
+            ofs_emb = weights.ofs_embedding_linear_2.apply(ofs_sample)
+            emb = emb + ofs_emb
 
         text_embeds = weights.patch_embed_text_proj.apply(encoder_hidden_states)
         num_frames, channels, height, width = hidden_states.shape

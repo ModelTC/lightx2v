@@ -29,6 +29,8 @@
 
 ✅ [CogVideoX1.5-5B-T2V](https://huggingface.co/THUDM/CogVideoX1.5-5B)
 
+✅ [CogVideoX1.5-5B-I2V](https://huggingface.co/THUDM/CogVideoX1.5-5B-I2V)
+
 ## How to Run
 
 Please refer to the [documentation](https://github.com/ModelTC/lightx2v/tree/main/docs) in lightx2v.
