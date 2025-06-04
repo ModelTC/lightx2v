@@ -3,6 +3,7 @@ import torch
 from einops import rearrange
 from .utils_bf16 import apply_rotary_emb
 import numpy as np
+from lightx2v.common.offload.manager import WeightAsyncStreamManager
 
 class BaseHunyuanTransformer(BaseTransformer):
     # 1. 初始化
@@ -15,12 +16,10 @@ class BaseHunyuanTransformer(BaseTransformer):
         self.hidden_size = 3072
         self.mlp_hidden_dim = 12288
         self.parallel_attention = None
-        # if self.config["cpu_offload"]:
-        #     self.double_weights_stream_mgr = WeightAsyncStreamManager()
-        #     self.single_weights_stream_mgr = WeightAsyncStreamManager()
-        #     self.infer_func = self._infer_with_offload
-        # else:
-        #     self.infer_func = self._infer_without_offload
+        if self.config["cpu_offload"]:
+            self.double_weights_stream_mgr = WeightAsyncStreamManager()
+            self.single_weights_stream_mgr = WeightAsyncStreamManager()
+            self.cpu_offload = True
 
     # per double block
     def infer_double_block_1(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num):

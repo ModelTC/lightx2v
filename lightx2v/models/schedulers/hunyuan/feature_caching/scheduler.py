@@ -29,6 +29,7 @@ class HunyuanSchedulerTaylorCaching(HunyuanScheduler):
         # TODO: Transformer实例的缓存清理
         pass
 
+
 class HunyuanSchedulerAdaCaching(HunyuanScheduler):
     def __init__(self, config):
         super().__init__(config)
@@ -36,6 +37,7 @@ class HunyuanSchedulerAdaCaching(HunyuanScheduler):
     def clear(self):
         # TODO: Transformer实例的缓存清理
         pass
+
 
 class HunyuanSchedulerCustomCaching(HunyuanScheduler):
     def __init__(self, config):
