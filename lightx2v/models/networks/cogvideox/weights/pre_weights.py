@@ -12,8 +12,12 @@ class CogvideoxPreWeights:
         self.time_embedding_linear_2 = MM_WEIGHT_REGISTER["Default"]("time_embedding.linear_2.weight", "time_embedding.linear_2.bias")
         self.patch_embed_proj = MM_WEIGHT_REGISTER["Default"]("patch_embed.proj.weight", "patch_embed.proj.bias")
         self.patch_embed_text_proj = MM_WEIGHT_REGISTER["Default"]("patch_embed.text_proj.weight", "patch_embed.text_proj.bias")
-
         self.weight_list = [self.time_embedding_linear_1, self.time_embedding_linear_2, self.patch_embed_proj, self.patch_embed_text_proj]
+
+        if "ofs_embed_dim" in self.config:
+            self.ofs_embedding_linear_1 = MM_WEIGHT_REGISTER["Default"]("ofs_embedding.linear_1.weight", "ofs_embedding.linear_1.bias")
+            self.ofs_embedding_linear_2 = MM_WEIGHT_REGISTER["Default"]("ofs_embedding.linear_2.weight", "ofs_embedding.linear_2.bias")
+            self.weight_list += [self.ofs_embedding_linear_1, self.ofs_embedding_linear_2]
 
         for mm_weight in self.weight_list:
             mm_weight.set_config(self.config)

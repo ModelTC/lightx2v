@@ -1,6 +1,7 @@
-from diffusers.utils import export_to_video
+from diffusers.utils import export_to_video, load_image
 import imageio
 import numpy as np
+import torch
 
 from lightx2v.utils.registry_factory import RUNNER_REGISTER
 from lightx2v.models.runners.default_runner import DefaultRunner
@@ -16,27 +17,19 @@ class CogvideoxRunner(DefaultRunner):
     def __init__(self, config):
         super().__init__(config)
 
-    def load_transformer(self, init_device):
-        model = CogvideoxModel(self.config)
-        return model
-
-    def load_image_encoder(self, init_device):
-        return None
-
-    def load_text_encoder(self, init_device):
+    @ProfilingContext("Load models")
+    def load_model(self):
         text_encoder = T5EncoderModel_v1_1_xxl(self.config)
-        text_encoders = [text_encoder]
-        return text_encoders
-
-    def load_vae(self, init_device):
-        vae_model = CogvideoxVAE(self.config)
-        return vae_model, vae_model
+        self.text_encoders = [text_encoder]
+        self.model = CogvideoxModel(self.config)
+        self.vae_model = CogvideoxVAE(self.config)
+        image_encoder = None
 
     def init_scheduler(self):
         scheduler = CogvideoxXDPMScheduler(self.config)
         self.model.set_scheduler(scheduler)
 
-    def run_text_encoder(self, text, img):
+    def run_text_encoder(self, text):
         text_encoder_output = {}
         n_prompt = self.config.get("negative_prompt", "")
         context = self.text_encoders[0].infer([text], self.config)
@@ -45,38 +38,60 @@ class CogvideoxRunner(DefaultRunner):
         text_encoder_output["context_null"] = context_null
         return text_encoder_output
 
-    def run_vae_encoder(self, img):
-        # TODO: implement vae encoder for Cogvideox
-        raise NotImplementedError("I2V inference is not implemented for Cogvideox.")
+    def run_image_encoder(self, config, vae_model):
+        image = load_image(image=self.config.image_path)
+        image = vae_model.video_processor.preprocess(image, height=config.height, width=config.width).to(torch.device("cuda"), dtype=torch.bfloat16)
+        image = image.unsqueeze(2)
+        image = [vae_model.encode(img.unsqueeze(0)) for img in image]
+        return image
 
-    def get_encoder_output_i2v(self, clip_encoder_out, vae_encode_out, text_encoder_output, img):
-        # TODO: Implement image encoder for Cogvideox-I2V
-        raise ValueError(f"Unsupported model class: {self.config['model_cls']}")
+    @ProfilingContext("Run Encoders")
+    async def run_input_encoder_local_t2v(self):
+        prompt = self.config["prompt"]
+        text_encoder_output = self.run_text_encoder(prompt)
+        return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
+
+    @ProfilingContext("Run Encoders")
+    async def run_input_encoder_local_i2v(self):
+        image_encoder_output = self.run_image_encoder(self.config, self.vae_model)
+        prompt = self.config["prompt"]
+        text_encoder_output = self.run_text_encoder(prompt)
+        return {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
+
+    @ProfilingContext("Run VAE Decoder")
+    async def run_vae_decoder_local(self, latents, generator):
+        images = self.vae_model.decode(latents, generator=generator, config=self.config)
+        return images
 
     def set_target_shape(self):
-        ret = {}
-        if self.config.task == "i2v":
-            # TODO: implement set_target_shape for Cogvideox-I2V
-            raise NotImplementedError("I2V inference is not implemented for Cogvideox.")
-        else:
-            num_frames = self.config.target_video_length
-            latent_frames = (num_frames - 1) // self.config.vae_scale_factor_temporal + 1
-            additional_frames = 0
-            patch_size_t = self.config.patch_size_t
-            if patch_size_t is not None and latent_frames % patch_size_t != 0:
-                additional_frames = patch_size_t - latent_frames % patch_size_t
-                num_frames += additional_frames * self.config.vae_scale_factor_temporal
-            self.config.target_shape = (
+        num_frames = self.config.target_video_length
+        latent_frames = (num_frames - 1) // self.config.vae_scale_factor_temporal + 1
+        additional_frames = 0
+        patch_size_t = self.config.patch_size_t
+        if patch_size_t is not None and latent_frames % patch_size_t != 0:
+            additional_frames = patch_size_t - latent_frames % patch_size_t
+            num_frames += additional_frames * self.config.vae_scale_factor_temporal
+        target_shape = (
+            self.config.batch_size,
+            (num_frames - 1) // self.config.vae_scale_factor_temporal + 1,
+            self.config.latent_channels,
+            self.config.height // self.config.vae_scale_factor_spatial,
+            self.config.width // self.config.vae_scale_factor_spatial,
+        )
+        if self.config.task in ["t2v"]:
+            self.config.target_shape = target_shape
+        elif self.config.task in ["i2v"]:
+            self.config.target_shape = target_shape[:1] + (target_shape[1] + target_shape[1] % self.config.patch_size_t,) + target_shape[2:]
+            self.config.padding_shape = (
                 self.config.batch_size,
-                (num_frames - 1) // self.config.vae_scale_factor_temporal + 1,
+                (num_frames - 1) // self.config.vae_scale_factor_temporal,
                 self.config.latent_channels,
                 self.config.height // self.config.vae_scale_factor_spatial,
                 self.config.width // self.config.vae_scale_factor_spatial,
             )
-            ret["target_shape"] = self.config.target_shape
-        return ret
+        return None
 
-    def save_video_func(self, images):
+    def save_video(self, images):
         with imageio.get_writer(self.config.save_video_path, fps=16) as writer:
             for pil_image in images:
                 frame_np = np.array(pil_image, dtype=np.uint8)

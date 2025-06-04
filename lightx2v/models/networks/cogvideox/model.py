@@ -84,8 +84,15 @@ class CogvideoxModel:
         t = self.scheduler.timesteps[self.scheduler.step_index]
         text_encoder_output = inputs["text_encoder_output"]["context"]
         do_classifier_free_guidance = self.config.guidance_scale > 1.0
-        latent_model_input = self.scheduler.latents
+        latent_model_input = torch.cat([self.scheduler.latents] * 2) if do_classifier_free_guidance else self.scheduler.latents
         latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        if self.config.task in ["i2v"]:
+            ofs_emb = None if self.config.transformer_ofs_embed_dim is None else latent_model_input.new_full((1,), fill_value=2.0)
+            image_latents = self.scheduler.image_latents
+            latent_image_input = torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
+            latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
+        else:
+            ofs_emb = None
         timestep = t.expand(latent_model_input.shape[0])
 
         hidden_states, encoder_hidden_states, emb, infer_shapes = self.pre_infer.infer(
@@ -93,6 +100,7 @@ class CogvideoxModel:
             latent_model_input[0],
             timestep,
             text_encoder_output[0],
+            ofs=ofs_emb,
         )
 
         hidden_states, encoder_hidden_states = self.transformer_infer.infer(
@@ -103,13 +111,12 @@ class CogvideoxModel:
         )
 
         noise_pred = self.post_infer.infer(self.post_weight, hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=emb, infer_shapes=infer_shapes)
-
         noise_pred = noise_pred.float()
 
-        if self.config.use_dynamic_cfg:  # True
+        if self.config.use_dynamic_cfg:
             self.scheduler.guidance_scale = 1 + self.scheduler.guidance_scale * ((1 - math.cos(math.pi * ((self.scheduler.infer_steps - t.item()) / self.scheduler.infer_steps) ** 5.0)) / 2)
 
-        if do_classifier_free_guidance:  # False
+        if do_classifier_free_guidance:
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + self.scheduler.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
