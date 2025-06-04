@@ -20,31 +20,48 @@ class CogvideoxRunner(DefaultRunner):
     @ProfilingContext("Load models")
     def load_model(self):
         text_encoder = T5EncoderModel_v1_1_xxl(self.config)
-        text_encoders = [text_encoder]
-        model = CogvideoxModel(self.config)
-        vae_model = CogvideoxVAE(self.config)
+        self.text_encoders = [text_encoder]
+        self.model = CogvideoxModel(self.config)
+        self.vae_model = CogvideoxVAE(self.config)
         image_encoder = None
-        return model, text_encoders, vae_model, image_encoder
 
     def init_scheduler(self):
         scheduler = CogvideoxXDPMScheduler(self.config)
         self.model.set_scheduler(scheduler)
 
-    def run_text_encoder(self, text, text_encoders, config, image_encoder_output):
+    def run_text_encoder(self, text):
         text_encoder_output = {}
-        n_prompt = config.get("negative_prompt", "")
-        context = text_encoders[0].infer([text], config)
-        context_null = text_encoders[0].infer([n_prompt if n_prompt else ""], config)
+        n_prompt = self.config.get("negative_prompt", "")
+        context = self.text_encoders[0].infer([text], self.config)
+        context_null = self.text_encoders[0].infer([n_prompt if n_prompt else ""], self.config)
         text_encoder_output["context"] = context
         text_encoder_output["context_null"] = context_null
         return text_encoder_output
 
-    def run_image_encoder(self, config, image_encoder, vae_model):
+    def run_image_encoder(self, config, vae_model):
         image = load_image(image=self.config.image_path)
         image = vae_model.video_processor.preprocess(image, height=config.height, width=config.width).to(torch.device("cuda"), dtype=torch.bfloat16)
         image = image.unsqueeze(2)
         image = [vae_model.encode(img.unsqueeze(0)) for img in image]
         return image
+
+    @ProfilingContext("Run Encoders")
+    async def run_input_encoder_local_t2v(self):
+        prompt = self.config["prompt"]
+        text_encoder_output = self.run_text_encoder(prompt)
+        return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
+
+    @ProfilingContext("Run Encoders")
+    async def run_input_encoder_local_i2v(self):
+        image_encoder_output = self.run_image_encoder(self.config, self.vae_model)
+        prompt = self.config["prompt"]
+        text_encoder_output = self.run_text_encoder(prompt)
+        return {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
+
+    @ProfilingContext("Run VAE Decoder")
+    async def run_vae_decoder_local(self, latents, generator):
+        images = self.vae_model.decode(latents, generator=generator, config=self.config)
+        return images
 
     def set_target_shape(self):
         num_frames = self.config.target_video_length
@@ -72,6 +89,7 @@ class CogvideoxRunner(DefaultRunner):
                 self.config.height // self.config.vae_scale_factor_spatial,
                 self.config.width // self.config.vae_scale_factor_spatial,
             )
+        return None
 
     def save_video(self, images):
         with imageio.get_writer(self.config.save_video_path, fps=16) as writer:
