@@ -33,7 +33,7 @@ python -m lightx2v.infer \
 --model_cls hunyuan \
 --task i2v \
 --model_path $model_path \
---config_json ${lightx2v_path}/configs/caching/hunyuan_i2v_TaylorSeer.json \
+--config_json ${lightx2v_path}/configs/caching/hunyuan_i2v_Custom.json \
 --prompt "An Asian man with short hair in black tactical uniform and white clothes waves a firework stick." \
 --image_path ${lightx2v_path}/assets/inputs/imgs/img_1.jpg \
---save_video_path ${lightx2v_path}/save_results/output_lightx2v_hy_i2v_taylor.mp4
+--save_video_path ${lightx2v_path}/save_results/output_lightx2v_hy_i2v_custom.mp4
