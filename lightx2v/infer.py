@@ -25,7 +25,8 @@ def init_runner(config):
     seed_all(config.seed)
 
     if config.parallel_attn_type:
-        dist.init_process_group(backend="nccl")
+        if dist.GroupMember.WORLD is None:
+            dist.init_process_group(backend="nccl")
 
     if CHECK_ENABLE_GRAPH_MODE():
         default_runner = RUNNER_REGISTER[config.model_cls](config)
