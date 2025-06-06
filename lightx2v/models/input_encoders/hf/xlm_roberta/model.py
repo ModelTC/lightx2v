@@ -9,10 +9,9 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 
 from lightx2v.attentions import attention
-from lightx2v.models.input_encoders.hf.t5.tokenizer import HuggingfaceTokenizer
 from loguru import logger
+from lightx2v.models.input_encoders.hf.q_linear import QuantLinear
 
-from .xlm_roberta import XLMRoberta
 
 __all__ = [
     "XLMRobertaCLIP",
@@ -48,7 +47,7 @@ class LayerNorm(nn.LayerNorm):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, dim, num_heads, causal=False, attn_dropout=0.0, proj_dropout=0.0):
+    def __init__(self, dim, num_heads, causal=False, attn_dropout=0.0, proj_dropout=0.0, quantized=False):
         assert dim % num_heads == 0
         super().__init__()
         self.dim = dim
@@ -59,8 +58,12 @@ class SelfAttention(nn.Module):
         self.proj_dropout = proj_dropout
 
         # layers
-        self.to_qkv = nn.Linear(dim, dim * 3)
-        self.proj = nn.Linear(dim, dim)
+        if quantized:
+            linear_cls = QuantLinear
+        else:
+            linear_cls = nn.Linear
+        self.to_qkv = linear_cls(dim, dim * 3)
+        self.proj = linear_cls(dim, dim)
 
     def forward(self, x):
         """
@@ -86,7 +89,6 @@ class SwiGLU(nn.Module):
         super().__init__()
         self.dim = dim
         self.mid_dim = mid_dim
-
         # layers
         self.fc1 = nn.Linear(dim, mid_dim)
         self.fc2 = nn.Linear(dim, mid_dim)
@@ -99,7 +101,7 @@ class SwiGLU(nn.Module):
 
 
 class AttentionBlock(nn.Module):
-    def __init__(self, dim, mlp_ratio, num_heads, post_norm=False, causal=False, activation="quick_gelu", attn_dropout=0.0, proj_dropout=0.0, norm_eps=1e-5):
+    def __init__(self, dim, mlp_ratio, num_heads, post_norm=False, causal=False, activation="quick_gelu", attn_dropout=0.0, proj_dropout=0.0, norm_eps=1e-5, quantized=False):
         assert activation in ["quick_gelu", "gelu", "swi_glu"]
         super().__init__()
         self.dim = dim
@@ -110,13 +112,18 @@ class AttentionBlock(nn.Module):
         self.norm_eps = norm_eps
 
         # layers
+        if quantized:
+            linear_cls = QuantLinear
+        else:
+            linear_cls = nn.Linear
+
         self.norm1 = LayerNorm(dim, eps=norm_eps)
-        self.attn = SelfAttention(dim, num_heads, causal, attn_dropout, proj_dropout)
+        self.attn = SelfAttention(dim, num_heads, causal, attn_dropout, proj_dropout, quantized)
         self.norm2 = LayerNorm(dim, eps=norm_eps)
         if activation == "swi_glu":
             self.mlp = SwiGLU(dim, int(dim * mlp_ratio))
         else:
-            self.mlp = nn.Sequential(nn.Linear(dim, int(dim * mlp_ratio)), QuickGELU() if activation == "quick_gelu" else nn.GELU(), nn.Linear(int(dim * mlp_ratio), dim), nn.Dropout(proj_dropout))
+            self.mlp = nn.Sequential(linear_cls(dim, int(dim * mlp_ratio)), QuickGELU() if activation == "quick_gelu" else nn.GELU(), linear_cls(int(dim * mlp_ratio), dim), nn.Dropout(proj_dropout))
 
     def forward(self, x):
         if self.post_norm:
@@ -189,6 +196,7 @@ class VisionTransformer(nn.Module):
         proj_dropout=0.0,
         embedding_dropout=0.0,
         norm_eps=1e-5,
+        quantized=False,
     ):
         if image_size % patch_size != 0:
             logger.info("[WARNING] image_size is not divisible by patch_size", flush=True)
@@ -217,7 +225,7 @@ class VisionTransformer(nn.Module):
 
         # transformer
         self.pre_norm = LayerNorm(dim, eps=norm_eps) if pre_norm else None
-        self.transformer = nn.Sequential(*[AttentionBlock(dim, mlp_ratio, num_heads, post_norm, False, activation, attn_dropout, proj_dropout, norm_eps) for _ in range(num_layers)])
+        self.transformer = nn.Sequential(*[AttentionBlock(dim, mlp_ratio, num_heads, post_norm, False, activation, attn_dropout, proj_dropout, norm_eps, quantized) for _ in range(num_layers)])
         self.post_norm = LayerNorm(dim, eps=norm_eps)
 
         # head
@@ -252,28 +260,6 @@ class VisionTransformer(nn.Module):
             return x
 
 
-class XLMRobertaWithHead(XLMRoberta):
-    def __init__(self, **kwargs):
-        self.out_dim = kwargs.pop("out_dim")
-        super().__init__(**kwargs)
-
-        # head
-        mid_dim = (self.dim + self.out_dim) // 2
-        self.head = nn.Sequential(nn.Linear(self.dim, mid_dim, bias=False), nn.GELU(), nn.Linear(mid_dim, self.out_dim, bias=False))
-
-    def forward(self, ids):
-        # xlm-roberta
-        x = super().forward(ids)
-
-        # average pooling
-        mask = ids.ne(self.pad_id).unsqueeze(-1).to(x)
-        x = (x * mask).sum(dim=1) / mask.sum(dim=1)
-
-        # head
-        x = self.head(x)
-        return x
-
-
 class XLMRobertaCLIP(nn.Module):
     def __init__(
         self,
@@ -292,15 +278,11 @@ class XLMRobertaCLIP(nn.Module):
         max_text_len=514,
         type_size=1,
         pad_id=1,
-        text_dim=1024,
-        text_heads=16,
-        text_layers=24,
-        text_post_norm=True,
-        text_dropout=0.1,
         attn_dropout=0.0,
         proj_dropout=0.0,
         embedding_dropout=0.0,
         norm_eps=1e-5,
+        quantized=False,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -317,10 +299,6 @@ class XLMRobertaCLIP(nn.Module):
         self.max_text_len = max_text_len
         self.type_size = type_size
         self.pad_id = pad_id
-        self.text_dim = text_dim
-        self.text_heads = text_heads
-        self.text_layers = text_layers
-        self.text_post_norm = text_post_norm
         self.norm_eps = norm_eps
 
         # models
@@ -340,39 +318,9 @@ class XLMRobertaCLIP(nn.Module):
             proj_dropout=proj_dropout,
             embedding_dropout=embedding_dropout,
             norm_eps=norm_eps,
-        )
-        self.textual = XLMRobertaWithHead(
-            vocab_size=vocab_size,
-            max_seq_len=max_text_len,
-            type_size=type_size,
-            pad_id=pad_id,
-            dim=text_dim,
-            out_dim=embed_dim,
-            num_heads=text_heads,
-            num_layers=text_layers,
-            post_norm=text_post_norm,
-            dropout=text_dropout,
+            quantized=quantized,
         )
         self.log_scale = nn.Parameter(math.log(1 / 0.07) * torch.ones([]))
-
-    def forward(self, imgs, txt_ids):
-        """
-        imgs:       [B, 3, H, W] of torch.float32.
-        - mean:     [0.48145466, 0.4578275, 0.40821073]
-        - std:      [0.26862954, 0.26130258, 0.27577711]
-        txt_ids:    [B, L] of torch.long.
-                    Encoded by data.CLIPTokenizer.
-        """
-        xi = self.visual(imgs)
-        xt = self.textual(txt_ids)
-        return xi, xt
-
-    def param_groups(self):
-        groups = [
-            {"params": [p for n, p in self.named_parameters() if "norm" in n or n.endswith("bias")], "weight_decay": 0.0},
-            {"params": [p for n, p in self.named_parameters() if not ("norm" in n or n.endswith("bias"))]},
-        ]
-        return groups
 
 
 def _clip(pretrained=False, pretrained_name=None, model_cls=XLMRobertaCLIP, return_transforms=False, return_tokenizer=False, tokenizer_padding="eos", dtype=torch.float32, device="cpu", **kwargs):
@@ -414,11 +362,6 @@ def clip_xlm_roberta_vit_h_14(pretrained=False, pretrained_name="open-clip-xlm-r
         max_text_len=514,
         type_size=1,
         pad_id=1,
-        text_dim=1024,
-        text_heads=16,
-        text_layers=24,
-        text_post_norm=True,
-        text_dropout=0.1,
         attn_dropout=0.0,
         proj_dropout=0.0,
         embedding_dropout=0.0,
@@ -428,20 +371,25 @@ def clip_xlm_roberta_vit_h_14(pretrained=False, pretrained_name="open-clip-xlm-r
 
 
 class CLIPModel:
-    def __init__(self, dtype, device, checkpoint_path, tokenizer_path):
+    def __init__(self, dtype, device, checkpoint_path, clip_quantized, clip_quantized_ckpt):
         self.dtype = dtype
         self.device = device
-        self.checkpoint_path = checkpoint_path
-        self.tokenizer_path = tokenizer_path
+        self.quantized = clip_quantized
+        if self.quantized:
+            self.checkpoint_path = clip_quantized_ckpt
+        else:
+            self.checkpoint_path = checkpoint_path
 
         # init model
-        self.model, self.transforms = clip_xlm_roberta_vit_h_14(pretrained=False, return_transforms=True, return_tokenizer=False, dtype=dtype, device=device)
+        self.model, self.transforms = clip_xlm_roberta_vit_h_14(pretrained=False, return_transforms=True, return_tokenizer=False, dtype=dtype, device=device, quantized=self.quantized)
         self.model = self.model.eval().requires_grad_(False)
-        logging.info(f"loading {checkpoint_path}")
-        self.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
-
-        # init tokenizer
-        self.tokenizer = HuggingfaceTokenizer(name=tokenizer_path, seq_len=self.model.max_text_len - 2, clean="whitespace")
+        logging.info(f"loading {self.checkpoint_path}")
+        weight_dict = torch.load(self.checkpoint_path, map_location="cpu", weights_only=True)
+        keys = list(weight_dict.keys())
+        for key in keys:
+            if "textual" in key:
+                weight_dict.pop(key)
+        self.model.load_state_dict(weight_dict)
 
     def visual(self, videos, args):
         if args.cpu_offload:

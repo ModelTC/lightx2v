@@ -9,6 +9,8 @@ import torch.nn.functional as F
 
 from .tokenizer import HuggingfaceTokenizer
 from loguru import logger
+from lightx2v.models.input_encoders.hf.q_linear import QuantLinear
+
 
 __all__ = [
     "T5Model",
@@ -63,7 +65,7 @@ class T5LayerNorm(nn.Module):
 
 
 class T5Attention(nn.Module):
-    def __init__(self, dim, dim_attn, num_heads, dropout=0.1):
+    def __init__(self, dim, dim_attn, num_heads, dropout=0.1, quantize=False):
         assert dim_attn % num_heads == 0
         super(T5Attention, self).__init__()
         self.dim = dim
@@ -72,10 +74,16 @@ class T5Attention(nn.Module):
         self.head_dim = dim_attn // num_heads
 
         # layers
-        self.q = nn.Linear(dim, dim_attn, bias=False)
-        self.k = nn.Linear(dim, dim_attn, bias=False)
-        self.v = nn.Linear(dim, dim_attn, bias=False)
-        self.o = nn.Linear(dim_attn, dim, bias=False)
+        if quantize:
+            self.q = QuantLinear(dim, dim_attn, bias=False)
+            self.k = QuantLinear(dim, dim_attn, bias=False)
+            self.v = QuantLinear(dim, dim_attn, bias=False)
+            self.o = QuantLinear(dim_attn, dim, bias=False)
+        else:
+            self.q = nn.Linear(dim, dim_attn, bias=False)
+            self.k = nn.Linear(dim, dim_attn, bias=False)
+            self.v = nn.Linear(dim, dim_attn, bias=False)
+            self.o = nn.Linear(dim_attn, dim, bias=False)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, context=None, mask=None, pos_bias=None):
@@ -104,7 +112,7 @@ class T5Attention(nn.Module):
 
         # compute attention (T5 does not use scaling)
         attn = torch.einsum("binc,bjnc->bnij", q, k) + attn_bias
-        attn = F.softmax(attn.float(), dim=-1).type_as(attn)
+        attn = F.softmax(attn.float(), dim=-1).to(torch.bfloat16)
         x = torch.einsum("bnij,bjnc->binc", attn, v)
 
         # output
@@ -115,15 +123,20 @@ class T5Attention(nn.Module):
 
 
 class T5FeedForward(nn.Module):
-    def __init__(self, dim, dim_ffn, dropout=0.1):
+    def __init__(self, dim, dim_ffn, dropout=0.1, quantize=False):
         super(T5FeedForward, self).__init__()
         self.dim = dim
         self.dim_ffn = dim_ffn
 
         # layers
-        self.gate = nn.Sequential(nn.Linear(dim, dim_ffn, bias=False), GELU())
-        self.fc1 = nn.Linear(dim, dim_ffn, bias=False)
-        self.fc2 = nn.Linear(dim_ffn, dim, bias=False)
+        if quantize:
+            self.gate = nn.Sequential(QuantLinear(dim, dim_ffn, bias=False), GELU())
+            self.fc1 = QuantLinear(dim, dim_ffn, bias=False)
+            self.fc2 = QuantLinear(dim_ffn, dim, bias=False)
+        else:
+            self.gate = nn.Sequential(nn.Linear(dim, dim_ffn, bias=False), GELU())
+            self.fc1 = nn.Linear(dim, dim_ffn, bias=False)
+            self.fc2 = nn.Linear(dim_ffn, dim, bias=False)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -144,6 +157,7 @@ class T5SelfAttention(nn.Module):
         num_buckets,
         shared_pos=True,
         dropout=0.1,
+        quantize=False,
     ):
         super(T5SelfAttention, self).__init__()
         self.dim = dim
@@ -155,9 +169,9 @@ class T5SelfAttention(nn.Module):
 
         # layers
         self.norm1 = T5LayerNorm(dim)
-        self.attn = T5Attention(dim, dim_attn, num_heads, dropout)
+        self.attn = T5Attention(dim, dim_attn, num_heads, dropout, quantize)
         self.norm2 = T5LayerNorm(dim)
-        self.ffn = T5FeedForward(dim, dim_ffn, dropout)
+        self.ffn = T5FeedForward(dim, dim_ffn, dropout, quantize)
         self.pos_embedding = None if shared_pos else T5RelativeEmbedding(num_buckets, num_heads, bidirectional=True)
 
     def forward(self, x, mask=None, pos_bias=None):
@@ -256,8 +270,10 @@ class T5Encoder(nn.Module):
         shared_pos=True,
         dropout=0.1,
         cpu_offload=False,
+        quantize=False,
     ):
         super(T5Encoder, self).__init__()
+
         self.cpu_offload = cpu_offload
         self.dim = dim
         self.dim_attn = dim_attn
@@ -271,11 +287,11 @@ class T5Encoder(nn.Module):
         self.token_embedding = vocab if isinstance(vocab, nn.Embedding) else nn.Embedding(vocab, dim)
         self.pos_embedding = T5RelativeEmbedding(num_buckets, num_heads, bidirectional=True) if shared_pos else None
         self.dropout = nn.Dropout(dropout)
-        self.blocks = nn.ModuleList([T5SelfAttention(dim, dim_attn, dim_ffn, num_heads, num_buckets, shared_pos, dropout) for _ in range(num_layers)])
+        self.blocks = nn.ModuleList([T5SelfAttention(dim, dim_attn, dim_ffn, num_heads, num_buckets, shared_pos, dropout, quantize) for _ in range(num_layers)])
         self.norm = T5LayerNorm(dim)
 
         # initialize weights
-        self.apply(init_weights)
+        # self.apply(init_weights)
 
     def forward(self, ids, mask=None):
         if self.cpu_offload:
@@ -301,7 +317,7 @@ class T5Encoder(nn.Module):
         if self.cpu_offload:
             self.norm = self.norm.cpu()
         x = self.dropout(x)
-        return x
+        return x.to(torch.bfloat16)
 
 
 class T5Decoder(nn.Module):
@@ -480,11 +496,16 @@ class T5EncoderModel:
         shard_fn=None,
         cpu_offload=False,
         offload_granularity="model",
+        t5_quantized=False,
+        t5_quantized_ckpt=None,
     ):
         self.text_len = text_len
         self.dtype = dtype
         self.device = device
-        self.checkpoint_path = checkpoint_path
+        if t5_quantized_ckpt is not None and t5_quantized:
+            self.checkpoint_path = t5_quantized_ckpt
+        else:
+            self.checkpoint_path = checkpoint_path
         self.tokenizer_path = tokenizer_path
         self.offload_granularity = offload_granularity
 
@@ -493,20 +514,15 @@ class T5EncoderModel:
         if self.cpu_offload:
             assert self.offload_granularity in ["block", "model"]
 
-        # init model
         model = (
-            umt5_xxl(
-                encoder_only=True,
-                return_tokenizer=False,
-                dtype=dtype,
-                device=device,
-                cpu_offload=cpu_offload if self.offload_granularity == "block" else False,
-            )
+            umt5_xxl(encoder_only=True, return_tokenizer=False, dtype=dtype, device=device, cpu_offload=(cpu_offload if self.offload_granularity == "block" else False), quantize=t5_quantized)
             .eval()
             .requires_grad_(False)
         )
-        logging.info(f"loading {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
+
+        logger.info(f"Loading weights from {self.checkpoint_path}")
+
+        model.load_state_dict(torch.load(self.checkpoint_path, map_location="cpu", weights_only=True))
         self.model = model
         if shard_fn is not None:
             self.model = shard_fn(self.model, sync_module_states=False)
