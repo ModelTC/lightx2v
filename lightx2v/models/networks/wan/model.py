@@ -47,6 +47,8 @@ class WanModel:
                 ulysses_dist_wrap.parallelize_wan(self)
             elif config["parallel_attn_type"] == "ring":
                 ring_dist_wrap.parallelize_wan(self)
+            elif config["parallel_attn_type"] == "pipefusion":
+                pass
             else:
                 raise Exception(f"Unsuppotred parallel_attn_type")
 

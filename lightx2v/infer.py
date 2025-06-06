@@ -16,6 +16,7 @@ from lightx2v.models.runners.wan.wan_causvid_runner import WanCausVidRunner
 from lightx2v.models.runners.wan.wan_skyreels_v2_df_runner import WanSkyreelsV2DFRunner
 from lightx2v.models.runners.graph_runner import GraphRunner
 from lightx2v.models.runners.cogvideox.cogvidex_runner import CogvideoxRunner
+from lightx2v.dist.wrappers.pp.runner import PipelineParallelWanRunnerWrapper
 
 from lightx2v.common.ops import *
 from loguru import logger
@@ -30,6 +31,9 @@ def init_runner(config):
     if CHECK_ENABLE_GRAPH_MODE():
         default_runner = RUNNER_REGISTER[config.model_cls](config)
         runner = GraphRunner(default_runner)
+    elif config.parallel_attn_type == "pipefusion":
+        default_runner = RUNNER_REGISTER[config.model_cls](config)
+        runner = PipelineParallelWanRunnerWrapper(default_runner, config)
     else:
         runner = RUNNER_REGISTER[config.model_cls](config)
     return runner
