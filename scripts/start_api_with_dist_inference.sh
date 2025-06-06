@@ -44,4 +44,4 @@ python -m lightx2v.api_server_dist \
 --start_inference \
 --nproc_per_node 2
 
-echo "服务已停止" 
+echo "服务已停止"

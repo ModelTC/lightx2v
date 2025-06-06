@@ -39,6 +39,7 @@ OUTPUT_VIDEO_DIR = Path(__file__).parent / "save_results"
 INPUT_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_VIDEO_DIR.mkdir(parents=True, exist_ok=True)
 
+
 class Message(BaseModel):
     task_id: str
     task_id_must_unique: bool = False
@@ -65,10 +66,10 @@ def download_image(image_url: str):
     image_name = Path(urlparse(image_url).path).name
     if not image_name:
         raise ValueError(f"Invalid image URL: {image_url}")
-    
+
     image_path = INPUT_IMAGE_DIR / image_name
     image_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     if response.status_code == 200:
         with open(image_path, "wb") as f:
             f.write(response.content)
@@ -80,14 +81,14 @@ def download_image(image_url: str):
 def local_video_generate(message: Message):
     try:
         global input_queues, output_queues
-        
+
         if input_queues is None or output_queues is None:
             logger.error("分布式推理服务未启动")
             ApiServerServiceStatus.record_failed_task(message, error="分布式推理服务未启动")
             return
-        
+
         logger.info(f"提交任务到分布式推理服务: {message.task_id}")
-        
+
         # 将任务数据转换为字典
         task_data = {
             "task_id": message.task_id,
@@ -96,29 +97,29 @@ def local_video_generate(message: Message):
             "negative_prompt": message.negative_prompt,
             "image_path": message.image_path,
             "num_fragments": message.num_fragments,
-            "save_video_path": message.save_video_path
+            "save_video_path": message.save_video_path,
         }
 
         if message.image_path.startswith("http"):
             image_path = download_image(message.image_path)
             task_data["image_path"] = str(image_path)
-        
+
         save_video_path = Path(message.save_video_path)
         if not save_video_path.is_absolute():
             task_data["save_video_path"] = str(OUTPUT_VIDEO_DIR / message.save_video_path)
-        
+
         # 将任务放入输入队列
         for input_queue in input_queues:
             input_queue.put(task_data)
-        
+
         # 等待结果
         timeout = 300  # 5分钟超时
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout:
             try:
                 result = output_queues[0].get(timeout=1.0)
-                
+
                 # 检查是否是当前任务的结果
                 if result.get("task_id") == message.task_id:
                     if result.get("status") == "success":
@@ -133,15 +134,15 @@ def local_video_generate(message: Message):
                     # 不是当前任务的结果，放回队列
                     output_queues[0].put(result)
                     time.sleep(0.1)
-                    
+
             except queue.Empty:
                 # 队列为空，继续等待
                 continue
-        
+
         # 超时
         logger.error(f"任务 {message.task_id} 处理超时")
         ApiServerServiceStatus.record_failed_task(message, error="处理超时")
-        
+
     except Exception as e:
         logger.error(f"任务 {message.task_id} 处理失败: {str(e)}")
         ApiServerServiceStatus.record_failed_task(message, error=str(e))
@@ -174,6 +175,7 @@ async def get_all_tasks():
 async def get_task_status(message: TaskStatusMessage):
     return ApiServerServiceStatus.get_status_task_id(message.task_id)
 
+
 @app.get("/v1/local/video/generate/get_task_result")
 async def get_task_result(message: TaskStatusMessage):
     result = ApiServerServiceStatus.get_status_task_id(message.task_id)
@@ -186,8 +188,9 @@ async def get_task_result(message: TaskStatusMessage):
         video_path = OUTPUT_VIDEO_DIR / save_video_path
         if video_path.exists():
             return FileResponse(video_path)
-    
+
     return {"status": "not_found", "message": "Task result not found"}
+
 
 @app.get("/v1/file/download")
 async def download_file(file_path: str):
@@ -205,7 +208,6 @@ async def download_file(file_path: str):
     except Exception as e:
         logger.error(f"处理文件下载请求时发生错误: {e}")
         return {"status": "error", "message": "文件下载失败"}
-
 
 
 def _async_raise(tid, exctype):
@@ -237,10 +239,12 @@ async def stop_running_task():
     else:
         return {"stop_status": "do_nothing", "reason": "No running task found."}
 
+
 # 使用多进程队列进行通信
 input_queues = []
 output_queues = []
 distributed_runners = []
+
 
 def distributed_inference_worker(rank, world_size, master_addr, master_port, args, input_queue, output_queue):
     """分布式推理服务工作进程"""
@@ -252,27 +256,26 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
         os.environ["RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
         os.environ["CUDA_VISIBLE_DEVICES"] = str(rank)
-        
-        logger.info(f"进程 {rank}/{world_size-1} 正在初始化分布式推理服务...")
-        
-        dist.init_process_group(backend='nccl', init_method=f'tcp://{master_addr}:{master_port}', rank=rank, world_size=world_size)    
-        
+
+        logger.info(f"进程 {rank}/{world_size - 1} 正在初始化分布式推理服务...")
+
+        dist.init_process_group(backend="nccl", init_method=f"tcp://{master_addr}:{master_port}", rank=rank, world_size=world_size)
+
         config = set_config(args)
         config["mode"] = "server"
         logger.info(f"config: {config}")
         runner = init_runner(config)
-        
-        logger.info(f"进程 {rank}/{world_size-1} 分布式推理服务初始化完成，等待任务...")
 
-            
+        logger.info(f"进程 {rank}/{world_size - 1} 分布式推理服务初始化完成，等待任务...")
+
         while True:
             try:
                 task_data = input_queue.get(timeout=1.0)  # 1秒超时
                 if task_data is None:  # 停止信号
-                    logger.info(f"进程 {rank}/{world_size-1} 收到停止信号，退出推理服务")
+                    logger.info(f"进程 {rank}/{world_size - 1} 收到停止信号，退出推理服务")
                     break
-                logger.info(f"进程 {rank}/{world_size-1} 收到推理任务: {task_data['task_id']}")
-                    
+                logger.info(f"进程 {rank}/{world_size - 1} 收到推理任务: {task_data['task_id']}")
+
                 runner.set_inputs(task_data)
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -280,15 +283,10 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
                 # 运行推理，复用已创建的事件循环
                 try:
                     loop.run_until_complete(runner.run_pipeline())
-                    
+
                     # 只有 Rank 0 负责将结果放入输出队列，避免重复
                     if rank == 0:
-                        result = {
-                            "task_id": task_data["task_id"],
-                            "status": "success",
-                            "save_video_path": task_data["save_video_path"],
-                            "message": "推理完成"
-                        }
+                        result = {"task_id": task_data["task_id"], "status": "success", "save_video_path": task_data["save_video_path"], "message": "推理完成"}
                         output_queue.put(result)
                         logger.info(f"任务 {task_data['task_id']} 处理完成 (由 Rank 0 报告)")
                     dist.barrier()
@@ -296,47 +294,37 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
                 except Exception as e:
                     # 只有 Rank 0 负责报告错误
                     if rank == 0:
-                        result = {
-                            "task_id": task_data["task_id"],
-                            "status": "failed",
-                            "error": str(e),
-                            "message": f"推理失败: {str(e)}"
-                        }
+                        result = {"task_id": task_data["task_id"], "status": "failed", "error": str(e), "message": f"推理失败: {str(e)}"}
                         output_queue.put(result)
                         logger.error(f"任务 {task_data['task_id']} 推理失败: {str(e)} (由 Rank 0 报告)")
                     dist.barrier()
-                    
+
             except queue.Empty:
                 # 队列为空，继续等待
                 continue
             except Exception as e:
-                logger.error(f"进程 {rank}/{world_size-1} 处理任务时发生错误: {str(e)}")
+                logger.error(f"进程 {rank}/{world_size - 1} 处理任务时发生错误: {str(e)}")
                 # 只有 Rank 0 负责发送错误结果
                 if rank == 0:
                     error_result = {
-                        "task_id": task_data.get("task_id", "unknown") if 'task_data' in locals() else "unknown",
+                        "task_id": task_data.get("task_id", "unknown") if "task_data" in locals() else "unknown",
                         "status": "error",
                         "error": str(e),
-                        "message": f"处理任务时发生错误: {str(e)}"
+                        "message": f"处理任务时发生错误: {str(e)}",
                     }
                     output_queue.put(error_result)
                 dist.barrier()
-                
+
     except Exception as e:
-        logger.error(f"分布式推理服务进程 {rank}/{world_size-1} 启动失败: {str(e)}")
+        logger.error(f"分布式推理服务进程 {rank}/{world_size - 1} 启动失败: {str(e)}")
         # 只有 Rank 0 负责报告启动失败
         if rank == 0:
-            error_result = {
-                "task_id": "startup",
-                "status": "startup_failed",
-                "error": str(e),
-                "message": f"推理服务启动失败: {str(e)}"
-            }
+            error_result = {"task_id": "startup", "status": "startup_failed", "error": str(e), "message": f"推理服务启动失败: {str(e)}"}
             output_queue.put(error_result)
     # 在进程最终退出时关闭事件循环和销毁分布式组
     finally:
-        if 'loop' in locals() and loop and not loop.is_closed():
-            loop.close()    
+        if "loop" in locals() and loop and not loop.is_closed():
+            loop.close()
         if dist.is_initialized():
             dist.destroy_process_group()
 
@@ -344,7 +332,7 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
 def start_distributed_inference_with_queue(args):
     """使用队列启动分布式推理服务，并模拟torchrun的多进程模式"""
     global input_queues, output_queues, distributed_runners
-    
+
     nproc_per_node = args.nproc_per_node
 
     if nproc_per_node <= 0:
@@ -357,26 +345,22 @@ def start_distributed_inference_with_queue(args):
         logger.info(f"分布式推理服务 Master Addr: {master_addr}, Master Port: {master_port}")
 
         # 创建队列
-        ctx = mp.get_context('spawn')
+        ctx = mp.get_context("spawn")
         # 使用spawn启动多进程
         processes = []
         for rank in range(nproc_per_node):
             input_queue = ctx.Queue()
             output_queue = ctx.Queue()
-            p = ctx.Process(
-                target=distributed_inference_worker,
-                args=(rank, nproc_per_node, master_addr, master_port, args, input_queue, output_queue),
-                daemon=True
-            )
-        
+            p = ctx.Process(target=distributed_inference_worker, args=(rank, nproc_per_node, master_addr, master_port, args, input_queue, output_queue), daemon=True)
+
             p.start()
             processes.append(p)
             input_queues.append(input_queue)
             output_queues.append(output_queue)
-        
+
         distributed_runners = processes
         return True
-        
+
     except Exception as e:
         logger.exception(f"启动分布式推理服务时发生错误: {str(e)}")
         stop_distributed_inference_with_queue()
@@ -386,50 +370,50 @@ def start_distributed_inference_with_queue(args):
 def stop_distributed_inference_with_queue():
     """停止分布式推理服务"""
     global input_queues, output_queues, distributed_runners
-    
+
     try:
         if distributed_runners:
             logger.info(f"正在停止 {len(distributed_runners)} 个分布式推理服务进程...")
-            
+
             # 向所有工作进程发送停止信号
             if input_queues:
                 for input_queue in input_queues:
                     input_queue.put(None)
-            
+
             # 等待所有进程结束
             for p in distributed_runners:
                 p.join(timeout=10)
-            
+
             # 强制终止任何未结束的进程
             for p in distributed_runners:
                 if p.is_alive():
                     logger.warning(f"推理服务进程 {p.pid} 未在规定时间内结束，强制终止...")
                     p.terminate()
                     p.join()
-            
+
             logger.info("所有分布式推理服务进程已停止")
-            
+
         # 清理队列
         if input_queues:
             try:
                 for input_queue in input_queues:
                     while not input_queue.empty():
                         input_queue.get_nowait()
-            except:
+            except:  # noqa: E722
                 pass
-        
+
         if output_queues:
             try:
                 for output_queue in output_queues:
                     while not output_queue.empty():
                         output_queue.get_nowait()
-            except:
+            except:  # noqa: E722
                 pass
-                
+
         distributed_runners = []
         input_queue = None
         output_queue = None
-        
+
     except Exception as e:
         logger.error(f"停止分布式推理服务时发生错误: {str(e)}")
 
@@ -440,7 +424,7 @@ def stop_distributed_inference_with_queue():
 
 if __name__ == "__main__":
     global startup_args
-    
+
     ProcessManager.register_signal_handler()
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df"], default="hunyuan")
@@ -450,18 +434,15 @@ if __name__ == "__main__":
     parser.add_argument("--split", action="store_true")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=42)
-    
-    parser.add_argument("--start_inference", action="store_true", 
-                       help="是否在启动API服务器前启动分布式推理服务")
-    parser.add_argument("--nproc_per_node", type=int, default=4,
-                       help="分布式推理时每个节点的进程数")
-    
+
+    parser.add_argument("--start_inference", action="store_true", help="是否在启动API服务器前启动分布式推理服务")
+    parser.add_argument("--nproc_per_node", type=int, default=4, help="分布式推理时每个节点的进程数")
+
     args = parser.parse_args()
     logger.info(f"args: {args}")
-    
+
     # 保存启动参数供重启功能使用
     startup_args = args
-
 
     if args.start_inference:
         logger.info("正在启动分布式推理服务...")
@@ -469,21 +450,22 @@ if __name__ == "__main__":
         if not success:
             logger.error("分布式推理服务启动失败，退出程序")
             sys.exit(1)
-        
+
         # 注册程序退出时的清理函数
         import atexit
+
         atexit.register(stop_distributed_inference_with_queue)
-        
+
         # 注册信号处理器，用于优雅关闭
         import signal
+
         def signal_handler(signum, frame):
             logger.info(f"接收到信号 {signum}，正在优雅关闭...")
             stop_distributed_inference_with_queue()
             sys.exit(0)
-        
+
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
-
 
     try:
         logger.info(f"正在启动FastAPI服务器，端口: {args.port}")
