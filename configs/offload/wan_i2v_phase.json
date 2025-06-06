@@ -23,5 +23,5 @@
     "use_tiling_vae": true,
     "tiny_vae": true,
     "tiny_vae_path": "/mnt/afs_2/gushiqiao/x2v_models/taew2_1.pth",
-    "lazy_load": false
+    "lazy_load": true
 }

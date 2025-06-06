@@ -42,7 +42,7 @@ class WanTransformerAttentionBlock(WeightModule):
         self.lazy_load = self.config.get("lazy_load", False)
 
         if self.lazy_load:
-            lazy_load_path = os.path.join(self.config.lazy_load_model_path, f"block_{block_index}.safetensors")
+            lazy_load_path = os.path.join(self.config.dit_quantized_ckpt, f"block_{block_index}.safetensors")
             self.lazy_load_file = safe_open(lazy_load_path, framework="pt", device="cpu")
         else:
             self.lazy_load_file = None
@@ -164,7 +164,7 @@ class WanCrossAttention(WeightModule):
 
         self.add_module(
             "norm3",
-            LN_WEIGHT_REGISTER["Default-Force-BF16"](
+            LN_WEIGHT_REGISTER["Default"](
                 f"blocks.{self.block_index}.norm3.weight",
                 f"blocks.{self.block_index}.norm3.bias",
                 self.lazy_load,

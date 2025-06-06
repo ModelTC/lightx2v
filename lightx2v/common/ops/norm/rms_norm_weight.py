@@ -15,7 +15,10 @@ class RMSWeightTemplate(metaclass=ABCMeta):
         self.config = {}
 
     def load_from_disk(self):
-        self.weight = self.lazy_load_file.get_tensor(self.weight_name).pin_memory()
+        if not torch._dynamo.is_compiling():
+            self.weight = self.lazy_load_file.get_tensor(self.weight_name).to(torch.bfloat16).pin_memory()
+        else:
+            self.weight = self.lazy_load_file.get_tensor(self.weight_name).to(torch.bfloat16)
 
     def load(self, weight_dict):
         if not self.lazy_load:

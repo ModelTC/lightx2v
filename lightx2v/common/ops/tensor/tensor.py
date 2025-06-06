@@ -11,7 +11,10 @@ class DefaultTensor:
         self.lazy_load_file = lazy_load_file
 
     def load_from_disk(self):
-        self.tensor = self.lazy_load_file.get_tensor(self.tensor_name).to(torch.bfloat16).pin_memory()
+        if not torch._dynamo.is_compiling():
+            self.tensor = self.lazy_load_file.get_tensor(self.tensor_name).to(torch.bfloat16).pin_memory()
+        else:
+            self.tensor = self.lazy_load_file.get_tensor(self.tensor_name).to(torch.bfloat16)
 
     def load(self, weight_dict):
         if not self.lazy_load:
