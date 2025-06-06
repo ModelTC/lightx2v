@@ -78,7 +78,10 @@ def download_image(image_url: str):
         raise ValueError(f"Failed to download image from {image_url}")
 
 
-def local_video_generate(message: Message):
+stop_generation_event = threading.Event()
+
+
+def local_video_generate(message: Message, stop_event: threading.Event):
     try:
         global input_queues, output_queues
 
@@ -117,6 +120,11 @@ def local_video_generate(message: Message):
         start_time = time.time()
 
         while time.time() - start_time < timeout:
+            if stop_event.is_set():
+                logger.info(f"任务 {message.task_id} 收到停止信号，正在终止")
+                ApiServerServiceStatus.record_failed_task(message, error="任务被停止")
+                return
+
             try:
                 result = output_queues[0].get(timeout=1.0)
 
@@ -132,6 +140,8 @@ def local_video_generate(message: Message):
                     return
                 else:
                     # 不是当前任务的结果，放回队列
+                    # 注意：如果并发任务很多，这种做法可能导致当前任务的结果被延迟。
+                    # 更健壮的并发结果处理需要更复杂的设计，例如每个任务有独立的输出队列。
                     output_queues[0].put(result)
                     time.sleep(0.1)
 
@@ -153,8 +163,16 @@ async def v1_local_video_generate(message: Message):
     try:
         task_id = ApiServerServiceStatus.start_task(message)
         # Use background threads to perform long-running tasks
-        global thread
-        thread = threading.Thread(target=local_video_generate, args=(message,), daemon=True)
+        global thread, stop_generation_event
+        stop_generation_event.clear()
+        thread = threading.Thread(
+            target=local_video_generate,
+            args=(
+                message,
+                stop_generation_event,
+            ),
+            daemon=True,
+        )
         thread.start()
         return {"task_id": task_id, "task_status": "processing", "save_video_path": message.save_video_path}
     except RuntimeError as e:
@@ -210,31 +228,28 @@ async def download_file(file_path: str):
         return {"status": "error", "message": "文件下载失败"}
 
 
-def _async_raise(tid, exctype):
-    """Force thread tid to raise exception exctype"""
-    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
-    if res == 0:
-        raise ValueError("Invalid thread ID")
-    elif res > 1:
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), 0)
-        raise SystemError("PyThreadState_SetAsyncExc failed")
-
-
 @app.get("/v1/local/video/generate/stop_running_task")
 async def stop_running_task():
-    global thread
+    global thread, stop_generation_event
     if thread and thread.is_alive():
         try:
-            _async_raise(thread.ident, SystemExit)
-            thread.join()
+            logger.info("正在发送停止信号给运行中的任务线程...")
+            stop_generation_event.set()  # 设置事件，通知线程停止
+            thread.join(timeout=5)  # 等待线程结束，设置超时时间
 
-            # Clean up the thread reference
-            thread = None
-            ApiServerServiceStatus.clean_stopped_task()
-            gc.collect()
-            torch.cuda.empty_cache()
-            return {"stop_status": "success", "reason": "Task stopped successfully."}
+            if thread.is_alive():
+                logger.warning("任务线程未在规定时间内停止，可能需要手动干预。")
+                return {"stop_status": "warning", "reason": "任务线程未在规定时间内停止，可能需要手动干预。"}
+            else:
+                # 清理线程引用
+                thread = None
+                ApiServerServiceStatus.clean_stopped_task()
+                gc.collect()
+                torch.cuda.empty_cache()
+                logger.info("任务已成功停止。")
+                return {"stop_status": "success", "reason": "Task stopped successfully."}
         except Exception as e:
+            logger.error(f"停止任务时发生错误: {str(e)}")
             return {"stop_status": "error", "reason": str(e)}
     else:
         return {"stop_status": "do_nothing", "reason": "No running task found."}
@@ -268,6 +283,9 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
 
         logger.info(f"进程 {rank}/{world_size - 1} 分布式推理服务初始化完成，等待任务...")
 
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         while True:
             try:
                 task_data = input_queue.get(timeout=1.0)  # 1秒超时
@@ -277,8 +295,6 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
                 logger.info(f"进程 {rank}/{world_size - 1} 收到推理任务: {task_data['task_id']}")
 
                 runner.set_inputs(task_data)
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
 
                 # 运行推理，复用已创建的事件循环
                 try:
@@ -411,8 +427,8 @@ def stop_distributed_inference_with_queue():
                 pass
 
         distributed_runners = []
-        input_queue = None
-        output_queue = None
+        input_queues = []
+        output_queues = []
 
     except Exception as e:
         logger.error(f"停止分布式推理服务时发生错误: {str(e)}")
