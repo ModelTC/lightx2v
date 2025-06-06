@@ -191,17 +191,20 @@ async def get_task_result(message: TaskStatusMessage):
 
 @app.get("/v1/file/download")
 async def download_file(file_path: str):
-    if Path(file_path).is_absolute():
-        if Path(file_path).exists():
-            return FileResponse(file_path)
+    try:
+        full_path = OUTPUT_VIDEO_DIR / file_path
+        resolved_path = full_path.resolve()
+        if OUTPUT_VIDEO_DIR not in resolved_path.parents and resolved_path != OUTPUT_VIDEO_DIR:
+            logger.warning(f"检测到路径遍历尝试：{file_path} 尝试访问 {resolved_path}")
+            return {"status": "forbidden", "message": "不允许访问指定路径之外的文件"}
+
+        if resolved_path.exists() and resolved_path.is_file():
+            return FileResponse(resolved_path)
         else:
-            return {"status": "not_found", "message": f"File not found: {file_path}"}
-    else:
-        file_path_obj = OUTPUT_VIDEO_DIR / file_path
-        if file_path_obj.exists():
-            return FileResponse(file_path_obj)
-        else:
-            return {"status": "not_found", "message": f"File not found: {file_path}"}
+            return {"status": "not_found", "message": f"文件未找到: {file_path}"}
+    except Exception as e:
+        logger.error(f"处理文件下载请求时发生错误: {e}")
+        return {"status": "error", "message": "文件下载失败"}
 
 
 
