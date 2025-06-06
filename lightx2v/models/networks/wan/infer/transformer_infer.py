@@ -33,10 +33,7 @@ class WanTransformerInfer:
         self.scheduler = scheduler
 
     def _calculate_q_k_len(self, q, k_lens):
-        # Handle query and key lengths (use `q_lens` and `k_lens` or set them to Lq and Lk if None)
         q_lens = torch.tensor([q.size(0)], dtype=torch.int32, device=q.device)
-
-        # We don't have a batch dimension anymore, so directly use the `q_lens` and `k_lens` values
         cu_seqlens_q = torch.cat([q_lens.new_zeros([1]), q_lens]).cumsum(0, dtype=torch.int32)
         cu_seqlens_k = torch.cat([k_lens.new_zeros([1]), k_lens]).cumsum(0, dtype=torch.int32)
         return cu_seqlens_q, cu_seqlens_k
@@ -45,6 +42,7 @@ class WanTransformerInfer:
     def infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         return self.infer_func(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
 
+    # bug
     def _infer_with_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         for block_idx in range(self.blocks_num):
             if block_idx == 0:
@@ -88,6 +86,7 @@ class WanTransformerInfer:
                     self.weights_stream_mgr.active_weights[0] = (phase_idx, phase)
 
                 with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
+                    # print(self.weights_stream_mgr.active_weights[0])
                     cur_phase_idx, cur_phase = self.weights_stream_mgr.active_weights[0]
                     if cur_phase_idx == 0:
                         x = self._infer_self_attn(

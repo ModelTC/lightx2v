@@ -27,7 +27,7 @@ if torch.cuda.get_device_capability(0) == (8, 9):
         from sageattention import sageattn_qk_int8_pv_fp16_triton as sageattn
     except ImportError:
         print("sageattn not found, please install sageattention first")
-        sageattn = None, None
+        sageattn = None
 else:
     try:
         from sageattention import sageattn

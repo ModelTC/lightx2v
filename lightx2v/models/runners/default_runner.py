@@ -66,8 +66,8 @@ class DefaultRunner:
     @ProfilingContext("Load models")
     def load_model(self):
         init_device = self.get_init_device()
-        self.text_encoders = self.load_text_encoder(init_device)
         self.model = self.load_transformer(init_device)
+        self.text_encoders = self.load_text_encoder(init_device)
         self.image_encoder = self.load_image_encoder(init_device)
         self.vae_encoder, self.vae_decoder = self.load_vae(init_device)
 
@@ -133,12 +133,16 @@ class DefaultRunner:
         clip_encoder_out = self.run_image_encoder(img)
         vae_encode_out, kwargs = self.run_vae_encoder(img)
         text_encoder_output = self.run_text_encoder(prompt, img)
+        gc.collect()
+        torch.cuda.empty_cache()
         return self.get_encoder_output_i2v(clip_encoder_out, vae_encode_out, text_encoder_output, img)
 
     @ProfilingContext("Run Encoders")
     async def run_input_encoder_local_t2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         text_encoder_output = self.run_text_encoder(prompt, None)
+        gc.collect()
+        torch.cuda.empty_cache()
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
 
     @ProfilingContext("Run DiT")
@@ -228,12 +232,16 @@ class DefaultRunner:
         n_prompt = self.config.get("negative_prompt", "")
         img = Image.open(self.config["image_path"]).convert("RGB")
         clip_encoder_out, vae_encode_out, text_encoder_output = await self.post_encoders_i2v(prompt, img, n_prompt)
+        gc.collect()
+        torch.cuda.empty_cache()
         return self.get_encoder_output_i2v(clip_encoder_out, vae_encode_out, text_encoder_output, img)
 
     async def run_input_encoder_server_t2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         n_prompt = self.config.get("negative_prompt", "")
         text_encoder_output = await self.post_encoders_t2v(prompt, n_prompt)
+        gc.collect()
+        torch.cuda.empty_cache()
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
 
     async def run_dit_server(self, kwargs):

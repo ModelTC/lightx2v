@@ -26,8 +26,13 @@ class WanRunner(DefaultRunner):
         super().__init__(config)
 
     def load_transformer(self, init_device):
-        model = WanModel(self.config.model_path, self.config, init_device)
+        model = WanModel(
+            self.config.model_path,
+            self.config,
+            init_device,
+        )
         if self.config.lora_path:
+            assert not self.config.get("dit_quantized", False) or self.config.mm_config.get("weight_auto_quant", False)
             lora_wrapper = WanLoraWrapper(model)
             lora_name = lora_wrapper.load_lora(self.config.lora_path)
             lora_wrapper.apply_lora(lora_name, self.config.strength_model)
@@ -44,7 +49,8 @@ class WanRunner(DefaultRunner):
                     self.config.model_path,
                     "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth",
                 ),
-                tokenizer_path=os.path.join(self.config.model_path, "xlm-roberta-large"),
+                clip_quantized=self.config.get("clip_quantized", False),
+                clip_quantized_ckpt=self.config.get("clip_quantized_ckpt", None),
             )
         return image_encoder
 
@@ -57,7 +63,9 @@ class WanRunner(DefaultRunner):
             tokenizer_path=os.path.join(self.config.model_path, "google/umt5-xxl"),
             shard_fn=None,
             cpu_offload=self.config.cpu_offload,
-            offload_granularity=self.config.get("text_encoder_offload_granularity", "model"),
+            offload_granularity=self.config.get("t5_offload_granularity", "model"),
+            t5_quantized=self.config.get("t5_quantized", False),
+            t5_quantized_ckpt=self.config.get("t5_quantized_ckpt", None),
         )
         text_encoders = [text_encoder]
         return text_encoders
@@ -120,7 +128,13 @@ class WanRunner(DefaultRunner):
         self.config.lat_h, kwargs["lat_h"] = lat_h, lat_h
         self.config.lat_w, kwargs["lat_w"] = lat_w, lat_w
 
-        msk = torch.ones(1, self.config.target_video_length, lat_h, lat_w, device=torch.device("cuda"))
+        msk = torch.ones(
+            1,
+            self.config.target_video_length,
+            lat_h,
+            lat_w,
+            device=torch.device("cuda"),
+        )
         msk[:, 1:] = 0
         msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
         msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
@@ -141,8 +155,14 @@ class WanRunner(DefaultRunner):
         return vae_encode_out, kwargs
 
     def get_encoder_output_i2v(self, clip_encoder_out, vae_encode_out, text_encoder_output, img):
-        image_encoder_output = {"clip_encoder_out": clip_encoder_out, "vae_encode_out": vae_encode_out}
-        return {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
+        image_encoder_output = {
+            "clip_encoder_out": clip_encoder_out,
+            "vae_encode_out": vae_encode_out,
+        }
+        return {
+            "text_encoder_output": text_encoder_output,
+            "image_encoder_output": image_encoder_output,
+        }
 
     def set_target_shape(self):
         ret = {}
@@ -167,4 +187,11 @@ class WanRunner(DefaultRunner):
         return ret
 
     def save_video_func(self, images):
-        cache_video(tensor=images, save_file=self.config.save_video_path, fps=self.config.get("fps", 16), nrow=1, normalize=True, value_range=(-1, 1))
+        cache_video(
+            tensor=images,
+            save_file=self.config.save_video_path,
+            fps=self.config.get("fps", 16),
+            nrow=1,
+            normalize=True,
+            value_range=(-1, 1),
+        )
