@@ -1,7 +1,7 @@
 import asyncio
 import argparse
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from loguru import logger
 import uvicorn
@@ -16,6 +16,7 @@ import torch.multiprocessing as mp
 import queue
 import torch.distributed as dist
 import random
+import uuid
 
 from lightx2v.utils.set_config import set_config
 from lightx2v.infer import init_runner
@@ -33,11 +34,12 @@ thread = None
 
 app = FastAPI()
 
+CACHE_DIR = Path(__file__).parent.parent / "cache"
+INPUT_IMAGE_DIR = CACHE_DIR / "inputs" / "imgs"
+OUTPUT_VIDEO_DIR = CACHE_DIR / "outputs"
 
-INPUT_IMAGE_DIR = Path(__file__).parent / "assets" / "inputs" / "imgs"
-OUTPUT_VIDEO_DIR = Path(__file__).parent / "save_results"
-INPUT_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+for directory in [INPUT_IMAGE_DIR, OUTPUT_VIDEO_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
 
 
 class Message(BaseModel):
@@ -179,6 +181,60 @@ async def v1_local_video_generate(message: Message):
         return {"error": str(e)}
 
 
+@app.post("/v1/local/video/generate_form")
+async def v1_local_video_generate_form(
+    task_id: str,
+    prompt: str,
+    save_video_path: str,
+    task_id_must_unique: bool = False,
+    use_prompt_enhancer: bool = False,
+    negative_prompt: str = "",
+    num_fragments: int = 1,
+    image_file: UploadFile = File(None),
+):
+    # 处理上传的图片文件
+    image_path = ""
+    if image_file and image_file.filename:
+        # 生成唯一的文件名
+        file_extension = Path(image_file.filename).suffix
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        image_path = INPUT_IMAGE_DIR / unique_filename
+
+        # 保存上传的文件
+        with open(image_path, "wb") as buffer:
+            content = await image_file.read()
+            buffer.write(content)
+
+        image_path = str(image_path)
+
+    message = Message(
+        task_id=task_id,
+        task_id_must_unique=task_id_must_unique,
+        prompt=prompt,
+        use_prompt_enhancer=use_prompt_enhancer,
+        negative_prompt=negative_prompt,
+        image_path=image_path,
+        num_fragments=num_fragments,
+        save_video_path=save_video_path,
+    )
+    try:
+        task_id = ApiServerServiceStatus.start_task(message)
+        global thread, stop_generation_event
+        stop_generation_event.clear()
+        thread = threading.Thread(
+            target=local_video_generate,
+            args=(
+                message,
+                stop_generation_event,
+            ),
+            daemon=True,
+        )
+        thread.start()
+        return {"task_id": task_id, "task_status": "processing", "save_video_path": message.save_video_path}
+    except RuntimeError as e:
+        return {"error": str(e)}
+
+
 @app.get("/v1/local/video/generate/service_status")
 async def get_service_status():
     return ApiServerServiceStatus.get_status_service()
@@ -201,26 +257,72 @@ async def get_task_result(message: TaskStatusMessage):
     save_video_path = result.get("save_video_path")
 
     if save_video_path and Path(save_video_path).is_absolute() and Path(save_video_path).exists():
-        return FileResponse(save_video_path)
+        file_path = Path(save_video_path)
+        relative_path = file_path.relative_to(OUTPUT_VIDEO_DIR.resolve()) if str(file_path).startswith(str(OUTPUT_VIDEO_DIR.resolve())) else file_path.name
+        return {
+            "status": "success",
+            "task_status": result.get("status", "unknown"),
+            "filename": file_path.name,
+            "file_size": file_path.stat().st_size,
+            "download_url": f"/v1/file/download/{relative_path}",
+            "message": "任务结果已准备就绪",
+        }
     elif save_video_path and not Path(save_video_path).is_absolute():
         video_path = OUTPUT_VIDEO_DIR / save_video_path
         if video_path.exists():
-            return FileResponse(video_path)
+            return {
+                "status": "success",
+                "task_status": result.get("status", "unknown"),
+                "filename": video_path.name,
+                "file_size": video_path.stat().st_size,
+                "download_url": f"/v1/file/download/{save_video_path}",
+                "message": "任务结果已准备就绪",
+            }
 
-    return {"status": "not_found", "message": "Task result not found"}
+    return {"status": "not_found", "message": "Task result not found", "task_status": result.get("status", "unknown")}
 
 
-@app.get("/v1/file/download")
+def file_stream_generator(file_path: str, chunk_size: int = 1024 * 1024):
+    """文件流生成器，逐块读取文件"""
+    with open(file_path, "rb") as file:
+        while chunk := file.read(chunk_size):
+            yield chunk
+
+
+@app.get(
+    "/v1/file/download/{file_path:path}",
+    response_class=StreamingResponse,
+    summary="下载文件",
+    description="流式下载指定的文件",
+    responses={200: {"description": "文件下载成功", "content": {"application/octet-stream": {}}}, 404: {"description": "文件未找到"}, 500: {"description": "服务器错误"}},
+)
 async def download_file(file_path: str):
     try:
         full_path = OUTPUT_VIDEO_DIR / file_path
         resolved_path = full_path.resolve()
-        if OUTPUT_VIDEO_DIR not in resolved_path.parents and resolved_path != OUTPUT_VIDEO_DIR:
-            logger.warning(f"检测到路径遍历尝试：{file_path} 尝试访问 {resolved_path}")
-            return {"status": "forbidden", "message": "不允许访问指定路径之外的文件"}
+
+        # 安全检查：确保文件在允许的目录内
+        if not str(resolved_path).startswith(str(OUTPUT_VIDEO_DIR.resolve())):
+            return {"status": "forbidden", "message": "不允许访问该文件"}
 
         if resolved_path.exists() and resolved_path.is_file():
-            return FileResponse(resolved_path)
+            file_size = resolved_path.stat().st_size
+            filename = resolved_path.name
+
+            # 设置适当的 MIME 类型
+            mime_type = "application/octet-stream"
+            if filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
+                mime_type = "video/mp4"
+            elif filename.lower().endswith((".jpg", ".jpeg", ".png", ".gif")):
+                mime_type = "image/jpeg"
+
+            headers = {
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(file_size),
+                "Accept-Ranges": "bytes",
+            }
+
+            return StreamingResponse(file_stream_generator(str(resolved_path)), media_type=mime_type, headers=headers)
         else:
             return {"status": "not_found", "message": f"文件未找到: {file_path}"}
     except Exception as e:
@@ -305,7 +407,8 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
                         result = {"task_id": task_data["task_id"], "status": "success", "save_video_path": task_data["save_video_path"], "message": "推理完成"}
                         output_queue.put(result)
                         logger.info(f"任务 {task_data['task_id']} 处理完成 (由 Rank 0 报告)")
-                    dist.barrier()
+                    if dist.is_initialized():
+                        dist.barrier()
 
                 except Exception as e:
                     # 只有 Rank 0 负责报告错误
@@ -313,36 +416,59 @@ def distributed_inference_worker(rank, world_size, master_addr, master_port, arg
                         result = {"task_id": task_data["task_id"], "status": "failed", "error": str(e), "message": f"推理失败: {str(e)}"}
                         output_queue.put(result)
                         logger.error(f"任务 {task_data['task_id']} 推理失败: {str(e)} (由 Rank 0 报告)")
-                    dist.barrier()
+                    if dist.is_initialized():
+                        dist.barrier()
 
             except queue.Empty:
                 # 队列为空，继续等待
                 continue
+            except KeyboardInterrupt:
+                logger.info(f"进程 {rank}/{world_size - 1} 收到 KeyboardInterrupt，优雅退出")
+                break
             except Exception as e:
                 logger.error(f"进程 {rank}/{world_size - 1} 处理任务时发生错误: {str(e)}")
                 # 只有 Rank 0 负责发送错误结果
+                task_data = task_data if "task_data" in locals() else {}
                 if rank == 0:
                     error_result = {
-                        "task_id": task_data.get("task_id", "unknown") if "task_data" in locals() else "unknown",
+                        "task_id": task_data.get("task_id", "unknown"),
                         "status": "error",
                         "error": str(e),
                         "message": f"处理任务时发生错误: {str(e)}",
                     }
-                    output_queue.put(error_result)
-                dist.barrier()
+                    try:
+                        output_queue.put(error_result)
+                    except:  # noqa: E722
+                        pass
+                if dist.is_initialized():
+                    try:
+                        dist.barrier()
+                    except:  # noqa: E722
+                        pass
 
+    except KeyboardInterrupt:
+        logger.info(f"进程 {rank}/{world_size - 1} 主循环收到 KeyboardInterrupt，正在退出")
     except Exception as e:
         logger.error(f"分布式推理服务进程 {rank}/{world_size - 1} 启动失败: {str(e)}")
         # 只有 Rank 0 负责报告启动失败
         if rank == 0:
-            error_result = {"task_id": "startup", "status": "startup_failed", "error": str(e), "message": f"推理服务启动失败: {str(e)}"}
-            output_queue.put(error_result)
+            try:
+                error_result = {"task_id": "startup", "status": "startup_failed", "error": str(e), "message": f"推理服务启动失败: {str(e)}"}
+                output_queue.put(error_result)
+            except:  # noqa: E722
+                pass
     # 在进程最终退出时关闭事件循环和销毁分布式组
     finally:
-        if "loop" in locals() and loop and not loop.is_closed():
-            loop.close()
-        if dist.is_initialized():
-            dist.destroy_process_group()
+        try:
+            if "loop" in locals() and loop and not loop.is_closed():
+                loop.close()
+        except:  # noqa: E722
+            pass
+        try:
+            if dist.is_initialized():
+                dist.destroy_process_group()
+        except:  # noqa: E722
+            pass
 
 
 def start_distributed_inference_with_queue(args):
@@ -360,10 +486,9 @@ def start_distributed_inference_with_queue(args):
         master_port = str(random.randint(20000, 29999))
         logger.info(f"分布式推理服务 Master Addr: {master_addr}, Master Port: {master_port}")
 
-        # 创建队列
-        ctx = mp.get_context("spawn")
-        # 使用spawn启动多进程
         processes = []
+
+        ctx = mp.get_context("spawn")
         for rank in range(nproc_per_node):
             input_queue = ctx.Queue()
             output_queue = ctx.Queue()
@@ -394,18 +519,27 @@ def stop_distributed_inference_with_queue():
             # 向所有工作进程发送停止信号
             if input_queues:
                 for input_queue in input_queues:
-                    input_queue.put(None)
+                    try:
+                        input_queue.put(None)
+                    except:  # noqa: E722
+                        pass
 
             # 等待所有进程结束
             for p in distributed_runners:
-                p.join(timeout=10)
+                try:
+                    p.join(timeout=10)
+                except:  # noqa: E722
+                    pass
 
             # 强制终止任何未结束的进程
             for p in distributed_runners:
-                if p.is_alive():
-                    logger.warning(f"推理服务进程 {p.pid} 未在规定时间内结束，强制终止...")
-                    p.terminate()
-                    p.join()
+                try:
+                    if p.is_alive():
+                        logger.warning(f"推理服务进程 {p.pid} 未在规定时间内结束，强制终止...")
+                        p.terminate()
+                        p.join(timeout=5)
+                except:  # noqa: E722
+                    pass
 
             logger.info("所有分布式推理服务进程已停止")
 
@@ -413,16 +547,22 @@ def stop_distributed_inference_with_queue():
         if input_queues:
             try:
                 for input_queue in input_queues:
-                    while not input_queue.empty():
-                        input_queue.get_nowait()
+                    try:
+                        while not input_queue.empty():
+                            input_queue.get_nowait()
+                    except:  # noqa: E722
+                        pass
             except:  # noqa: E722
                 pass
 
         if output_queues:
             try:
                 for output_queue in output_queues:
-                    while not output_queue.empty():
-                        output_queue.get_nowait()
+                    try:
+                        while not output_queue.empty():
+                            output_queue.get_nowait()
+                    except:  # noqa: E722
+                        pass
             except:  # noqa: E722
                 pass
 
@@ -432,6 +572,8 @@ def stop_distributed_inference_with_queue():
 
     except Exception as e:
         logger.error(f"停止分布式推理服务时发生错误: {str(e)}")
+    except KeyboardInterrupt:
+        logger.info("停止分布式推理服务时收到 KeyboardInterrupt，强制清理")
 
 
 # =========================
@@ -477,8 +619,12 @@ if __name__ == "__main__":
 
         def signal_handler(signum, frame):
             logger.info(f"接收到信号 {signum}，正在优雅关闭...")
-            stop_distributed_inference_with_queue()
-            sys.exit(0)
+            try:
+                stop_distributed_inference_with_queue()
+            except:  # noqa: E722
+                logger.error("关闭分布式推理服务时发生错误")
+            finally:
+                sys.exit(0)
 
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
@@ -494,3 +640,27 @@ if __name__ == "__main__":
         # 确保在程序结束时停止推理服务
         if args.start_inference:
             stop_distributed_inference_with_queue()
+
+"""
+curl -X 'POST' \
+  'http://localhost:8000/v1/local/video/generate_form?task_id=abc&prompt=%E8%B7%B3%E8%88%9E&save_video_path=a.mp4&task_id_must_unique=false&use_prompt_enhancer=false&num_fragments=1' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'image_file=@图片1.png;type=image/png'
+
+curl -X 'POST' \
+  'http://localhost:8000/v1/local/video/generate' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "task_id": "abcde",
+  "task_id_must_unique": false,
+  "prompt": "Summer beach vacation style, a white cat wearing sunglasses sits on a surfboard. The fluffy-furred feline gazes directly at the camera with a relaxed expression. Blurred beach scenery forms the background featuring crystal-clear waters, distant green hills, and a blue sky dotted with white clouds. The cat assumes a naturally relaxed posture, as if savoring the sea breeze and warm sunlight. A close-up shot highlights the feline'\''s intricate details and the refreshing atmosphere of the seaside.",
+  "use_prompt_enhancer": false,
+  "negative_prompt": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+  "image_path": "/mnt/aigc/users/gaopeng1/ComfyUI-Lightx2vWrapper/lightx2v/assets/inputs/imgs/img_0.jpg",
+  "num_fragments": 1,
+  "save_video_path": "/mnt/aigc/users/lijiaqi2/ComfyUI/custom_nodes/ComfyUI-Lightx2vWrapper/lightx2v/save_results/img_0.mp4"
+}'
+
+"""

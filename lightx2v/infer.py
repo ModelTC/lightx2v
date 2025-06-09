@@ -25,7 +25,7 @@ def init_runner(config):
     seed_all(config.seed)
 
     if config.parallel_attn_type:
-        if dist.GroupMember.WORLD is None:
+        if not dist.is_initialized():
             dist.init_process_group(backend="nccl")
 
     if CHECK_ENABLE_GRAPH_MODE():
