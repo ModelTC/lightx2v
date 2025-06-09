@@ -1,7 +1,6 @@
 import torch
 from abc import ABCMeta, abstractmethod
 from lightx2v.utils.registry_factory import LN_WEIGHT_REGISTER
-from safetensors import safe_open
 
 
 class LNWeightTemplate(metaclass=ABCMeta):

@@ -26,8 +26,6 @@ class HunyuanModel:
         self.config = config
         self.device = device
         self.args = args
-        self._init_infer_class()
-        self._init_weights()
 
         self.dit_quantized = self.config.mm_config.get("mm_type", "Default") != "Default"
         self.dit_quantized_ckpt = self.config.get("dit_quantized_ckpt", None)
@@ -35,6 +33,8 @@ class HunyuanModel:
         if self.dit_quantized:
             assert self.weight_auto_quant or self.dit_quantized_ckpt is not None
 
+        self._init_infer_class()
+        self._init_weights()
         self._init_infer()
 
         if config["parallel_attn_type"]:
@@ -47,18 +47,6 @@ class HunyuanModel:
 
         if self.config["cpu_offload"]:
             self.to_cpu()
-
-    def _init_infer_class(self):
-        self.pre_infer_class = HunyuanPreInfer
-        self.post_infer_class = HunyuanPostInfer
-        if self.config["feature_caching"] == "NoCaching":
-            self.transformer_infer_class = HunyuanTransformerInfer
-        elif self.config["feature_caching"] == "TaylorSeer":
-            self.transformer_infer_class = HunyuanTransformerInferTaylorCaching
-        elif self.config["feature_caching"] == "Tea":
-            self.transformer_infer_class = HunyuanTransformerInferTeaCaching
-        else:
-            raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")
 
     def _load_ckpt(self):
         if self.args.task == "t2v":
@@ -172,3 +160,15 @@ class HunyuanModel:
             self.scheduler.cnt += 1
             if self.scheduler.cnt == self.scheduler.num_steps:
                 self.scheduler.cnt = 0
+
+    def _init_infer_class(self):
+        self.pre_infer_class = HunyuanPreInfer
+        self.post_infer_class = HunyuanPostInfer
+        if self.config["feature_caching"] == "NoCaching":
+            self.transformer_infer_class = HunyuanTransformerInfer
+        elif self.config["feature_caching"] == "TaylorSeer":
+            self.transformer_infer_class = HunyuanTransformerInferTaylorCaching
+        elif self.config["feature_caching"] == "Tea":
+            self.transformer_infer_class = HunyuanTransformerInferTeaCaching
+        else:
+            raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")

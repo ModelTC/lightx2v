@@ -1,9 +1,7 @@
 import torch
 from abc import ABCMeta, abstractmethod
 from lightx2v.utils.registry_factory import RMS_WEIGHT_REGISTER
-
-# import sgl_kernel
-from safetensors import safe_open
+import sgl_kernel
 
 
 class RMSWeightTemplate(metaclass=ABCMeta):

@@ -109,7 +109,7 @@ class WanSelfAttention(WeightModule):
         )
         self.add_module(
             "self_attn_norm_q",
-            RMS_WEIGHT_REGISTER["Default"](
+            RMS_WEIGHT_REGISTER["sgl-kernel"](
                 f"blocks.{self.block_index}.self_attn.norm_q.weight",
                 self.lazy_load,
                 self.lazy_load_file,
@@ -117,7 +117,7 @@ class WanSelfAttention(WeightModule):
         )
         self.add_module(
             "self_attn_norm_k",
-            RMS_WEIGHT_REGISTER["Default"](
+            RMS_WEIGHT_REGISTER["sgl-kernel"](
                 f"blocks.{self.block_index}.self_attn.norm_k.weight",
                 self.lazy_load,
                 self.lazy_load_file,
@@ -210,7 +210,7 @@ class WanCrossAttention(WeightModule):
         )
         self.add_module(
             "cross_attn_norm_q",
-            RMS_WEIGHT_REGISTER["Default"](
+            RMS_WEIGHT_REGISTER["sgl-kernel"](
                 f"blocks.{self.block_index}.cross_attn.norm_q.weight",
                 self.lazy_load,
                 self.lazy_load_file,
@@ -218,7 +218,7 @@ class WanCrossAttention(WeightModule):
         )
         self.add_module(
             "cross_attn_norm_k",
-            RMS_WEIGHT_REGISTER["Default"](
+            RMS_WEIGHT_REGISTER["sgl-kernel"](
                 f"blocks.{self.block_index}.cross_attn.norm_k.weight",
                 self.lazy_load,
                 self.lazy_load_file,
@@ -247,7 +247,7 @@ class WanCrossAttention(WeightModule):
             )
             self.add_module(
                 "cross_attn_norm_k_img",
-                RMS_WEIGHT_REGISTER["Default"](
+                RMS_WEIGHT_REGISTER["sgl-kernel"](
                     f"blocks.{self.block_index}.cross_attn.norm_k_img.weight",
                     self.lazy_load,
                     self.lazy_load_file,

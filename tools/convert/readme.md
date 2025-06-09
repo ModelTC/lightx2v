@@ -23,10 +23,10 @@ python converter.py \
 
 
 ## Quantization
-This tool supports converting fp32/fp16/bf16 model weights to INT8、FP8 type. In this project, it is mainly used for offline conversion of models such as **Dit**, **CLIPModel** and **T5EncoderModel** of **Wan2.1** to 8-bit weights, significantly reducing the model size while maintaining performance.
+This tool supports converting fp32/fp16/bf16 model weights to INT8、FP8 type.
 
 
-### DIT
+### Wan DIT
 
 ```bash
 python converter.py \
@@ -35,9 +35,8 @@ python converter.py \
     --output /Path/To/output \
     --output_ext .pth\
     --output_name wan_int8 \
-    --key_idx 2 \
-    --target_keys self_attn cross_attn ffn \
-    --dtype torch.int8
+    --dtype torch.int8 \
+    --model_type wan_dit
 ```
 
 ```bash
@@ -47,13 +46,36 @@ python converter.py \
     --output /Path/To/output \
     --output_ext .pth\
     --output_name wan_fp8 \
-    --key_idx 2 \
-    --target_keys self_attn cross_attn ffn \
-    --dtype torch.float8_e4m3_fn
+    --dtype torch.float8_e4m3_fn \
+    --model_type wan_dit
+```
+
+### Hunyuan DIT
+
+```bash
+python converter.py \
+    --quantized \
+    --source /Path/To/hunyuan/lightx2v_format/i2v/ \
+    --output /Path/To/output \
+    --output_ext .pth\
+    --output_name hunyuan_int8 \
+    --dtype torch.int8 \
+    --model_type hunyuan_dit
+```
+
+```bash
+python converter.py \
+    --quantized \
+    --source /Path/To/hunyuan/lightx2v_format/i2v/ \
+    --output /Path/To/output \
+    --output_ext .pth\
+    --output_name hunyuan_fp8 \
+    --dtype torch.float8_e4m3_fn \
+    --model_type hunyuan_dit
 ```
 
 
-### T5EncoderModel
+### Wan T5EncoderModel
 
 ```bash
 python converter.py \
@@ -62,9 +84,8 @@ python converter.py \
     --output /Path/To/output \
     --output_ext .pth\
     --output_name models_t5_umt5-xxl-enc-int8 \
-    --key_idx 2 \
-    --target_keys attn ffn \
-    --dtype torch.int8
+    --dtype torch.int8 \
+    --model_type wan_t5
 ```
 
 ```bash
@@ -74,13 +95,12 @@ python converter.py \
     --output /Path/To/output \
     --output_ext .pth\
     --output_name models_t5_umt5-xxl-enc-fp8 \
-    --key_idx 2 \
-    --target_keys attn ffn \
-    --dtype torch.float8_e4m3fn
+    --dtype torch.float8_e4m3fn \
+    --model_type wan_t5
 ```
 
 
-### CLIPModel
+### Wan CLIPModel
 
 ```bash
 python converter.py \
@@ -89,10 +109,9 @@ python converter.py \
   --output /Path/To/output \
   --output_ext .pth \
   --output_name clip_int8.pth \
-  --key_idx 3 \
-  --target_keys attn mlp \
-  --ignore_key textual \
-  --dtype torch.int8
+  --dtype torch.int8 \
+  --model_type wan_clip
+
 ```
 ```bash
 python converter.py \
@@ -101,8 +120,6 @@ python converter.py \
   --output /Path/To/output \
   --output_ext .pth \
   --output_name clip_fp8.pth \
-  --key_idx 3 \
-  --target_keys attn mlp \
-  --ignore_key textual \
-  --dtype torch.float8_e4m3fn
+  --dtype torch.float8_e4m3fn \
+  --model_type wan_clip
 ```
