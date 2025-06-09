@@ -9,9 +9,9 @@ class WanScheduler(BaseScheduler):
     def __init__(self, config):
         super().__init__(config)
         self.device = torch.device("cuda")
-        self.infer_steps = self.config.infer_steps
-        self.target_video_length = self.config.target_video_length
-        self.sample_shift = self.config.sample_shift
+        self.infer_steps = config.infer_steps
+        self.target_video_length = config.target_video_length
+        self.sample_shift = config.sample_shift
         self.shift = 1
         self.num_train_timesteps = 1000
         self.disable_corrector = []

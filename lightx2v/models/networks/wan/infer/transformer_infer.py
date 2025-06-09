@@ -1,136 +1,39 @@
+from lightx2v.models.networks.aaa_transformer.transformer_infer import BaseTransformer
 import torch
 from .utils import compute_freqs, compute_freqs_dist, apply_rotary_emb
 from lightx2v.common.offload.manager import WeightAsyncStreamManager
 from lightx2v.utils.envs import *
 
 
-class WanTransformerInfer:
+class BaseWanTransformer(BaseTransformer):
+    # 1. 初始化
     def __init__(self, config):
+        # 1.1 配置 + 任务 + 注意力
         self.config = config
         self.task = config["task"]
         self.attention_type = config.get("attention_type", "flash_attn2")
+
+        # 1.2 块数量:30, 头数量, 输入维度, 窗口大小
         self.blocks_num = config["num_layers"]
         self.num_heads = config["num_heads"]
         self.head_dim = config["dim"] // config["num_heads"]
         self.window_size = config.get("window_size", (-1, -1))
         self.parallel_attention = None
-        if self.config["cpu_offload"]:
-            offload_granularity = self.config.get("offload_granularity", "block")
-            self.weights_stream_mgr = WeightAsyncStreamManager()
-            if offload_granularity == "block":
-                self.infer_func = self._infer_with_offload
-            elif offload_granularity == "phase":
-                self.infer_func = self._infer_with_phases_offload
-        else:
-            self.infer_func = self._infer_without_offload
 
-    def set_scheduler(self, scheduler):
-        self.scheduler = scheduler
+    # per block
+    def infer_block_1(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+        # 1. pass to all the part
+        if embed0.dim() == 3:
+            modulation = weights.modulation.tensor.unsqueeze(2)
+            embed0 = (modulation + embed0).chunk(6, dim=1)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in embed0]
+        elif embed0.dim() == 2:
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.modulation.tensor + embed0).chunk(6, dim=1)
 
-    def _calculate_q_k_len(self, q, k_lens):
-        # Handle query and key lengths (use `q_lens` and `k_lens` or set them to Lq and Lk if None)
-        q_lens = torch.tensor([q.size(0)], dtype=torch.int32, device=q.device)
-
-        # We don't have a batch dimension anymore, so directly use the `q_lens` and `k_lens` values
-        cu_seqlens_q = torch.cat([q_lens.new_zeros([1]), q_lens]).cumsum(0, dtype=torch.int32)
-        cu_seqlens_k = torch.cat([k_lens.new_zeros([1]), k_lens]).cumsum(0, dtype=torch.int32)
-        return cu_seqlens_q, cu_seqlens_k
-
-    @torch.compile(disable=not CHECK_ENABLE_GRAPH_MODE())
-    def infer(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        return self.infer_func(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
-
-    def _infer_with_offload(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        for block_idx in range(self.blocks_num):
-            if block_idx == 0:
-                self.weights_stream_mgr.active_weights[0] = weights.blocks[0]
-                self.weights_stream_mgr.active_weights[0].to_cuda()
-
-            with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
-                x = self.infer_block(
-                    self.weights_stream_mgr.active_weights[0],
-                    grid_sizes,
-                    x,
-                    embed0,
-                    seq_lens,
-                    freqs,
-                    context,
-                )
-
-            if block_idx < self.blocks_num - 1:
-                self.weights_stream_mgr.prefetch_weights(block_idx + 1, weights.blocks)
-            self.weights_stream_mgr.swap_weights()
-
-        return x
-
-    def _infer_with_phases_offload(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        for block_idx in range(weights.blocks_num):
-            weights.blocks[block_idx].modulation.to_cuda()
-
-            if embed0.dim() == 3:
-                modulation = weights.blocks[block_idx].modulation.tensor.unsqueeze(2)
-                current_embed0 = (modulation + embed0).chunk(6, dim=1)
-                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in current_embed0]
-            elif embed0.dim() == 2:
-                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.blocks[block_idx].modulation.tensor + embed0).chunk(6, dim=1)
-
-            for phase_idx in range(3):
-                if block_idx == 0 and phase_idx == 0:
-                    phase = weights.blocks[block_idx].compute_phases[phase_idx]
-                    phase.to_cuda()
-                    self.weights_stream_mgr.active_weights[0] = (phase_idx, phase)
-
-                with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
-                    cur_phase_idx, cur_phase = self.weights_stream_mgr.active_weights[0]
-                    if cur_phase_idx == 0:
-                        x = self._infer_self_attn(
-                            cur_phase,
-                            x,
-                            shift_msa,
-                            scale_msa,
-                            gate_msa,
-                            grid_sizes,
-                            freqs,
-                            seq_lens,
-                        )
-
-                    elif cur_phase_idx == 1:
-                        x = self._infer_cross_attn(cur_phase, x, context)
-
-                    elif cur_phase_idx == 2:
-                        x = self._infer_ffn(cur_phase, x, c_shift_msa, c_scale_msa, c_gate_msa)
-
-                is_last_phase = block_idx == weights.blocks_num - 1 and phase_idx == 2
-                if not is_last_phase:
-                    next_block_idx = block_idx + 1 if cur_phase_idx == 2 else block_idx
-                    next_phase_idx = (cur_phase_idx + 1) % 3
-                    self.weights_stream_mgr.prefetch_phase(next_block_idx, next_phase_idx, weights.blocks)
-
-                self.weights_stream_mgr.swap_phases()
-
-            weights.blocks[block_idx].modulation.to_cpu()
-
-        torch.cuda.empty_cache()
-
-        return x
-
-    def _infer_without_offload(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        for block_idx in range(self.blocks_num):
-            x = self.infer_block(
-                weights.blocks[block_idx],
-                grid_sizes,
-                x,
-                embed0,
-                seq_lens,
-                freqs,
-                context,
-            )
-        return x
-
-    def _infer_self_attn(self, weights, x, shift_msa, scale_msa, gate_msa, grid_sizes, freqs, seq_lens):
-        if hasattr(weights, "smooth_norm1_weight"):
-            norm1_weight = (1 + scale_msa) * weights.smooth_norm1_weight.tensor
-            norm1_bias = shift_msa * weights.smooth_norm1_bias.tensor
+        # 2. first part before +
+        if hasattr(weights.compute_phases[1], "smooth_norm1_weight"):
+            norm1_weight = (1 + scale_msa) * weights.compute_phases[1].smooth_norm1_weight.tensor
+            norm1_bias = shift_msa * weights.compute_phases[1].smooth_norm1_bias.tensor
         else:
             norm1_weight = 1 + scale_msa
             norm1_bias = shift_msa
@@ -139,9 +42,9 @@ class WanTransformerInfer:
         norm1_out = (norm1_out * norm1_weight + norm1_bias).squeeze(0)
 
         s, n, d = *norm1_out.shape[:1], self.num_heads, self.head_dim
-        q = weights.self_attn_norm_q.apply(weights.self_attn_q.apply(norm1_out)).view(s, n, d)
-        k = weights.self_attn_norm_k.apply(weights.self_attn_k.apply(norm1_out)).view(s, n, d)
-        v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
+        q = weights.compute_phases[1].self_attn_norm_q.apply(weights.compute_phases[1].self_attn_q.apply(norm1_out)).view(s, n, d)
+        k = weights.compute_phases[1].self_attn_norm_k.apply(weights.compute_phases[1].self_attn_k.apply(norm1_out)).view(s, n, d)
+        v = weights.compute_phases[1].self_attn_v.apply(norm1_out).view(s, n, d)
 
         if not self.parallel_attention:
             freqs_i = compute_freqs(q.size(2) // 2, grid_sizes, freqs)
@@ -154,7 +57,7 @@ class WanTransformerInfer:
         cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(q, k_lens=seq_lens)
 
         if not self.parallel_attention:
-            attn_out = weights.self_attn_1.apply(
+            attn_out = weights.compute_phases[1].self_attn_1.apply(
                 q=q,
                 k=k,
                 v=v,
@@ -174,12 +77,13 @@ class WanTransformerInfer:
                 cu_seqlens_qkv=cu_seqlens_q,
             )
 
-        y = weights.self_attn_o.apply(attn_out)
-        x.add_(y * gate_msa.squeeze(0))
-        return x
+        y = weights.compute_phases[1].self_attn_o.apply(attn_out)
+        return y, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa
 
-    def _infer_cross_attn(self, weights, x, context):
-        norm3_out = weights.norm3.apply(x)
+    def infer_block_2(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa):
+        x.add_(y_out * gate_msa.squeeze(0))
+
+        norm3_out = weights.compute_phases[2].norm3.apply(x)
 
         if self.task == "i2v":
             context_img = context[:257]
@@ -188,16 +92,16 @@ class WanTransformerInfer:
             context_img = None
 
         n, d = self.num_heads, self.head_dim
-        q = weights.cross_attn_norm_q.apply(weights.cross_attn_q.apply(norm3_out)).view(-1, n, d)
-        k = weights.cross_attn_norm_k.apply(weights.cross_attn_k.apply(context)).view(-1, n, d)
-        v = weights.cross_attn_v.apply(context).view(-1, n, d)
+        q = weights.compute_phases[2].cross_attn_norm_q.apply(weights.compute_phases[2].cross_attn_q.apply(norm3_out)).view(-1, n, d)
+        k = weights.compute_phases[2].cross_attn_norm_k.apply(weights.compute_phases[2].cross_attn_k.apply(context)).view(-1, n, d)
+        v = weights.compute_phases[2].cross_attn_v.apply(context).view(-1, n, d)
 
         cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(
             q,
             k_lens=torch.tensor([k.size(0)], dtype=torch.int32, device=k.device),
         )
 
-        attn_out = weights.cross_attn_1.apply(
+        attn_out = weights.compute_phases[2].cross_attn_1.apply(
             q=q,
             k=k,
             v=v,
@@ -209,15 +113,15 @@ class WanTransformerInfer:
         )
 
         if self.task == "i2v" and context_img is not None:
-            k_img = weights.cross_attn_norm_k_img.apply(weights.cross_attn_k_img.apply(context_img)).view(-1, n, d)
-            v_img = weights.cross_attn_v_img.apply(context_img).view(-1, n, d)
+            k_img = weights.compute_phases[2].cross_attn_norm_k_img.apply(weights.compute_phases[2].cross_attn_k_img.apply(context_img)).view(-1, n, d)
+            v_img = weights.compute_phases[2].cross_attn_v_img.apply(context_img).view(-1, n, d)
 
             cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(
                 q,
                 k_lens=torch.tensor([k_img.size(0)], dtype=torch.int32, device=k.device),
             )
 
-            img_attn_out = weights.cross_attn_2.apply(
+            img_attn_out = weights.compute_phases[2].cross_attn_2.apply(
                 q=q,
                 k=k_img,
                 v=v_img,
@@ -230,43 +134,25 @@ class WanTransformerInfer:
 
             attn_out = attn_out + img_attn_out
 
-        attn_out = weights.cross_attn_o.apply(attn_out)
-        x.add_(attn_out)
-        return x
+        attn_out = weights.compute_phases[2].cross_attn_o.apply(attn_out)
+        return attn_out
 
-    def _infer_ffn(self, weights, x, c_shift_msa, c_scale_msa, c_gate_msa):
-        if hasattr(weights, "smooth_norm2_weight"):
-            norm2_weight = (1 + c_scale_msa.squeeze(0)) * weights.smooth_norm2_weight.tensor
-            norm2_bias = c_shift_msa.squeeze(0) * weights.smooth_norm2_bias.tensor
+    def infer_block_3(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa):
+        x.add_(attn_out)
+
+        if hasattr(weights.compute_phases[3], "smooth_norm2_weight"):
+            norm2_weight = (1 + c_scale_msa.squeeze(0)) * weights.compute_phases[3].smooth_norm2_weight.tensor
+            norm2_bias = c_shift_msa.squeeze(0) * weights.compute_phases[3].smooth_norm2_bias.tensor
         else:
             norm2_weight = 1 + c_scale_msa.squeeze(0)
             norm2_bias = c_shift_msa.squeeze(0)
 
         norm2_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
-        y = weights.ffn_0.apply(norm2_out * norm2_weight + norm2_bias)
+        y = weights.compute_phases[3].ffn_0.apply(norm2_out * norm2_weight + norm2_bias)
         y = torch.nn.functional.gelu(y, approximate="tanh")
-        y = weights.ffn_2.apply(y)
-        x.add_(y * c_gate_msa.squeeze(0))
-        return x
+        y = weights.compute_phases[3].ffn_2.apply(y)
+        return y
 
-    def infer_block(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        if embed0.dim() == 3:
-            modulation = weights.modulation.tensor.unsqueeze(2)
-            embed0 = (modulation + embed0).chunk(6, dim=1)
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in embed0]
-        elif embed0.dim() == 2:
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.modulation.tensor + embed0).chunk(6, dim=1)
-
-        x = self._infer_self_attn(
-            weights.compute_phases[1],
-            x,
-            shift_msa,
-            scale_msa,
-            gate_msa,
-            grid_sizes,
-            freqs,
-            seq_lens,
-        )
-        x = self._infer_cross_attn(weights.compute_phases[2], x, context)
-        x = self._infer_ffn(weights.compute_phases[3], x, c_shift_msa, c_scale_msa, c_gate_msa)
+    def infer_block_4(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa):
+        x.add_(y_out * c_gate_msa.squeeze(0))
         return x
