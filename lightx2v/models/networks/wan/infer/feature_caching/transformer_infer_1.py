@@ -21,10 +21,10 @@ class WanTransformerInfer(BaseWanTransformer):
 
     def infer_calculating(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
         for block_idx in range(self.blocks_num):
-            y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
-            attn_out = super().infer_block_2(weights, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
-            y_out = super().infer_block_3(weights, grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
-            x = super.infer_block_4(weights, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
+            y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
+            attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
+            y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
+            x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
         return x
 
     def infer_using_cache(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):

@@ -31,9 +31,9 @@ class BaseWanTransformer(BaseTransformer):
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.modulation.tensor + embed0).chunk(6, dim=1)
 
         # 2. first part before +
-        if hasattr(weights.compute_phases[1], "smooth_norm1_weight"):
-            norm1_weight = (1 + scale_msa) * weights.compute_phases[1].smooth_norm1_weight.tensor
-            norm1_bias = shift_msa * weights.compute_phases[1].smooth_norm1_bias.tensor
+        if hasattr(weights.compute_phases[0], "smooth_norm1_weight"):
+            norm1_weight = (1 + scale_msa) * weights.compute_phases[0].smooth_norm1_weight.tensor
+            norm1_bias = shift_msa * weights.compute_phases[0].smooth_norm1_bias.tensor
         else:
             norm1_weight = 1 + scale_msa
             norm1_bias = shift_msa
@@ -42,9 +42,9 @@ class BaseWanTransformer(BaseTransformer):
         norm1_out = (norm1_out * norm1_weight + norm1_bias).squeeze(0)
 
         s, n, d = *norm1_out.shape[:1], self.num_heads, self.head_dim
-        q = weights.compute_phases[1].self_attn_norm_q.apply(weights.compute_phases[1].self_attn_q.apply(norm1_out)).view(s, n, d)
-        k = weights.compute_phases[1].self_attn_norm_k.apply(weights.compute_phases[1].self_attn_k.apply(norm1_out)).view(s, n, d)
-        v = weights.compute_phases[1].self_attn_v.apply(norm1_out).view(s, n, d)
+        q = weights.compute_phases[0].self_attn_norm_q.apply(weights.compute_phases[0].self_attn_q.apply(norm1_out)).view(s, n, d)
+        k = weights.compute_phases[0].self_attn_norm_k.apply(weights.compute_phases[0].self_attn_k.apply(norm1_out)).view(s, n, d)
+        v = weights.compute_phases[0].self_attn_v.apply(norm1_out).view(s, n, d)
 
         if not self.parallel_attention:
             freqs_i = compute_freqs(q.size(2) // 2, grid_sizes, freqs)
@@ -57,7 +57,7 @@ class BaseWanTransformer(BaseTransformer):
         cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(q, k_lens=seq_lens)
 
         if not self.parallel_attention:
-            attn_out = weights.compute_phases[1].self_attn_1.apply(
+            attn_out = weights.compute_phases[0].self_attn_1.apply(
                 q=q,
                 k=k,
                 v=v,
@@ -77,13 +77,13 @@ class BaseWanTransformer(BaseTransformer):
                 cu_seqlens_qkv=cu_seqlens_q,
             )
 
-        y = weights.compute_phases[1].self_attn_o.apply(attn_out)
+        y = weights.compute_phases[0].self_attn_o.apply(attn_out)
         return y, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa
 
     def infer_block_2(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa):
         x.add_(y_out * gate_msa.squeeze(0))
 
-        norm3_out = weights.compute_phases[2].norm3.apply(x)
+        norm3_out = weights.compute_phases[1].norm3.apply(x)
 
         if self.task == "i2v":
             context_img = context[:257]
@@ -92,16 +92,16 @@ class BaseWanTransformer(BaseTransformer):
             context_img = None
 
         n, d = self.num_heads, self.head_dim
-        q = weights.compute_phases[2].cross_attn_norm_q.apply(weights.compute_phases[2].cross_attn_q.apply(norm3_out)).view(-1, n, d)
-        k = weights.compute_phases[2].cross_attn_norm_k.apply(weights.compute_phases[2].cross_attn_k.apply(context)).view(-1, n, d)
-        v = weights.compute_phases[2].cross_attn_v.apply(context).view(-1, n, d)
+        q = weights.compute_phases[1].cross_attn_norm_q.apply(weights.compute_phases[1].cross_attn_q.apply(norm3_out)).view(-1, n, d)
+        k = weights.compute_phases[1].cross_attn_norm_k.apply(weights.compute_phases[1].cross_attn_k.apply(context)).view(-1, n, d)
+        v = weights.compute_phases[1].cross_attn_v.apply(context).view(-1, n, d)
 
         cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(
             q,
             k_lens=torch.tensor([k.size(0)], dtype=torch.int32, device=k.device),
         )
 
-        attn_out = weights.compute_phases[2].cross_attn_1.apply(
+        attn_out = weights.compute_phases[1].cross_attn_1.apply(
             q=q,
             k=k,
             v=v,
@@ -113,15 +113,15 @@ class BaseWanTransformer(BaseTransformer):
         )
 
         if self.task == "i2v" and context_img is not None:
-            k_img = weights.compute_phases[2].cross_attn_norm_k_img.apply(weights.compute_phases[2].cross_attn_k_img.apply(context_img)).view(-1, n, d)
-            v_img = weights.compute_phases[2].cross_attn_v_img.apply(context_img).view(-1, n, d)
+            k_img = weights.compute_phases[1].cross_attn_norm_k_img.apply(weights.compute_phases[1].cross_attn_k_img.apply(context_img)).view(-1, n, d)
+            v_img = weights.compute_phases[1].cross_attn_v_img.apply(context_img).view(-1, n, d)
 
             cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(
                 q,
                 k_lens=torch.tensor([k_img.size(0)], dtype=torch.int32, device=k.device),
             )
 
-            img_attn_out = weights.compute_phases[2].cross_attn_2.apply(
+            img_attn_out = weights.compute_phases[1].cross_attn_2.apply(
                 q=q,
                 k=k_img,
                 v=v_img,
@@ -134,25 +134,34 @@ class BaseWanTransformer(BaseTransformer):
 
             attn_out = attn_out + img_attn_out
 
-        attn_out = weights.compute_phases[2].cross_attn_o.apply(attn_out)
+        attn_out = weights.compute_phases[1].cross_attn_o.apply(attn_out)
         return attn_out
 
     def infer_block_3(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa):
         x.add_(attn_out)
 
-        if hasattr(weights.compute_phases[3], "smooth_norm2_weight"):
-            norm2_weight = (1 + c_scale_msa.squeeze(0)) * weights.compute_phases[3].smooth_norm2_weight.tensor
-            norm2_bias = c_shift_msa.squeeze(0) * weights.compute_phases[3].smooth_norm2_bias.tensor
+        if hasattr(weights.compute_phases[2], "smooth_norm2_weight"):
+            norm2_weight = (1 + c_scale_msa.squeeze(0)) * weights.compute_phases[2].smooth_norm2_weight.tensor
+            norm2_bias = c_shift_msa.squeeze(0) * weights.compute_phases[2].smooth_norm2_bias.tensor
         else:
             norm2_weight = 1 + c_scale_msa.squeeze(0)
             norm2_bias = c_shift_msa.squeeze(0)
 
         norm2_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
-        y = weights.compute_phases[3].ffn_0.apply(norm2_out * norm2_weight + norm2_bias)
+        y = weights.compute_phases[2].ffn_0.apply(norm2_out * norm2_weight + norm2_bias)
         y = torch.nn.functional.gelu(y, approximate="tanh")
-        y = weights.compute_phases[3].ffn_2.apply(y)
+        y = weights.compute_phases[2].ffn_2.apply(y)
         return y
 
     def infer_block_4(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa):
         x.add_(y_out * c_gate_msa.squeeze(0))
         return x
+
+    def _calculate_q_k_len(self, q, k_lens):
+        # Handle query and key lengths (use `q_lens` and `k_lens` or set them to Lq and Lk if None)
+        q_lens = torch.tensor([q.size(0)], dtype=torch.int32, device=q.device)
+
+        # We don't have a batch dimension anymore, so directly use the `q_lens` and `k_lens` values
+        cu_seqlens_q = torch.cat([q_lens.new_zeros([1]), q_lens]).cumsum(0, dtype=torch.int32)
+        cu_seqlens_k = torch.cat([k_lens.new_zeros([1]), k_lens]).cumsum(0, dtype=torch.int32)
+        return cu_seqlens_q, cu_seqlens_k

@@ -1,0 +1,142 @@
+INFO 06-05 17:01:21 [__init__.py:239] Automatically detected platform cuda.
+/mtc/yangrongjin/miniconda3/envs/lightx2v/lib/python3.11/site-packages/torch/utils/cpp_extension.py:2059: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+2025-06-05 17:01:25.018 | INFO     | __main__:<module>:49 - args: Namespace(model_cls='hunyuan', task='i2v', model_path='/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/i2v', config_json='/home/yangrongjin/lightx2v/configs/caching/hunyuan_i2v_Ada.json', prompt_enhancer=None, prompt='An Asian man with short hair in black tactical uniform and white clothes waves a firework stick.', negative_prompt='', image_path='/home/yangrongjin/lightx2v/assets/inputs/imgs/img_1.jpg', save_video_path='/home/yangrongjin/lightx2v/save_results/output_lightx2v_hy_i2v_ada.mp4')
+2025-06-05 17:01:25.203 | INFO     | __main__:<module>:53 - config:
+{
+    "do_mm_calib": false,
+    "cpu_offload": false,
+    "parallel_attn_type": null,
+    "parallel_vae": false,
+    "max_area": false,
+    "vae_stride": [
+        4,
+        8,
+        8
+    ],
+    "patch_size": [
+        1,
+        2,
+        2
+    ],
+    "feature_caching": "Ada",
+    "teacache_thresh": 0.26,
+    "use_ret_steps": false,
+    "use_bfloat16": true,
+    "lora_path": null,
+    "strength_model": 1.0,
+    "mm_config": {
+        "mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm",
+        "weight_auto_quant": true
+    },
+    "use_prompt_enhancer": false,
+    "model_cls": "hunyuan",
+    "task": "i2v",
+    "model_path": "/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/i2v",
+    "config_json": "/home/yangrongjin/lightx2v/configs/caching/hunyuan_i2v_Ada.json",
+    "prompt_enhancer": null,
+    "prompt": "An Asian man with short hair in black tactical uniform and white clothes waves a firework stick.",
+    "negative_prompt": "",
+    "image_path": "/home/yangrongjin/lightx2v/assets/inputs/imgs/img_1.jpg",
+    "save_video_path": "/home/yangrongjin/lightx2v/save_results/output_lightx2v_hy_i2v_ada.mp4",
+    "infer_steps": 20,
+    "target_video_length": 33,
+    "i2v_resolution": "720p",
+    "attention_type": "flash_attn3",
+    "seed": 0
+}
+SparseAttentionMeansim not found, please install sparge first
+sageattn not found, please install sageattention first
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:02<00:07,  2.47s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:04<00:04,  2.21s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:06<00:02,  2.15s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:07<00:00,  1.58s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:07<00:00,  1.82s/it]
+You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama_fast.LlamaTokenizerFast'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565 - if you loaded a llama tokenizer from a GGUF file you can ignore this message.
+2025-06-05 17:02:55.115 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] Load models cost 89.907147 seconds
+2025-06-05 17:02:56.099 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] Run Img Encoder cost 0.983005 seconds
+Expanding inputs for image tokens in LLaVa should be done in processing. Please add `patch_size` and `vision_feature_select_strategy` to the model's processing config or set directly with `processor.patch_size = {{patch_size}}` and processor.vision_feature_select_strategy = {{vision_feature_select_strategy}}`. Using processors without these attributes in the config is deprecated and will throw an error in v4.47.
+Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)
+2025-06-05 17:02:56.426 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] Run Text Encoder cost 0.326593 seconds
+2025-06-05 17:02:56.715 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 1 / 20
+2025-06-05 17:02:56.716 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000050 seconds
+2025-06-05 17:02:58.985 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.269272 seconds
+2025-06-05 17:02:58.986 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000322 seconds
+2025-06-05 17:02:58.986 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 2 / 20
+2025-06-05 17:02:58.986 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000036 seconds
+2025-06-05 17:03:01.082 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.096324 seconds
+2025-06-05 17:03:01.082 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000156 seconds
+2025-06-05 17:03:01.083 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 3 / 20
+2025-06-05 17:03:01.083 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000029 seconds
+2025-06-05 17:03:01.088 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005774 seconds
+2025-06-05 17:03:01.089 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000114 seconds
+2025-06-05 17:03:01.089 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 4 / 20
+2025-06-05 17:03:01.089 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000021 seconds
+2025-06-05 17:03:01.094 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005244 seconds
+2025-06-05 17:03:01.094 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000109 seconds
+2025-06-05 17:03:01.094 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 5 / 20
+2025-06-05 17:03:01.094 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000020 seconds
+2025-06-05 17:03:03.193 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.099044 seconds
+2025-06-05 17:03:03.194 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000138 seconds
+2025-06-05 17:03:03.194 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 6 / 20
+2025-06-05 17:03:03.194 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000025 seconds
+2025-06-05 17:03:03.199 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005456 seconds
+2025-06-05 17:03:03.199 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000115 seconds
+2025-06-05 17:03:03.200 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 7 / 20
+2025-06-05 17:03:03.200 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000021 seconds
+2025-06-05 17:03:03.205 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005188 seconds
+2025-06-05 17:03:03.205 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000115 seconds
+2025-06-05 17:03:03.205 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 8 / 20
+2025-06-05 17:03:03.205 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000023 seconds
+2025-06-05 17:03:05.300 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.094553 seconds
+2025-06-05 17:03:05.300 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000146 seconds
+2025-06-05 17:03:05.300 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 9 / 20
+2025-06-05 17:03:05.300 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000039 seconds
+2025-06-05 17:03:05.306 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005650 seconds
+2025-06-05 17:03:05.306 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000112 seconds
+2025-06-05 17:03:05.306 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 10 / 20
+2025-06-05 17:03:05.306 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000021 seconds
+2025-06-05 17:03:05.311 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005305 seconds
+2025-06-05 17:03:05.312 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000105 seconds
+2025-06-05 17:03:05.312 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 11 / 20
+2025-06-05 17:03:05.312 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000020 seconds
+2025-06-05 17:03:07.407 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.095564 seconds
+2025-06-05 17:03:07.408 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000164 seconds
+2025-06-05 17:03:07.408 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 12 / 20
+2025-06-05 17:03:07.408 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000033 seconds
+2025-06-05 17:03:07.414 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005886 seconds
+2025-06-05 17:03:07.414 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000121 seconds
+2025-06-05 17:03:07.414 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 13 / 20
+2025-06-05 17:03:07.414 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000023 seconds
+2025-06-05 17:03:07.419 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005238 seconds
+2025-06-05 17:03:07.420 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000110 seconds
+2025-06-05 17:03:07.420 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 14 / 20
+2025-06-05 17:03:07.420 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000021 seconds
+2025-06-05 17:03:09.514 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.094693 seconds
+2025-06-05 17:03:09.515 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000152 seconds
+2025-06-05 17:03:09.515 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 15 / 20
+2025-06-05 17:03:09.515 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000034 seconds
+2025-06-05 17:03:09.521 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005574 seconds
+2025-06-05 17:03:09.521 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000110 seconds
+2025-06-05 17:03:09.521 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 16 / 20
+2025-06-05 17:03:09.521 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000021 seconds
+2025-06-05 17:03:09.526 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005197 seconds
+2025-06-05 17:03:09.526 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000109 seconds
+2025-06-05 17:03:09.526 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 17 / 20
+2025-06-05 17:03:09.526 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000021 seconds
+2025-06-05 17:03:11.622 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.095389 seconds
+2025-06-05 17:03:11.622 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000131 seconds
+2025-06-05 17:03:11.622 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 18 / 20
+2025-06-05 17:03:11.622 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000028 seconds
+2025-06-05 17:03:11.628 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005627 seconds
+2025-06-05 17:03:11.628 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000135 seconds
+2025-06-05 17:03:11.628 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 19 / 20
+2025-06-05 17:03:11.628 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000022 seconds
+2025-06-05 17:03:11.634 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 0.005332 seconds
+2025-06-05 17:03:11.634 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000121 seconds
+2025-06-05 17:03:11.634 | INFO     | lightx2v.models.runners.default_runner:run:52 - ==> step_index: 20 / 20
+2025-06-05 17:03:11.634 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_pre cost 0.000021 seconds
+2025-06-05 17:03:13.726 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] infer cost 2.091727 seconds
+2025-06-05 17:03:13.726 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] step_post cost 0.000205 seconds
+2025-06-05 17:03:13.726 | INFO     | lightx2v.utils.memory_profiler:wrapper:23 - Function 'DefaultRunner.run' Peak Memory: 43.14 GB
+2025-06-05 17:03:18.944 | INFO     | lightx2v.utils.memory_profiler:wrapper:23 - Function 'DefaultRunner.run_vae' Peak Memory: 44.61 GB
+2025-06-05 17:03:18.945 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] Run VAE cost 5.213412 seconds
+2025-06-05 17:03:19.739 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] Save video cost 0.794596 seconds
+2025-06-05 17:03:20.009 | INFO     | lightx2v.utils.profiler:__exit__:20 - [Profile] Total Cost cost 114.808150 seconds
