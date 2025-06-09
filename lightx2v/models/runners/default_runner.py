@@ -160,7 +160,12 @@ class DefaultRunner:
 
     @ProfilingContext("Run VAE Decoder")
     async def run_vae_decoder_local(self, latents, generator):
+        if self.config.get("lazy_load", False):
+            self.vae_decoder = self.load_vae_decoder()
         images = self.vae_decoder.decode(latents, generator=generator, config=self.config)
+        if self.config.get("lazy_load", False):
+            torch.cuda.empty_cache()
+            gc.collect()
         return images
 
     @ProfilingContext("Save video")

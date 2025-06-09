@@ -122,10 +122,10 @@ class WanTransformerInfer:
                     elif cur_phase_idx == 2:
                         x = self._infer_ffn(cur_phase, x, c_shift_msa, c_scale_msa, c_gate_msa)
 
-                is_last_phase = block_idx == weights.blocks_num - 1 and phase_idx == 2
+                is_last_phase = block_idx == weights.blocks_num - 1 and phase_idx == self.phases_num - 1
                 if not is_last_phase:
-                    next_block_idx = block_idx + 1 if cur_phase_idx == 2 else block_idx
-                    next_phase_idx = (cur_phase_idx + 1) % 3
+                    next_block_idx = block_idx + 1 if phase_idx == self.phases_num - 1 else block_idx
+                    next_phase_idx = (phase_idx + 1) % self.phases_num
                     self.weights_stream_mgr.prefetch_phase(next_block_idx, next_phase_idx, weights.blocks)
 
                 self.weights_stream_mgr.swap_phases()
@@ -184,8 +184,8 @@ class WanTransformerInfer:
                     elif cur_phase_idx == 2:
                         x = self._infer_ffn(cur_phase, x, c_shift_msa, c_scale_msa, c_gate_msa)
 
-                if not (block_idx == weights.blocks_num - 1 and phase_idx == self.weights_stream_mgr.phases_num - 1):
-                    next_block_idx = block_idx + 1 if phase_idx == self.weights_stream_mgr.phases_num - 1 else block_idx
+                if not (block_idx == weights.blocks_num - 1 and phase_idx == self.phases_num - 1):
+                    next_block_idx = block_idx + 1 if phase_idx == self.phases_num - 1 else block_idx
                     next_phase_idx = (phase_idx + 1) % self.weights_stream_mgr.phases_num
                     self.weights_stream_mgr.prefetch_phase(next_block_idx, next_phase_idx, weights.blocks)
 

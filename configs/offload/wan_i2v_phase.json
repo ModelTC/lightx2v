@@ -11,17 +11,10 @@
     "cpu_offload": true,
     "offload_granularity": "phase",
     "t5_offload_granularity": "block",
-    "dit_quantized": true,
-    "dit_quantized_ckpt": "/x2v_models_disk/wan_int8_blocks",
+    "dit_quantized_ckpt": "/path/to/dit_int8",
     "mm_config": {
-        "mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Q8F"
+        "mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Q8F",
+        "weight_auto_quant": false
     },
-    "t5_quantized": false,
-    "t5_quantized_ckpt": "/mnt/afs_2/gushiqiao/x2v_new_models/models_t5_umt5-xxl-enc-int8.pth",
-    "clip_quantized": false,
-    "clip_quantized_ckpt": "/mnt/afs_2/gushiqiao/x2v_new_models/clip_int8.pth",
-    "use_tiling_vae": true,
-    "tiny_vae": true,
-    "tiny_vae_path": "/mnt/afs_2/gushiqiao/x2v_models/taew2_1.pth",
-    "lazy_load": true
+    "use_tiling_vae": true
 }

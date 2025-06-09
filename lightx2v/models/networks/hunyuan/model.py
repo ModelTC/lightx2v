@@ -1,6 +1,6 @@
 import os
-import sys
 import torch
+import json
 from lightx2v.models.networks.hunyuan.weights.pre_weights import HunyuanPreWeights
 from lightx2v.models.networks.hunyuan.weights.post_weights import HunyuanPostWeights
 from lightx2v.models.networks.hunyuan.weights.transformer_weights import HunyuanTransformerWeights
@@ -13,6 +13,7 @@ import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
 from lightx2v.utils.envs import *
 from loguru import logger
+from safetensors import safe_open
 
 
 class HunyuanModel:
@@ -27,10 +28,12 @@ class HunyuanModel:
         self.args = args
         self._init_infer_class()
         self._init_weights()
-        if GET_RUNNING_FLAG() == "save_naive_quant":
-            assert self.config.get("quant_model_path") is not None, "quant_model_path is None"
-            self.save_weights(self.config.quant_model_path)
-            sys.exit(0)
+
+        self.dit_quantized = self.config.mm_config.get("mm_type", "Default") != "Default"
+        self.dit_quantized_ckpt = self.config.get("dit_quantized_ckpt", None)
+        self.weight_auto_quant = self.config.mm_config.get("weight_auto_quant", False)
+        if self.dit_quantized:
+            assert self.weight_auto_quant or self.dit_quantized_ckpt is not None
 
         self._init_infer()
 
@@ -65,18 +68,41 @@ class HunyuanModel:
         weight_dict = torch.load(ckpt_path, map_location=self.device, weights_only=True)["module"]
         return weight_dict
 
-    def _load_ckpt_quant_model(self):
-        assert self.config.get("quant_model_path") is not None, "quant_model_path is None"
-        logger.info(f"Loading quant model from {self.config.quant_model_path}")
-        quant_weights_path = os.path.join(self.config.quant_model_path, "quant_weights.pth")
-        weight_dict = torch.load(quant_weights_path, map_location=self.device, weights_only=True)
+    def _load_quant_ckpt(self):
+        ckpt_path = self.config.dit_quantized_ckpt
+        logger.info(f"Loading quant dit model from {ckpt_path}")
+
+        if ckpt_path.endswith(".pth"):
+            logger.info(f"Loading {ckpt_path} as PyTorch model.")
+            weight_dict = torch.load(ckpt_path, map_location=self.device, weights_only=True)
+        else:
+            index_files = [f for f in os.listdir(ckpt_path) if f.endswith(".index.json")]
+            if not index_files:
+                raise FileNotFoundError(f"No .pth file or *.index.json found in {ckpt_path}")
+
+            index_path = os.path.join(ckpt_path, index_files[0])
+            logger.info(f" Using safetensors index: {index_path}")
+
+            with open(index_path, "r") as f:
+                index_data = json.load(f)
+
+            weight_dict = {}
+            for filename in set(index_data["weight_map"].values()):
+                safetensor_path = os.path.join(ckpt_path, filename)
+                with safe_open(safetensor_path, framework="pt", device=str(self.device)) as f:
+                    logger.info(f"Loading weights from {safetensor_path}")
+                    for k in f.keys():
+                        weight_dict[k] = f.get_tensor(k)
+                        if weight_dict[k].dtype == torch.float:
+                            weight_dict[k] = weight_dict[k].to(torch.bfloat16)
+
         return weight_dict
 
     def _init_weights(self):
-        if GET_RUNNING_FLAG() == "save_naive_quant" or self.config["mm_config"].get("weight_auto_quant", False) or self.config["mm_config"].get("mm_type", "Default") == "Default":
+        if not self.dit_quantized or self.weight_auto_quant:
             weight_dict = self._load_ckpt()
         else:
-            weight_dict = self._load_ckpt_quant_model()
+            weight_dict = self._load_quant_ckpt()
         # init weights
         self.pre_weight = self.pre_weight_class(self.config)
         self.post_weight = self.post_weight_class(self.config)

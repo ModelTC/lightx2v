@@ -52,6 +52,7 @@ class WanRunner(DefaultRunner):
                 ),
                 clip_quantized=self.config.get("clip_quantized", False),
                 clip_quantized_ckpt=self.config.get("clip_quantized_ckpt", None),
+                quant_scheme=self.config.get("clip_quant_scheme", None),
             )
         return image_encoder
 
@@ -67,6 +68,7 @@ class WanRunner(DefaultRunner):
             offload_granularity=self.config.get("t5_offload_granularity", "model"),
             t5_quantized=self.config.get("t5_quantized", False),
             t5_quantized_ckpt=self.config.get("t5_quantized_ckpt", None),
+            quant_scheme=self.config.get("t5_quant_scheme", None),
         )
         text_encoders = [text_encoder]
         return text_encoders
@@ -93,8 +95,8 @@ class WanRunner(DefaultRunner):
         if self.config.get("tiny_vae", False):
             vae_decoder = WanVAE_tiny(
                 vae_pth=self.config.tiny_vae_path,
-                device="cuda",
-            )
+                device=self.init_device,
+            ).to("cuda")
         else:
             vae_decoder = WanVAE(**vae_config)
         return vae_decoder

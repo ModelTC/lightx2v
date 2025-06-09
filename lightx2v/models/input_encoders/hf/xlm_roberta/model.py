@@ -10,7 +10,7 @@ import torchvision.transforms as T
 
 from lightx2v.attentions import attention
 from loguru import logger
-from lightx2v.models.input_encoders.hf.q_linear import QuantLinear
+from lightx2v.models.input_encoders.hf.q_linear import QuantLinearInt8
 
 
 __all__ = [
@@ -47,7 +47,7 @@ class LayerNorm(nn.LayerNorm):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, dim, num_heads, causal=False, attn_dropout=0.0, proj_dropout=0.0, quantized=False):
+    def __init__(self, dim, num_heads, causal=False, attn_dropout=0.0, proj_dropout=0.0, quantized=False, quant_scheme=None):
         assert dim % num_heads == 0
         super().__init__()
         self.dim = dim
@@ -59,9 +59,11 @@ class SelfAttention(nn.Module):
 
         # layers
         if quantized:
-            linear_cls = QuantLinear
+            if quant_scheme == "int8":
+                linear_cls = QuantLinearInt8
         else:
             linear_cls = nn.Linear
+
         self.to_qkv = linear_cls(dim, dim * 3)
         self.proj = linear_cls(dim, dim)
 
@@ -101,7 +103,7 @@ class SwiGLU(nn.Module):
 
 
 class AttentionBlock(nn.Module):
-    def __init__(self, dim, mlp_ratio, num_heads, post_norm=False, causal=False, activation="quick_gelu", attn_dropout=0.0, proj_dropout=0.0, norm_eps=1e-5, quantized=False):
+    def __init__(self, dim, mlp_ratio, num_heads, post_norm=False, causal=False, activation="quick_gelu", attn_dropout=0.0, proj_dropout=0.0, norm_eps=1e-5, quantized=False, quant_scheme=None):
         assert activation in ["quick_gelu", "gelu", "swi_glu"]
         super().__init__()
         self.dim = dim
@@ -113,12 +115,13 @@ class AttentionBlock(nn.Module):
 
         # layers
         if quantized:
-            linear_cls = QuantLinear
+            if quant_scheme == "int8":
+                linear_cls = QuantLinearInt8
         else:
             linear_cls = nn.Linear
 
         self.norm1 = LayerNorm(dim, eps=norm_eps)
-        self.attn = SelfAttention(dim, num_heads, causal, attn_dropout, proj_dropout, quantized)
+        self.attn = SelfAttention(dim, num_heads, causal, attn_dropout, proj_dropout, quantized, quant_scheme)
         self.norm2 = LayerNorm(dim, eps=norm_eps)
         if activation == "swi_glu":
             self.mlp = SwiGLU(dim, int(dim * mlp_ratio))
@@ -197,6 +200,7 @@ class VisionTransformer(nn.Module):
         embedding_dropout=0.0,
         norm_eps=1e-5,
         quantized=False,
+        quant_scheme=None,
     ):
         if image_size % patch_size != 0:
             logger.info("[WARNING] image_size is not divisible by patch_size", flush=True)
@@ -225,7 +229,9 @@ class VisionTransformer(nn.Module):
 
         # transformer
         self.pre_norm = LayerNorm(dim, eps=norm_eps) if pre_norm else None
-        self.transformer = nn.Sequential(*[AttentionBlock(dim, mlp_ratio, num_heads, post_norm, False, activation, attn_dropout, proj_dropout, norm_eps, quantized) for _ in range(num_layers)])
+        self.transformer = nn.Sequential(
+            *[AttentionBlock(dim, mlp_ratio, num_heads, post_norm, False, activation, attn_dropout, proj_dropout, norm_eps, quantized, quant_scheme) for _ in range(num_layers)]
+        )
         self.post_norm = LayerNorm(dim, eps=norm_eps)
 
         # head
@@ -283,6 +289,7 @@ class XLMRobertaCLIP(nn.Module):
         embedding_dropout=0.0,
         norm_eps=1e-5,
         quantized=False,
+        quant_scheme=None,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -319,6 +326,7 @@ class XLMRobertaCLIP(nn.Module):
             embedding_dropout=embedding_dropout,
             norm_eps=norm_eps,
             quantized=quantized,
+            quant_scheme=quant_scheme,
         )
         self.log_scale = nn.Parameter(math.log(1 / 0.07) * torch.ones([]))
 
@@ -371,7 +379,7 @@ def clip_xlm_roberta_vit_h_14(pretrained=False, pretrained_name="open-clip-xlm-r
 
 
 class CLIPModel:
-    def __init__(self, dtype, device, checkpoint_path, clip_quantized, clip_quantized_ckpt):
+    def __init__(self, dtype, device, checkpoint_path, clip_quantized, clip_quantized_ckpt, quant_scheme):
         self.dtype = dtype
         self.device = device
         self.quantized = clip_quantized
@@ -380,10 +388,14 @@ class CLIPModel:
         else:
             self.checkpoint_path = checkpoint_path
 
+        logger.info(f"Loading weights from {self.checkpoint_path}")
+
         # init model
-        self.model, self.transforms = clip_xlm_roberta_vit_h_14(pretrained=False, return_transforms=True, return_tokenizer=False, dtype=dtype, device=device, quantized=self.quantized)
+        self.model, self.transforms = clip_xlm_roberta_vit_h_14(
+            pretrained=False, return_transforms=True, return_tokenizer=False, dtype=dtype, device=device, quantized=self.quantized, quant_scheme=quant_scheme
+        )
         self.model = self.model.eval().requires_grad_(False)
-        logging.info(f"loading {self.checkpoint_path}")
+
         weight_dict = torch.load(self.checkpoint_path, map_location="cpu", weights_only=True)
         keys = list(weight_dict.keys())
         for key in keys:

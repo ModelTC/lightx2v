@@ -8,7 +8,7 @@ except ImportError:
     Q8F = None
 
 
-class QuantLinear(nn.Module):
+class QuantLinearInt8(nn.Module):
     def __init__(self, in_features, out_features, bias=True):
         super().__init__()
         self.in_features = in_features
@@ -28,7 +28,6 @@ class QuantLinear(nn.Module):
 
     def forward(self, x):
         input_tensor_quant, input_tensor_scale = self.act_quant_func(x)
-
         output_tensor = Q8F.linear.q8_linear(
             input_tensor_quant,
             self.weight,

@@ -273,7 +273,7 @@ def convert_weights(args):
 def main():
     parser = argparse.ArgumentParser(description="Model weight format converter")
     parser.add_argument("-s", "--source", required=True, help="Input path (file or directory)")
-    parser.add_argument("-o_e", "--output_ext", choices=[".pth", ".safetensors"])
+    parser.add_argument("-o_e", "--output_ext", default=".safetensors", choices=[".pth", ".safetensors"])
     parser.add_argument("-o_n", "--output_name", type=str, default="converted", help="Output file name")
     parser.add_argument("-o", "--output", required=True, help="Output directory path")
     parser.add_argument("-d", "--direction", choices=[None, "forward", "backward"], default=None, help="Conversion direction: forward = 'lightx2v' -> 'Diffusers', backward = reverse")

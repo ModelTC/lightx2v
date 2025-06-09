@@ -18,7 +18,7 @@ class DefaultTensor:
 
     def load(self, weight_dict):
         if not self.lazy_load:
-            self.tensor = weight_dict[self.tensor_name]
+            self.tensor = weight_dict[self.tensor_name].to(torch.bfloat16)
             self.pinned_tensor = torch.empty(self.tensor.shape, pin_memory=True, dtype=self.tensor.dtype)
 
     def clear(self):
@@ -41,16 +41,3 @@ class DefaultTensor:
             destination = {}
         destination[self.tensor_name] = self.tensor.cpu().detach().clone()
         return destination
-
-
-@TENSOR_REGISTER("Default-Force-BF16")
-class DefaultTensorForceBF16(DefaultTensor):
-    def __init__(self, tensor_name, lazy_load=False, lazy_load_file=None):
-        super().__init__(tensor_name, lazy_load, lazy_load_file)
-
-    def load_from_disk(self):
-        if not torch._dynamo.is_compiling():
-            self.tensor = self.lazy_load_file.get_tensor(self.tensor_name).pin_memory()
-        else:
-            self.tensor = self.lazy_load_file.get_tensor(self.tensor_name)
-        self.tensor = self.tensor.to(torch.bfloat16)

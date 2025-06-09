@@ -93,7 +93,7 @@ class LazyWeightAsyncStreamManager(WeightAsyncStreamManager):
             except queue.Empty:
                 continue
             except Exception as e:
-                logger.error(f"磁盘工作线程错误: {e}")
+                logger.error(f"Disk worker thread error: {e}")
 
     def _async_prefetch_block(self, weights):
         next_block_idx = self.pin_memory_buffer.get_max_block_index()
@@ -146,6 +146,8 @@ class LazyWeightAsyncStreamManager(WeightAsyncStreamManager):
                     time.sleep(0.001)
                     if time.time() - start_time > 5:
                         raise TimeoutError(f"Load timeout: block={block_idx}, phase={phase_idx}")
+            else:
+                logger.info("Not find prefetch block={block_idx}, phase={phase_idx} task. This is a bug.")
 
         with torch.cuda.stream(self.cuda_load_stream):
             phase = self.pin_memory_buffer.get(obj_key)

@@ -32,13 +32,11 @@ class WanModel:
         self.model_path = model_path
         self.config = config
 
-        self.dit_quantized = self.config.get("dit_quantized", False)
+        self.dit_quantized = self.config.mm_config.get("mm_type", "Default") != "Default"
         self.dit_quantized_ckpt = self.config.get("dit_quantized_ckpt", None)
         self.weight_auto_quant = self.config.mm_config.get("weight_auto_quant", False)
-        if not self.dit_quantized:
-            assert self.config.mm_config.get("mm_type", "Default") == "Default"
-        elif self.weight_auto_quant:
-            assert self.dit_quantized_ckpt is not None
+        if self.dit_quantized:
+            assert self.weight_auto_quant or self.dit_quantized_ckpt is not None
 
         self.device = device
         self._init_infer_class()

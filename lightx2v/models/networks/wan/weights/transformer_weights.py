@@ -36,7 +36,7 @@ class WanTransformerAttentionBlock(WeightModule):
         self.sparge = config.get("sparge", False)
         self.register_parameter(
             "modulation",
-            TENSOR_REGISTER["Default-Force-BF16"](f"blocks.{self.block_index}.modulation"),
+            TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.modulation"),
         )
 
         self.lazy_load = self.config.get("lazy_load", False)
@@ -136,7 +136,7 @@ class WanSelfAttention(WeightModule):
         if self.quant_method in ["smoothquant", "awq"]:
             self.register_parameter(
                 "smooth_norm1_weight",
-                TENSOR_REGISTER["Default-Force-BF16"](
+                TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm1.weight",
                     self.lazy_load,
                     self.lazy_load_file,
@@ -144,7 +144,7 @@ class WanSelfAttention(WeightModule):
             )
             self.register_parameter(
                 "smooth_norm1_bias",
-                TENSOR_REGISTER["Default-Force-BF16"](
+                TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm1.bias",
                     self.lazy_load,
                     self.lazy_load_file,
@@ -289,7 +289,7 @@ class WanFFN(WeightModule):
         if self.quant_method in ["smoothquant", "awq"]:
             self.register_parameter(
                 "smooth_norm2_weight",
-                TENSOR_REGISTER["Default-Force-BF16"](
+                TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm3.weight",
                     self.lazy_load,
                     self.lazy_load_file,
@@ -297,7 +297,7 @@ class WanFFN(WeightModule):
             )
             self.register_parameter(
                 "smooth_norm2_bias",
-                TENSOR_REGISTER["Default-Force-BF16"](
+                TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm3.bias",
                     self.lazy_load,
                     self.lazy_load_file,
