@@ -8,7 +8,7 @@ class WanTransformerInfer(BaseWanTransformer):
         super().__init__(config)
 
     @torch.compile(disable=not CHECK_ENABLE_GRAPH_MODE())
-    def infer(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+    def infer(self, weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context):
         # 1. 读取数组
         index = self.scheduler.step_index
         caching_records = self.scheduler.caching_records
