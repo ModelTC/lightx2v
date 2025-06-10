@@ -31,9 +31,9 @@ class WanTransformerInferTeaCaching(BaseWanTransformer):
                 self.scheduler.caching_records[index] = should_calc
 
             if caching_records[index]:
-                x = self.infer_calculating(weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context)
+                x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
             else:
-                x = self.infer_using_cache(weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context)
+                x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
             self.status = "odd"
 
         else:
@@ -54,7 +54,7 @@ class WanTransformerInferTeaCaching(BaseWanTransformer):
         return x
 
 
-    def infer_calculating(self, weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context):
+    def infer_calculating(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
         ori_x = x.clone()
 
         for block_idx in range(self.blocks_num):
@@ -73,7 +73,7 @@ class WanTransformerInferTeaCaching(BaseWanTransformer):
         if self.status == "even":
             x += self.previous_residual_even
         else:
-            x += self.scheduler.previous_residual_odd
+            x += self.previous_residual_odd
         return x
 
     # only in Wan2.1 TeaCaching

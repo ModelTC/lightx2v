@@ -11,6 +11,6 @@ class WanSchedulerTeaCaching(WanScheduler):
         # 1.2 多一个用于后半段的缓存决策
         self.caching_records_2 = [True] * self.infer_steps
 
-    def clear():
+    def clear(self):
         # TODO
         pass
