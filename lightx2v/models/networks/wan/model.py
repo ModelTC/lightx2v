@@ -13,6 +13,9 @@ from lightx2v.models.networks.wan.infer.post_infer import WanPostInfer
 from lightx2v.models.networks.wan.infer.feature_caching.transformer_infer_1 import (
     WanTransformerInfer,
 )
+from lightx2v.models.networks.wan.infer.feature_caching.transformer_infer_2 import (
+    WanTransformerInferTeaCaching,
+)
 from safetensors import safe_open
 import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
@@ -183,21 +186,12 @@ class WanModel:
         x = self.transformer_infer.infer(self.transformer_weights, embed, grid_sizes, *pre_infer_out)
         noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
-        if self.config["feature_caching"] == "Tea":
-            self.scheduler.cnt += 1
-            if self.scheduler.cnt >= self.scheduler.num_steps:
-                self.scheduler.cnt = 0
         self.scheduler.noise_pred = noise_pred_cond
 
         if self.config["enable_cfg"]:
             embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=False)
             x = self.transformer_infer.infer(self.transformer_weights, embed, grid_sizes, *pre_infer_out)
             noise_pred_uncond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
-
-            if self.config["feature_caching"] == "Tea":
-                self.scheduler.cnt += 1
-                if self.scheduler.cnt >= self.scheduler.num_steps:
-                    self.scheduler.cnt = 0
 
             self.scheduler.noise_pred = noise_pred_uncond + self.config.sample_guide_scale * (noise_pred_cond - noise_pred_uncond)
 
