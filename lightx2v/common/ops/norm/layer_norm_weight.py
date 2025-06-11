@@ -4,15 +4,53 @@ from lightx2v.utils.registry_factory import LN_WEIGHT_REGISTER
 
 
 class LNWeightTemplate(metaclass=ABCMeta):
-    def __init__(self, weight_name, bias_name, eps=1e-6):
+    def __init__(self, weight_name, bias_name, lazy_load=False, lazy_load_file=None, eps=1e-6):
         self.weight_name = weight_name
         self.bias_name = bias_name
         self.eps = eps
+        self.lazy_load = lazy_load
+        self.lazy_load_file = lazy_load_file
         self.config = {}
 
+    def load_from_disk(self):
+        if self.weight_name is not None:
+            if not torch._dynamo.is_compiling():
+                self.weight = self.lazy_load_file.get_tensor(self.weight_name).to(torch.bfloat16).pin_memory()
+            else:
+                self.weight = self.lazy_load_file.get_tensor(self.weight_name).to(torch.bfloat16)
+        else:
+            self.weight = None
+
+        if self.bias_name is not None:
+            if not torch._dynamo.is_compiling():
+                self.bias = self.lazy_load_file.get_tensor(self.bias_name).to(torch.bfloat16).pin_memory()
+            else:
+                self.bias = self.lazy_load_file.get_tensor(self.bias_name).to(torch.bfloat16)
+        else:
+            self.bias = None
+
     def load(self, weight_dict):
-        self.weight = weight_dict[self.weight_name].cuda() if self.weight_name is not None else None
-        self.bias = weight_dict[self.bias_name].cuda() if self.bias_name is not None else None
+        if not self.lazy_load:
+            if self.weight_name is not None:
+                self.weight = weight_dict[self.weight_name]
+                self.pinned_weight = torch.empty(self.weight.shape, pin_memory=True, dtype=self.weight.dtype)
+            else:
+                self.weight = None
+            if self.bias_name is not None:
+                self.bias = weight_dict[self.bias_name]
+                self.pinned_bias = torch.empty(self.bias.shape, pin_memory=True, dtype=self.bias.dtype)
+            else:
+                self.bias = None
+
+    def _calculate_size(self):
+        if self.bias is not None:
+            return self.weight.numel() * self.weight.element_size() + self.bias.numel() * self.bias.element_size()
+        return self.weight.numel() * self.weight.element_size()
+
+    def clear(self):
+        del self.weight
+        if self.bias is not None:
+            del self.bias
 
     @abstractmethod
     def apply(self, input_tensor):
@@ -23,10 +61,15 @@ class LNWeightTemplate(metaclass=ABCMeta):
             self.config = config
 
     def to_cpu(self, non_blocking=False):
-        if self.weight is not None:
-            self.weight = self.weight.to("cpu", non_blocking=non_blocking)
-        if self.bias is not None:
-            self.bias = self.bias.to("cpu", non_blocking=non_blocking)
+        if hasattr(self, "pinned_weight"):
+            self.weight = self.pinned_weight.copy_(self.weight, non_blocking=non_blocking).cpu()
+            if self.bias is not None:
+                self.bias = self.pinned_bias.copy_(self.bias, non_blocking=non_blocking).cpu()
+        else:
+            if self.weight is not None:
+                self.weight = self.weight.to("cpu", non_blocking=non_blocking)
+            if self.bias is not None:
+                self.bias = self.bias.to("cpu", non_blocking=non_blocking)
 
     def to_cuda(self, non_blocking=False):
         if self.weight is not None:
@@ -46,8 +89,8 @@ class LNWeightTemplate(metaclass=ABCMeta):
 
 @LN_WEIGHT_REGISTER("Default")
 class LNWeight(LNWeightTemplate):
-    def __init__(self, weight_name, bias_name, eps=1e-6):
-        super().__init__(weight_name, bias_name, eps)
+    def __init__(self, weight_name, bias_name, lazy_load=False, lazy_load_file=None, eps=1e-6):
+        super().__init__(weight_name, bias_name, lazy_load, lazy_load_file, eps)
 
     def apply(self, input_tensor):
         input_tensor = torch.nn.functional.layer_norm(input_tensor, (input_tensor.shape[-1],), self.weight, self.bias, self.eps)

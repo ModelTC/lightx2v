@@ -10,12 +10,11 @@
     "enable_cfg": true,
     "cpu_offload": true,
     "offload_granularity": "phase",
+    "t5_offload_granularity": "block",
+    "dit_quantized_ckpt": "/path/to/dit_int8",
     "mm_config": {
         "mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Q8F",
-        "weight_auto_quant": true
+        "weight_auto_quant": false
     },
-    "use_tiling_vae": true,
-    "tiny_vae": true,
-    "tiny_vae_path": "/mnt/afs_2/gushiqiao/x2v_models/taew2_1.pth",
-    "text_encoder_offload_granularity": "block"
+    "use_tiling_vae": true
 }

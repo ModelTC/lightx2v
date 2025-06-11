@@ -8,7 +8,11 @@ import os
 import torch
 import torchvision.transforms.functional as TF
 
-from lightx2v.models.input_encoders.hf.xlm_roberta.model import CLIPModel
+from lightx2v.utils.registry_factory import RUNNER_REGISTER
+from lightx2v.models.runners.hunyuan.hunyuan_runner import HunyuanRunner
+from lightx2v.models.runners.wan.wan_runner import WanRunner
+from lightx2v.models.runners.wan.wan_causvid_runner import WanCausVidRunner
+from lightx2v.models.runners.wan.wan_skyreels_v2_df_runner import WanSkyreelsV2DFRunner
 
 from lightx2v.utils.profiler import ProfilingContext
 from lightx2v.utils.set_config import set_config
@@ -43,38 +47,20 @@ class ImageEncoderServiceStatus(BaseServiceStatus):
 class ImageEncoderRunner:
     def __init__(self, config):
         self.config = config
-        self.image_encoder = self.get_image_encoder_model()
+        self.runner_cls = RUNNER_REGISTER[self.config.model_cls]
 
-    def get_image_encoder_model(self):
-        if "wan2.1" in self.config.model_cls:
-            image_encoder = CLIPModel(
-                dtype=torch.float16,
-                device="cuda",
-                checkpoint_path=os.path.join(
-                    self.config.model_path,
-                    "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth",
-                ),
-                tokenizer_path=os.path.join(self.config.model_path, "xlm-roberta-large"),
-            )
-        else:
-            raise ValueError(f"Unsupported model class: {self.config.model_cls}")
-        return image_encoder
+        self.runner = self.runner_cls(config)
+        self.runner.image_encoder = self.runner.load_image_encoder(self.runner.get_init_device())
 
     def _run_image_encoder(self, img):
-        if "wan2.1" in self.config.model_cls:
-            img = image_transporter.load_image(img)
-            img = TF.to_tensor(img).sub_(0.5).div_(0.5).cuda()
-            clip_encoder_out = self.image_encoder.visual([img[:, None, :, :]], self.config).squeeze(0).to(torch.bfloat16)
-        else:
-            raise ValueError(f"Unsupported model class: {self.config.model_cls}")
-        return clip_encoder_out
+        img = image_transporter.load_image(img)
+        return self.runner.run_image_encoder(img)
 
 
 def run_image_encoder(message: Message):
     try:
         global runner
         image_encoder_out = runner._run_image_encoder(message.img)
-        assert image_encoder_out is not None
         ImageEncoderServiceStatus.complete_task(message)
         return image_encoder_out
     except Exception as e:
@@ -116,7 +102,7 @@ async def get_task_status(message: TaskStatusMessage):
 if __name__ == "__main__":
     ProcessManager.register_signal_handler()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df"], default="hunyuan")
+    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df", "cogvideox"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_json", type=str, required=True)

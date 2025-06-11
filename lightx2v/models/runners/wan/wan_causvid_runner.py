@@ -29,51 +29,8 @@ class WanCausVidRunner(WanRunner):
         self.infer_blocks = self.model.config.num_blocks
         self.num_fragments = self.model.config.num_fragments
 
-    def load_transformer(self):
-        if self.config.cpu_offload:
-            init_device = torch.device("cpu")
-        else:
-            init_device = torch.device("cuda")
+    def load_transformer(self, init_device):
         return WanCausVidModel(self.config.model_path, self.config, init_device)
-
-    @ProfilingContext("Load models")
-    def load_model(self):
-        if self.config["parallel_attn_type"]:
-            cur_rank = dist.get_rank()
-            torch.cuda.set_device(cur_rank)
-        image_encoder = None
-        if self.config.cpu_offload:
-            init_device = torch.device("cpu")
-        else:
-            init_device = torch.device("cuda")
-
-        text_encoder = T5EncoderModel(
-            text_len=self.config["text_len"],
-            dtype=torch.bfloat16,
-            device=init_device,
-            checkpoint_path=os.path.join(self.config.model_path, "models_t5_umt5-xxl-enc-bf16.pth"),
-            tokenizer_path=os.path.join(self.config.model_path, "google/umt5-xxl"),
-            shard_fn=None,
-        )
-        text_encoders = [text_encoder]
-        model = WanCausVidModel(self.config.model_path, self.config, init_device)
-
-        if self.config.lora_path:
-            lora_wrapper = WanLoraWrapper(model)
-            lora_name = lora_wrapper.load_lora(self.config.lora_path)
-            lora_wrapper.apply_lora(lora_name, self.config.strength_model)
-            logger.info(f"Loaded LoRA: {lora_name}")
-
-        vae_model = WanVAE(vae_pth=os.path.join(self.config.model_path, "Wan2.1_VAE.pth"), device=init_device, parallel=self.config.parallel_vae)
-        if self.config.task == "i2v":
-            image_encoder = CLIPModel(
-                dtype=torch.float16,
-                device=init_device,
-                checkpoint_path=os.path.join(self.config.model_path, "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"),
-                tokenizer_path=os.path.join(self.config.model_path, "xlm-roberta-large"),
-            )
-
-        return model, text_encoders, vae_model, image_encoder
 
     def set_inputs(self, inputs):
         super().set_inputs(inputs)

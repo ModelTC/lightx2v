@@ -26,16 +26,20 @@ def init_runner(config):
     seed_all(config.seed)
 
     if config.parallel_attn_type:
-        dist.init_process_group(backend="nccl")
+        if not dist.is_initialized():
+            dist.init_process_group(backend="nccl")
 
     if CHECK_ENABLE_GRAPH_MODE():
         default_runner = RUNNER_REGISTER[config.model_cls](config)
         runner = GraphRunner(default_runner)
+        runner.runner.init_modules()
     elif config.parallel_attn_type == "pipefusion":
         default_runner = RUNNER_REGISTER[config.model_cls](config)
+        runner.init_modules()
         runner = PipelineParallelWanRunnerWrapper(default_runner, config)
     else:
         runner = RUNNER_REGISTER[config.model_cls](config)
+        runner.init_modules()
     return runner
 
 

@@ -1,6 +1,6 @@
 import torch
 from .utils import compute_freqs, compute_freqs_dist, apply_rotary_emb
-from lightx2v.common.offload.manager import WeightAsyncStreamManager
+from lightx2v.common.offload.manager import WeightAsyncStreamManager, LazyWeightAsyncStreamManager
 from lightx2v.utils.envs import *
 
 
@@ -24,8 +24,25 @@ class WanTransformerInfer:
             if offload_granularity == "block":
                 self.infer_func = self._infer_with_offload
             elif offload_granularity == "phase":
-                self.infer_func = self._infer_with_phases_offload
-            self.weights_stream_mgr = WeightAsyncStreamManager(blocks_num=self.blocks_num, offload_ratio=offload_ratio, phases_num=self.phases_num)
+                if not self.config.get("lazy_load", False):
+                    self.infer_func = self._infer_with_phases_offload
+                else:
+                    self.infer_func = self._infer_with_phases_lazy_offload
+
+            if not self.config.get("lazy_load", False):
+                self.weights_stream_mgr = WeightAsyncStreamManager(
+                    blocks_num=self.blocks_num,
+                    offload_ratio=offload_ratio,
+                    phases_num=self.phases_num,
+                )
+            else:
+                self.weights_stream_mgr = LazyWeightAsyncStreamManager(
+                    blocks_num=self.blocks_num,
+                    offload_ratio=offload_ratio,
+                    phases_num=self.phases_num,
+                    num_disk_workers=self.config.get("num_disk_workers", 2),
+                    max_memory=self.config.get("max_memory", 2),
+                )
         else:
             self.infer_func = self._infer_without_offload
 
@@ -33,10 +50,7 @@ class WanTransformerInfer:
         self.scheduler = scheduler
 
     def _calculate_q_k_len(self, q, k_lens):
-        # Handle query and key lengths (use `q_lens` and `k_lens` or set them to Lq and Lk if None)
         q_lens = torch.tensor([q.size(0)], dtype=torch.int32, device=q.device)
-
-        # We don't have a batch dimension anymore, so directly use the `q_lens` and `k_lens` values
         cu_seqlens_q = torch.cat([q_lens.new_zeros([1]), q_lens]).cumsum(0, dtype=torch.int32)
         cu_seqlens_k = torch.cat([k_lens.new_zeros([1]), k_lens]).cumsum(0, dtype=torch.int32)
         return cu_seqlens_q, cu_seqlens_k
@@ -107,15 +121,75 @@ class WanTransformerInfer:
                     elif cur_phase_idx == 2:
                         x = self._infer_ffn(cur_phase, x, c_shift_msa, c_scale_msa, c_gate_msa)
 
-                is_last_phase = block_idx == weights.blocks_num - 1 and phase_idx == 2
+                is_last_phase = block_idx == weights.blocks_num - 1 and phase_idx == self.phases_num - 1
                 if not is_last_phase:
-                    next_block_idx = block_idx + 1 if cur_phase_idx == 2 else block_idx
-                    next_phase_idx = (cur_phase_idx + 1) % 3
+                    next_block_idx = block_idx + 1 if phase_idx == self.phases_num - 1 else block_idx
+                    next_phase_idx = (phase_idx + 1) % self.phases_num
                     self.weights_stream_mgr.prefetch_phase(next_block_idx, next_phase_idx, weights.blocks)
 
                 self.weights_stream_mgr.swap_phases()
 
             weights.blocks[block_idx].modulation.to_cpu()
+
+        torch.cuda.empty_cache()
+
+        return x
+
+    def _infer_with_phases_lazy_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+        self.weights_stream_mgr.prefetch_weights_from_disk(weights)
+
+        for block_idx in range(weights.blocks_num):
+            with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
+                weights.blocks[block_idx].modulation.to_cuda()
+
+            if embed0.dim() == 3:
+                modulation = weights.blocks[block_idx].modulation.tensor.unsqueeze(2)
+                current_embed0 = (modulation + embed0).chunk(6, dim=1)
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in current_embed0]
+            elif embed0.dim() == 2:
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.blocks[block_idx].modulation.tensor + embed0).chunk(6, dim=1)
+
+            for phase_idx in range(self.weights_stream_mgr.phases_num):
+                if block_idx == 0 and phase_idx == 0:
+                    obj_key = (block_idx, phase_idx)
+                    phase = self.weights_stream_mgr.pin_memory_buffer.get(obj_key)
+                    phase.to_cuda()
+                    self.weights_stream_mgr.active_weights[0] = (obj_key, phase)
+
+                with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
+                    (
+                        (
+                            _,
+                            cur_phase_idx,
+                        ),
+                        cur_phase,
+                    ) = self.weights_stream_mgr.active_weights[0]
+
+                    if cur_phase_idx == 0:
+                        x = self._infer_self_attn(
+                            cur_phase,
+                            x,
+                            shift_msa,
+                            scale_msa,
+                            gate_msa,
+                            grid_sizes,
+                            freqs,
+                            seq_lens,
+                        )
+                    elif cur_phase_idx == 1:
+                        x = self._infer_cross_attn(cur_phase, x, context)
+                    elif cur_phase_idx == 2:
+                        x = self._infer_ffn(cur_phase, x, c_shift_msa, c_scale_msa, c_gate_msa)
+
+                if not (block_idx == weights.blocks_num - 1 and phase_idx == self.phases_num - 1):
+                    next_block_idx = block_idx + 1 if phase_idx == self.phases_num - 1 else block_idx
+                    next_phase_idx = (phase_idx + 1) % self.weights_stream_mgr.phases_num
+                    self.weights_stream_mgr.prefetch_phase(next_block_idx, next_phase_idx, weights.blocks)
+
+                self.weights_stream_mgr.swap_phases()
+
+            weights.blocks[block_idx].modulation.to_cpu()
+            self.weights_stream_mgr._async_prefetch_block(weights)
 
         torch.cuda.empty_cache()
 

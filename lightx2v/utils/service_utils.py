@@ -117,7 +117,7 @@ class TensorTransporter:
         else:
             return data
 
-    def prepare_tensor(self, data: torch.Tensor) -> bytes:
+    def prepare_tensor(self, data) -> bytes:
         self.buffer.seek(0)
         self.buffer.truncate()
         torch.save(self.to_device(data, "cpu"), self.buffer)
