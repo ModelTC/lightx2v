@@ -10,6 +10,7 @@ class WanSchedulerTeaCaching(WanScheduler):
         # TODO
         pass
 
+
 # 1. Taylor: 对单步去噪的前半段，后半段分别缓存
 class WanSchedulerTaylorCaching(WanScheduler):
     def __init__(self, config):
@@ -23,3 +24,12 @@ class WanSchedulerTaylorCaching(WanScheduler):
         # TODO
         pass
     
+
+# 1. Ada: 对单步去噪的前半段，后半段分别缓存
+class WanSchedulerAdaCaching(WanScheduler):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def clear(self):
+        # TODO
+        pass

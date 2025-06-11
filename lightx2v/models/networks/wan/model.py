@@ -11,7 +11,7 @@ from lightx2v.models.networks.wan.weights.transformer_weights import (
 from lightx2v.models.networks.wan.infer.pre_infer import WanPreInfer
 from lightx2v.models.networks.wan.infer.post_infer import WanPostInfer
 from lightx2v.models.networks.wan.infer.transformer_infer import WanTransformerInfer
-from lightx2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferTeaCaching, WanTransformerInferTaylorCaching
+from lightx2v.models.networks.wan.infer.feature_caching.transformer_infer import WanTransformerInferTeaCaching, WanTransformerInferTaylorCaching, WanTransformerInferAdaCaching
 from safetensors import safe_open
 import lightx2v.attentions.distributed.ulysses.wrap as ulysses_dist_wrap
 import lightx2v.attentions.distributed.ring.wrap as ring_dist_wrap
@@ -57,6 +57,8 @@ class WanModel:
             self.transformer_infer_class = WanTransformerInferTeaCaching
         elif self.config["feature_caching"] == "Taylor":
             self.transformer_infer_class = WanTransformerInferTaylorCaching
+        elif self.config["feature_caching"] == "Ada":
+            self.transformer_infer_class = WanTransformerInferAdaCaching
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")
 

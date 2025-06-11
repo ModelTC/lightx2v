@@ -271,3 +271,181 @@ class WanTransformerInferTaylorCaching(BaseWanTransformerInfer):
             x = x + out
 
         return x
+
+
+class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # 1. fixed args
+        self.decisive_double_block_id = self.blocks_num // 2
+        self.codebook = {0.03: 12, 0.05: 10, 0.07: 8, 0.09: 6, 0.11: 4, 1.00: 3}
+        
+        # 2. Create two instances of AdaArgs
+        self.args_even = AdaArgs(config)
+        self.args_odd = AdaArgs(config)
+
+    def infer(self, weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context):
+        if self.infer_conditional:
+            index = self.scheduler.step_index
+            caching_records = self.scheduler.caching_records
+
+            if caching_records[index]:
+                x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
+
+                # 1. 计算接下来需要跳过的步数
+                if index <= self.scheduler.infer_steps - 2:
+                    self.args_even.skipped_step_length = self.calculate_skip_step_length()
+                    for i in range(1, self.args_even.skipped_step_length):
+                        if (index + i) <= self.scheduler.infer_steps - 1:
+                            self.scheduler.caching_records[index+i] = False
+            else:
+                x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
+
+        else:
+            index = self.scheduler.step_index
+            caching_records = self.scheduler.caching_records_2
+
+            if caching_records[index]:
+                x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
+
+                # 1. 计算接下来需要跳过的步数
+                if index <= self.scheduler.infer_steps - 2:
+                    self.args_odd.skipped_step_length = self.calculate_skip_step_length()
+                    for i in range(1, self.args_odd.skipped_step_length):
+                        if (index + i) <= self.scheduler.infer_steps - 1:
+                            self.scheduler.caching_records_2[index+i] = False
+            else:
+                x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
+
+        if self.config.enable_cfg:
+            super().switch_status()
+
+        return x
+        
+
+    def infer_calculating(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+        ori_x = x.clone()
+
+        for block_idx in range(self.blocks_num):
+            y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
+            if block_idx == self.decisive_double_block_id:
+                if self.infer_conditional:
+                    self.args_even.now_residual_tiny = y_out * gate_msa
+                else:
+                    self.args_odd.now_residual_tiny = y_out * gate_msa
+
+            attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
+            y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
+            x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
+
+        if self.infer_conditional:
+            self.args_even.previous_residual = x - ori_x
+        else:
+            self.args_odd.previous_residual = x - ori_x
+        return x
+    
+    def infer_using_cache(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
+        if self.infer_conditional:
+            x += self.args_even.previous_residual
+        else:
+            x += self.args_odd.previous_residual
+        return x
+
+    def calculate_skip_step_length(self):
+        if self.infer_conditional:
+            if self.args_even.previous_residual_tiny is None:
+                self.args_even.previous_residual_tiny = self.args_even.now_residual_tiny
+                return 1
+            else:
+                cache = self.args_even.previous_residual_tiny
+                res = self.args_even.now_residual_tiny
+                norm_ord = self.args_even.norm_ord
+                cache_diff = (cache - res).norm(dim=(0,1), p=norm_ord) / cache.norm(dim=(0,1), p=norm_ord)
+                cache_diff = cache_diff / self.args_even.skipped_step_length
+
+                if self.args_even.moreg_steps[0] <= self.scheduler.step_index <= self.args_even.moreg_steps[1]:
+                    moreg = 0
+                    for i in self.args_even.moreg_strides:
+                        moreg_i = (res[i*self.args_even.spatial_dim:, :] - res[:-i*self.args_even.spatial_dim, :]).norm(p=norm_ord) 
+                        moreg_i /= (res[i*self.args_even.spatial_dim:, :].norm(p=norm_ord) + res[:-i*self.args_even.spatial_dim, :].norm(p=norm_ord))
+                        moreg += moreg_i
+                    moreg = moreg / len(self.args_even.moreg_strides)
+                    moreg = ((1/self.args_even.moreg_hyp[0] * moreg) ** self.args_even.moreg_hyp[1]) / self.args_even.moreg_hyp[2] 
+                else:
+                    moreg = 1.
+
+                mograd = self.args_even.mograd_mul * (moreg - self.args_even.previous_moreg) / self.args_even.skipped_step_length
+                self.args_even.previous_moreg = moreg
+                moreg = moreg + abs(mograd)
+                cache_diff = cache_diff * moreg
+
+                metric_thres, cache_rates = list(self.args_even.codebook.keys()), list(self.args_even.codebook.values())
+                if cache_diff < metric_thres[0]: new_rate = cache_rates[0]
+                elif cache_diff < metric_thres[1]: new_rate = cache_rates[1]
+                elif cache_diff < metric_thres[2]: new_rate = cache_rates[2]
+                elif cache_diff < metric_thres[3]: new_rate = cache_rates[3]
+                elif cache_diff < metric_thres[4]: new_rate = cache_rates[4]
+                else: new_rate = cache_rates[-1]
+                
+                self.args_even.previous_residual_tiny = self.args_even.now_residual_tiny
+                return new_rate
+
+        else:
+            if self.args_odd.previous_residual_tiny is None:
+                self.args_odd.previous_residual_tiny = self.args_odd.now_residual_tiny
+                return 1
+            else:
+                cache = self.args_odd.previous_residual_tiny
+                res = self.args_odd.now_residual_tiny
+                norm_ord = self.args_odd.norm_ord
+                cache_diff = (cache - res).norm(dim=(0,1), p=norm_ord) / cache.norm(dim=(0,1), p=norm_ord)
+                cache_diff = cache_diff / self.args_odd.skipped_step_length
+
+                if self.args_odd.moreg_steps[0] <= self.scheduler.step_index <= self.args_odd.moreg_steps[1]:
+                    moreg = 0
+                    for i in self.args_odd.moreg_strides:
+                        moreg_i = (res[i*self.args_odd.spatial_dim:, :] - res[:-i*self.args_odd.spatial_dim, :]).norm(p=norm_ord) 
+                        moreg_i /= (res[i*self.args_odd.spatial_dim:, :].norm(p=norm_ord) + res[:-i*self.args_odd.spatial_dim, :].norm(p=norm_ord))
+                        moreg += moreg_i
+                    moreg = moreg / len(self.args_odd.moreg_strides)
+                    moreg = ((1/self.args_odd.moreg_hyp[0] * moreg) ** self.args_odd.moreg_hyp[1]) / self.args_odd.moreg_hyp[2] 
+                else:
+                    moreg = 1.
+
+                mograd = self.args_odd.mograd_mul * (moreg - self.args_odd.previous_moreg) / self.args_odd.skipped_step_length
+                self.args_odd.previous_moreg = moreg
+                moreg = moreg + abs(mograd)
+                cache_diff = cache_diff * moreg
+
+                metric_thres, cache_rates = list(self.args_odd.codebook.keys()), list(self.args_odd.codebook.values())
+                if cache_diff < metric_thres[0]: new_rate = cache_rates[0]
+                elif cache_diff < metric_thres[1]: new_rate = cache_rates[1]
+                elif cache_diff < metric_thres[2]: new_rate = cache_rates[2]
+                elif cache_diff < metric_thres[3]: new_rate = cache_rates[3]
+                elif cache_diff < metric_thres[4]: new_rate = cache_rates[4]
+                else: new_rate = cache_rates[-1]
+                
+                self.args_odd.previous_residual_tiny = self.args_odd.now_residual_tiny
+                return new_rate
+
+
+class AdaArgs:
+    def __init__(self, config):
+        # Cache related attributes
+        self.previous_residual_tiny = None
+        self.now_residual_tiny = None
+        self.norm_ord = 1
+        self.skipped_step_length = 1
+        self.previous_residual = None
+
+        # Moreg related attributes  
+        self.previous_moreg = 1.
+        self.moreg_strides = [1]
+        self.moreg_steps = [
+            int(0.1 * config.infer_steps),
+            int(0.9 * config.infer_steps)
+        ]
+        self.moreg_hyp = [0.385, 8, 1, 2]
+        self.mograd_mul = 10
+        self.spatial_dim = 1536
