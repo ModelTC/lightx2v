@@ -331,9 +331,9 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
             y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
             if block_idx == self.decisive_double_block_id:
                 if self.infer_conditional:
-                    self.args_even.now_residual_tiny = y_out * gate_msa
+                    self.args_even.now_residual_tiny = y_out * gate_msa.squeeze(0)
                 else:
-                    self.args_odd.now_residual_tiny = y_out * gate_msa
+                    self.args_odd.now_residual_tiny = y_out * gate_msa.squeeze(0)
 
             attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
             y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
