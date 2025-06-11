@@ -33,3 +33,13 @@ class WanSchedulerAdaCaching(WanScheduler):
     def clear(self):
         # TODO
         pass
+
+
+# 1. Custom: 对单步去噪的前半段，后半段分别缓存
+class WanSchedulerCustomCaching(WanScheduler):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def clear(self):
+        # TODO
+        pass
