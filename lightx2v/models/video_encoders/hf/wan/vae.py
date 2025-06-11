@@ -924,7 +924,7 @@ class WanVAE:
 
         torch.cuda.synchronize()
 
-        images = torch.cat(full_images, dim=-1)
+        images = torch.cat(full_images, dim=split_dim+1)
 
         return images
 
