@@ -1,11 +1,10 @@
 #!/bin/bash
 
 # set path and first
-lightx2v_path="/home/yangrongjin/lightx2v"
-model_path="/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/i2v"
+lightx2v_path=
+model_path=
 
 # check section
-export CUDA_VISIBLE_DEVICES=2
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
     cuda_devices=0
     echo "Warn: CUDA_VISIBLE_DEVICES is not set, using default value: ${cuda_devices}, change at shell script or set env variable."
