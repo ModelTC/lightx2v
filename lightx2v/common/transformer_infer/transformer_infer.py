@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import torch
 import math
 
-class BaseTransformer(ABC):
+class BaseTransformerInfer(ABC):
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
 
