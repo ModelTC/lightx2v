@@ -168,7 +168,7 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
         cu_seqlens_q = torch.cat([q_lens.new_zeros([1]), q_lens]).cumsum(0, dtype=torch.int32)
         cu_seqlens_k = torch.cat([k_lens.new_zeros([1]), k_lens]).cumsum(0, dtype=torch.int32)
         return cu_seqlens_q, cu_seqlens_k
-    
+
     def switch_status(self):
         self.infer_conditional = not self.infer_conditional
 
@@ -243,9 +243,7 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
                 self.accumulated_rel_l1_distance_even = 0
             else:
                 rescale_func = np.poly1d(self.coefficients)
-                self.accumulated_rel_l1_distance_even += rescale_func(
-                    ((modulated_inp - self.previous_e0_even).abs().mean() / self.previous_e0_even.abs().mean()).cpu().item()
-                )
+                self.accumulated_rel_l1_distance_even += rescale_func(((modulated_inp - self.previous_e0_even).abs().mean() / self.previous_e0_even.abs().mean()).cpu().item())
                 if self.accumulated_rel_l1_distance_even < self.teacache_thresh:
                     should_calc = False
                 else:
@@ -259,9 +257,7 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
                 self.accumulated_rel_l1_distance_odd = 0
             else:
                 rescale_func = np.poly1d(self.coefficients)
-                self.accumulated_rel_l1_distance_odd += rescale_func(
-                    ((modulated_inp - self.previous_e0_odd).abs().mean() / self.previous_e0_odd.abs().mean()).cpu().item()
-                )
+                self.accumulated_rel_l1_distance_odd += rescale_func(((modulated_inp - self.previous_e0_odd).abs().mean() / self.previous_e0_odd.abs().mean()).cpu().item())
                 if self.accumulated_rel_l1_distance_odd < self.teacache_thresh:
                     should_calc = False
                 else:
@@ -287,7 +283,7 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
             while last_calc_step >= 0 and not self.scheduler.caching_records_2[last_calc_step]:
                 last_calc_step -= 1
             step_diff = current_step - last_calc_step
-        
+
         return step_diff
 
 

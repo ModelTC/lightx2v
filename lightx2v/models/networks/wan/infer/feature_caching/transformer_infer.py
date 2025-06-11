@@ -43,7 +43,7 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
                 x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
             else:
                 x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
-        
+
         if self.config.enable_cfg:
             super().switch_status()
 
@@ -72,7 +72,7 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
         else:
             x += self.previous_residual_odd
         return x
-    
+
     def clear(self):
         if self.previous_residual_even is not None:
             self.previous_residual_even = self.previous_residual_even.cpu()
@@ -97,7 +97,7 @@ class WanTransformerInferTaylorCaching(BaseWanTransformerInfer):
 
         self.blocks_cache_even = [{} for _ in range(self.blocks_num)]
         self.blocks_cache_odd = [{} for _ in range(self.blocks_num)]
-        
+
     def infer(self, weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context):
         if self.infer_conditional:
             index = self.scheduler.step_index
@@ -126,21 +126,21 @@ class WanTransformerInferTaylorCaching(BaseWanTransformerInfer):
         for block_idx in range(self.blocks_num):
             y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
             if self.infer_conditional:
-                super().derivative_approximation(self.blocks_cache_even[block_idx],"self_attn_out",y_out)
+                super().derivative_approximation(self.blocks_cache_even[block_idx], "self_attn_out", y_out)
             else:
-                super().derivative_approximation(self.blocks_cache_odd[block_idx],"self_attn_out",y_out)
+                super().derivative_approximation(self.blocks_cache_odd[block_idx], "self_attn_out", y_out)
 
             attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
             if self.infer_conditional:
-                super().derivative_approximation(self.blocks_cache_even[block_idx],"cross_attn_out",attn_out)
+                super().derivative_approximation(self.blocks_cache_even[block_idx], "cross_attn_out", attn_out)
             else:
-                super().derivative_approximation(self.blocks_cache_odd[block_idx],"cross_attn_out",attn_out)
+                super().derivative_approximation(self.blocks_cache_odd[block_idx], "cross_attn_out", attn_out)
 
             y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
             if self.infer_conditional:
-                super().derivative_approximation(self.blocks_cache_even[block_idx],"ffn_out",y_out)
+                super().derivative_approximation(self.blocks_cache_even[block_idx], "ffn_out", y_out)
             else:
-                super().derivative_approximation(self.blocks_cache_odd[block_idx],"ffn_out",y_out)
+                super().derivative_approximation(self.blocks_cache_odd[block_idx], "ffn_out", y_out)
 
             x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
         return x
@@ -209,7 +209,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
         # 1. fixed args
         self.decisive_double_block_id = self.blocks_num // 2
         self.codebook = {0.03: 12, 0.05: 10, 0.07: 8, 0.09: 6, 0.11: 4, 1.00: 3}
-        
+
         # 2. Create two instances of AdaArgs
         self.args_even = AdaArgs(config)
         self.args_odd = AdaArgs(config)
@@ -227,7 +227,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                     self.args_even.skipped_step_length = self.calculate_skip_step_length()
                     for i in range(1, self.args_even.skipped_step_length):
                         if (index + i) <= self.scheduler.infer_steps - 1:
-                            self.scheduler.caching_records[index+i] = False
+                            self.scheduler.caching_records[index + i] = False
             else:
                 x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
 
@@ -243,7 +243,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                     self.args_odd.skipped_step_length = self.calculate_skip_step_length()
                     for i in range(1, self.args_odd.skipped_step_length):
                         if (index + i) <= self.scheduler.infer_steps - 1:
-                            self.scheduler.caching_records_2[index+i] = False
+                            self.scheduler.caching_records_2[index + i] = False
             else:
                 x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
 
@@ -272,7 +272,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
         else:
             self.args_odd.previous_residual = x - ori_x
         return x
-    
+
     def infer_using_cache(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
         if self.infer_conditional:
             x += self.args_even.previous_residual
@@ -289,19 +289,19 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 cache = self.args_even.previous_residual_tiny
                 res = self.args_even.now_residual_tiny
                 norm_ord = self.args_even.norm_ord
-                cache_diff = (cache - res).norm(dim=(0,1), p=norm_ord) / cache.norm(dim=(0,1), p=norm_ord)
+                cache_diff = (cache - res).norm(dim=(0, 1), p=norm_ord) / cache.norm(dim=(0, 1), p=norm_ord)
                 cache_diff = cache_diff / self.args_even.skipped_step_length
 
                 if self.args_even.moreg_steps[0] <= self.scheduler.step_index <= self.args_even.moreg_steps[1]:
                     moreg = 0
                     for i in self.args_even.moreg_strides:
-                        moreg_i = (res[i*self.args_even.spatial_dim:, :] - res[:-i*self.args_even.spatial_dim, :]).norm(p=norm_ord) 
-                        moreg_i /= (res[i*self.args_even.spatial_dim:, :].norm(p=norm_ord) + res[:-i*self.args_even.spatial_dim, :].norm(p=norm_ord))
+                        moreg_i = (res[i * self.args_even.spatial_dim :, :] - res[: -i * self.args_even.spatial_dim, :]).norm(p=norm_ord)
+                        moreg_i /= res[i * self.args_even.spatial_dim :, :].norm(p=norm_ord) + res[: -i * self.args_even.spatial_dim, :].norm(p=norm_ord)
                         moreg += moreg_i
                     moreg = moreg / len(self.args_even.moreg_strides)
-                    moreg = ((1/self.args_even.moreg_hyp[0] * moreg) ** self.args_even.moreg_hyp[1]) / self.args_even.moreg_hyp[2] 
+                    moreg = ((1 / self.args_even.moreg_hyp[0] * moreg) ** self.args_even.moreg_hyp[1]) / self.args_even.moreg_hyp[2]
                 else:
-                    moreg = 1.
+                    moreg = 1.0
 
                 mograd = self.args_even.mograd_mul * (moreg - self.args_even.previous_moreg) / self.args_even.skipped_step_length
                 self.args_even.previous_moreg = moreg
@@ -309,19 +309,19 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 cache_diff = cache_diff * moreg
 
                 metric_thres, cache_rates = list(self.codebook.keys()), list(self.codebook.values())
-                if cache_diff < metric_thres[0]: 
+                if cache_diff < metric_thres[0]:
                     new_rate = cache_rates[0]
-                elif cache_diff < metric_thres[1]: 
+                elif cache_diff < metric_thres[1]:
                     new_rate = cache_rates[1]
-                elif cache_diff < metric_thres[2]: 
+                elif cache_diff < metric_thres[2]:
                     new_rate = cache_rates[2]
-                elif cache_diff < metric_thres[3]: 
+                elif cache_diff < metric_thres[3]:
                     new_rate = cache_rates[3]
-                elif cache_diff < metric_thres[4]: 
+                elif cache_diff < metric_thres[4]:
                     new_rate = cache_rates[4]
-                else: 
+                else:
                     new_rate = cache_rates[-1]
-                
+
                 self.args_even.previous_residual_tiny = self.args_even.now_residual_tiny
                 return new_rate
 
@@ -333,19 +333,19 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 cache = self.args_odd.previous_residual_tiny
                 res = self.args_odd.now_residual_tiny
                 norm_ord = self.args_odd.norm_ord
-                cache_diff = (cache - res).norm(dim=(0,1), p=norm_ord) / cache.norm(dim=(0,1), p=norm_ord)
+                cache_diff = (cache - res).norm(dim=(0, 1), p=norm_ord) / cache.norm(dim=(0, 1), p=norm_ord)
                 cache_diff = cache_diff / self.args_odd.skipped_step_length
 
                 if self.args_odd.moreg_steps[0] <= self.scheduler.step_index <= self.args_odd.moreg_steps[1]:
                     moreg = 0
                     for i in self.args_odd.moreg_strides:
-                        moreg_i = (res[i*self.args_odd.spatial_dim:, :] - res[:-i*self.args_odd.spatial_dim, :]).norm(p=norm_ord) 
-                        moreg_i /= (res[i*self.args_odd.spatial_dim:, :].norm(p=norm_ord) + res[:-i*self.args_odd.spatial_dim, :].norm(p=norm_ord))
+                        moreg_i = (res[i * self.args_odd.spatial_dim :, :] - res[: -i * self.args_odd.spatial_dim, :]).norm(p=norm_ord)
+                        moreg_i /= res[i * self.args_odd.spatial_dim :, :].norm(p=norm_ord) + res[: -i * self.args_odd.spatial_dim, :].norm(p=norm_ord)
                         moreg += moreg_i
                     moreg = moreg / len(self.args_odd.moreg_strides)
-                    moreg = ((1/self.args_odd.moreg_hyp[0] * moreg) ** self.args_odd.moreg_hyp[1]) / self.args_odd.moreg_hyp[2] 
+                    moreg = ((1 / self.args_odd.moreg_hyp[0] * moreg) ** self.args_odd.moreg_hyp[1]) / self.args_odd.moreg_hyp[2]
                 else:
-                    moreg = 1.
+                    moreg = 1.0
 
                 mograd = self.args_odd.mograd_mul * (moreg - self.args_odd.previous_moreg) / self.args_odd.skipped_step_length
                 self.args_odd.previous_moreg = moreg
@@ -353,19 +353,19 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 cache_diff = cache_diff * moreg
 
                 metric_thres, cache_rates = list(self.codebook.keys()), list(self.codebook.values())
-                if cache_diff < metric_thres[0]: 
+                if cache_diff < metric_thres[0]:
                     new_rate = cache_rates[0]
-                elif cache_diff < metric_thres[1]: 
+                elif cache_diff < metric_thres[1]:
                     new_rate = cache_rates[1]
-                elif cache_diff < metric_thres[2]: 
+                elif cache_diff < metric_thres[2]:
                     new_rate = cache_rates[2]
-                elif cache_diff < metric_thres[3]: 
+                elif cache_diff < metric_thres[3]:
                     new_rate = cache_rates[3]
-                elif cache_diff < metric_thres[4]: 
+                elif cache_diff < metric_thres[4]:
                     new_rate = cache_rates[4]
-                else: 
+                else:
                     new_rate = cache_rates[-1]
-                
+
                 self.args_odd.previous_residual_tiny = self.args_odd.now_residual_tiny
                 return new_rate
 
@@ -404,13 +404,10 @@ class AdaArgs:
         self.skipped_step_length = 1
         self.previous_residual = None
 
-        # Moreg related attributes  
-        self.previous_moreg = 1.
+        # Moreg related attributes
+        self.previous_moreg = 1.0
         self.moreg_strides = [1]
-        self.moreg_steps = [
-            int(0.1 * config.infer_steps),
-            int(0.9 * config.infer_steps)
-        ]
+        self.moreg_steps = [int(0.1 * config.infer_steps), int(0.9 * config.infer_steps)]
         self.moreg_hyp = [0.385, 8, 1, 2]
         self.mograd_mul = 10
         self.spatial_dim = 1536
@@ -458,7 +455,7 @@ class WanTransformerInferCustomCaching(BaseWanTransformerInfer):
                 x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
             else:
                 x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
-        
+
         if self.config.enable_cfg:
             super().switch_status()
 
@@ -489,7 +486,7 @@ class WanTransformerInferCustomCaching(BaseWanTransformerInfer):
         else:
             x += super().taylor_formula(self.cache_odd["previous_residual"])
         return x
-    
+
     def clear(self):
         if self.previous_residual_even is not None:
             self.previous_residual_even = self.previous_residual_even.cpu()

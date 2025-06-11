@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import torch
 import math
 
+
 class BaseTransformerInfer(ABC):
     @abstractmethod
     def infer(self):
@@ -10,7 +11,7 @@ class BaseTransformerInfer(ABC):
     @abstractmethod
     def infer_calculating(self):
         pass
-        
+
     @abstractmethod
     def infer_using_cache(self):
         pass
