@@ -20,6 +20,9 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
         self.window_size = config.get("window_size", (-1, -1))
         self.parallel_attention = None
 
+        # 1.3 缓存切换状态专用
+        self.infer_conditional = True
+
     # per block
     def infer_block_1(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
         # 1. pass to all the part
@@ -166,6 +169,9 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
         cu_seqlens_k = torch.cat([k_lens.new_zeros([1]), k_lens]).cumsum(0, dtype=torch.int32)
         return cu_seqlens_q, cu_seqlens_k
     
+    def switch_status(self):
+        self.infer_conditional = not self.infer_conditional
+
 
 class WanTransformerInfer(BaseWanTransformerInfer):
     def __init__(self, config):

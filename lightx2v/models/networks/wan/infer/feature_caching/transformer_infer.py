@@ -9,7 +9,6 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
 
-        self.status = "even"
         self.teacache_thresh = config.teacache_thresh
         self.accumulated_rel_l1_distance_even = 0
         self.previous_e0_even = None
@@ -23,7 +22,7 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
         self.cnt = 0
 
     def infer(self, weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context):
-        if self.status == "even":
+        if self.infer_conditional:
             index = self.scheduler.step_index
             caching_records = self.scheduler.caching_records
             if index <= self.scheduler.infer_steps - 1:
@@ -34,7 +33,6 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
                 x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
             else:
                 x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
-            self.status = "odd"
 
         else:
             index = self.scheduler.step_index
@@ -47,7 +45,9 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
                 x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
             else:
                 x = self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
-            self.status = "even"
+        
+        if self.config.enable_cfg:
+            super().switch_status()
 
         self.cnt += 1
 
@@ -63,14 +63,14 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
             y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
             x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
 
-        if self.status == "even":
+        if self.infer_conditional:
             self.previous_residual_even = x - ori_x
         else:
             self.previous_residual_odd = x - ori_x
         return x
 
     def infer_using_cache(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        if self.status == "even":
+        if self.infer_conditional:
             x += self.previous_residual_even
         else:
             x += self.previous_residual_odd
@@ -141,7 +141,7 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
 
         # 2. L1距离计算
         should_calc = False
-        if self.status == "even":
+        if self.infer_conditional:
             if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
                 should_calc = True
                 self.accumulated_rel_l1_distance_even = 0
