@@ -50,7 +50,7 @@ class HunyuanModel:
         self.post_infer_class = HunyuanPostInfer
         if self.config["feature_caching"] == "NoCaching":
             self.transformer_infer_class = HunyuanTransformerInfer
-        elif self.config["feature_caching"] == "TaylorSeer":
+        elif self.config["feature_caching"] == "Taylor":
             self.transformer_infer_class = HunyuanTransformerInferTaylorCaching
         elif self.config["feature_caching"] == "Tea":
             self.transformer_infer_class = HunyuanTransformerInferTeaCaching

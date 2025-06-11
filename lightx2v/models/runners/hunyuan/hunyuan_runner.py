@@ -47,7 +47,7 @@ class HunyuanRunner(DefaultRunner):
             scheduler = HunyuanScheduler(self.config)
         elif self.config.feature_caching == "Tea":
             scheduler = HunyuanSchedulerTeaCaching(self.config)
-        elif self.config.feature_caching == "TaylorSeer":
+        elif self.config.feature_caching == "Taylor":
             scheduler = HunyuanSchedulerTaylorCaching(self.config)
         elif self.config.feature_caching == "Ada":
             scheduler = HunyuanSchedulerAdaCaching(self.config)
