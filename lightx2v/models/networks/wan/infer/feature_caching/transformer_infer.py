@@ -1,6 +1,5 @@
 from ..transformer_infer import BaseWanTransformerInfer
 import torch
-import numpy as np
 
 
 # 1. TeaCaching
