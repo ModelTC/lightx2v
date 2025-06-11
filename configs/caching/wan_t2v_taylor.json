@@ -14,5 +14,5 @@
         "mm_type": "W-fp8-channel-sym-A-fp8-channel-sym-dynamic-Sgl",
         "weight_auto_quant": true
     },
-    "feature_caching": "Ada"
+    "feature_caching": "Taylor"
 }
