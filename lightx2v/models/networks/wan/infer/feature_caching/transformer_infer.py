@@ -380,7 +380,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 moreg = moreg + abs(mograd)
                 cache_diff = cache_diff * moreg
 
-                metric_thres, cache_rates = list(self.args_even.codebook.keys()), list(self.args_even.codebook.values())
+                metric_thres, cache_rates = list(self.codebook.keys()), list(self.codebook.values())
                 if cache_diff < metric_thres[0]: new_rate = cache_rates[0]
                 elif cache_diff < metric_thres[1]: new_rate = cache_rates[1]
                 elif cache_diff < metric_thres[2]: new_rate = cache_rates[2]
@@ -418,7 +418,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 moreg = moreg + abs(mograd)
                 cache_diff = cache_diff * moreg
 
-                metric_thres, cache_rates = list(self.args_odd.codebook.keys()), list(self.args_odd.codebook.values())
+                metric_thres, cache_rates = list(self.codebook.keys()), list(self.codebook.values())
                 if cache_diff < metric_thres[0]: new_rate = cache_rates[0]
                 elif cache_diff < metric_thres[1]: new_rate = cache_rates[1]
                 elif cache_diff < metric_thres[2]: new_rate = cache_rates[2]
