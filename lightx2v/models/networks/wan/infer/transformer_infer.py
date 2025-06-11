@@ -172,6 +172,24 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
     def switch_status(self):
         self.infer_conditional = not self.infer_conditional
 
+    # 1. get taylor step_diff when there is two caching_records in scheduler
+    def get_taylor_step_diff(self):
+        step_diff = 0
+        if self.infer_conditional:
+            current_step = self.scheduler.step_index
+            last_calc_step = current_step - 1
+            while last_calc_step >= 0 and not self.scheduler.caching_records[last_calc_step]:
+                last_calc_step -= 1
+            step_diff = current_step - last_calc_step
+        else:
+            current_step = self.scheduler.step_index
+            last_calc_step = current_step - 1
+            while last_calc_step >= 0 and not self.scheduler.caching_records_2[last_calc_step]:
+                last_calc_step -= 1
+            step_diff = current_step - last_calc_step
+        
+        return step_diff
+
 
 class WanTransformerInfer(BaseWanTransformerInfer):
     def __init__(self, config):

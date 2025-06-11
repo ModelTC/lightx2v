@@ -246,17 +246,16 @@ class BaseHunyuanTransformerInfer(BaseTransformerInfer):
 
         # 3. 返回判断
         return should_calc
-    
-    # 1. when fully calcualted, stored in cache
-    def derivative_approximation(self, block_cache, module_name, out):
-        if module_name not in block_cache:
-            block_cache[module_name] = {0: out}
-        else:
-            step_diff = super().get_taylor_step_diff()
 
-            previous_out = block_cache[module_name][0]
-            block_cache[module_name][0] = out
-            block_cache[module_name][1] = (out - previous_out) / step_diff
+    # 1. get taylor step_diff when there is only on caching_records in scheduler
+    def get_taylor_step_diff(self):
+        current_step = self.scheduler.step_index
+        last_calc_step = current_step - 1
+        while last_calc_step >= 0 and not self.scheduler.caching_records[last_calc_step]:
+            last_calc_step -= 1
+        step_diff = current_step - last_calc_step
+        return step_diff
+
 
 class HunyuanTransformerInfer(BaseHunyuanTransformerInfer):
     def __init__(self, config):
