@@ -29,24 +29,17 @@ class PipelineParallelWanRunnerWrapper:
     async def run_pipeline(self):
         if self.config["use_prompt_enhancer"]:
             self.config["prompt_enhanced"] = self.post_prompt_enhancer()
-        self.init_scheduler()
-        
-        # if self.rank == 0:
-        await self.run_input_encoder()
-        self.model.scheduler.prepare(self.inputs["image_encoder_output"])
-
-        latents, generator = self.run()
-        
-        self.end_run()
+        self.runner.inputs = await self.run_input_encoder()
+        kwargs = self.set_target_shape()
+        latents, generator = await self.run_dit(kwargs)
 
         dist.broadcast(latents, src=self.world_size-1)
         
-        images = await self.run_vae(latents, generator)
+        images = await self.run_vae_decoder(latents, generator)
         self.save_video(images)
-        # del images
-        # del latents, generator
-        gc.collect()
+        del latents, generator, images
         torch.cuda.empty_cache()
+        gc.collect()
         
     def run(self):
         for step_index in range(self.model.scheduler.infer_steps):

@@ -35,7 +35,7 @@ def init_runner(config):
         runner.runner.init_modules()
     elif config.parallel_attn_type == "pipefusion":
         default_runner = RUNNER_REGISTER[config.model_cls](config)
-        runner.init_modules()
+        default_runner.init_modules()
         runner = PipelineParallelWanRunnerWrapper(default_runner, config)
     else:
         runner = RUNNER_REGISTER[config.model_cls](config)
