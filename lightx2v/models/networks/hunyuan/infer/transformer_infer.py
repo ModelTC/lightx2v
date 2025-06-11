@@ -247,7 +247,7 @@ class BaseHunyuanTransformerInfer(BaseTransformerInfer):
         # 3. 返回判断
         return should_calc
 
-    # 1. get taylor step_diff when there is only on caching_records in scheduler
+    # 1. get taylor step_diff when there is only one caching_records in scheduler
     def get_taylor_step_diff(self):
         current_step = self.scheduler.step_index
         last_calc_step = current_step - 1
