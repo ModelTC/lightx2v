@@ -11,17 +11,14 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformerInfer):
         self.coefficients = [7.33226126e02, -4.01131952e02, 6.75869174e01, -3.14987800e00, 9.61237896e-02]
 
     def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        # 1. 读取数组
         index = self.scheduler.step_index
         caching_records = self.scheduler.caching_records
 
-        # 2. 判断完全计算，或者使用缓存
         if caching_records[index]:
             img, vec = self.infer_calculating(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
         else:
             img, vec = self.infer_using_cache(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
         
-        # 3. 更新数组
         if index <= self.scheduler.infer_steps - 2:
             should_calc = super().calculate_should_calc(img, vec, weights)
             self.scheduler.caching_records[index+1] = should_calc
@@ -29,10 +26,10 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformerInfer):
         return img, vec
 
     def infer_calculating(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        # 1. 拷贝噪声输入
+        # 1. copy the noise
         ori_img = img.clone()
 
-        # 2. 完全计算
+        # 2. fully calculate
         txt_seq_len = txt.shape[0]
         img_seq_len = img.shape[0]
         for i in range(self.double_blocks_num):
@@ -46,7 +43,7 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformerInfer):
             x = super().infer_single_block_2(weights.single_blocks[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, out, mod_gate, tr_mod_gate, token_replace_vec, frist_frame_token_num)
         img = x[:img_seq_len, ...]
 
-        # 3. 缓存残差到Transformer实例中
+        # 3. cache the residual
         self.previous_residual=img - ori_img
 
         return img, vec
@@ -72,11 +69,9 @@ class HunyuanTransformerInferTaylorCaching(BaseHunyuanTransformerInfer):
         self.single_blocks_cache = [{} for _ in range(self.single_blocks_num)]
 
     def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        # 1. 读取数组
         index = self.scheduler.step_index
         caching_records = self.scheduler.caching_records
 
-        # 2. 判断完全计算，或者使用缓存
         if caching_records[index]:
             return self.infer_calculating(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
         else:
@@ -193,15 +188,13 @@ class HunyuanTransformerInferAdaCaching(BaseHunyuanTransformerInfer):
         self.spatial_dim = 3072
 
     def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        # 1. 读取数组
         index = self.scheduler.step_index
         caching_records = self.scheduler.caching_records
 
-        # 2. 判断完全计算，或者使用缓存
         if caching_records[index]:
             img, vec = self.infer_calculating(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
 
-            # 3. 计算需要跳过的步数
+            # 3. calculate the skipped step length
             if index <= self.scheduler.infer_steps - 2:
                 self.skipped_step_length = self.calculate_skip_step_length()
                 for i in range(1, self.skipped_step_length):
@@ -213,10 +206,8 @@ class HunyuanTransformerInferAdaCaching(BaseHunyuanTransformerInfer):
         return img, vec
 
     def infer_calculating(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num):
-        # 1. 拷贝噪声输入
         ori_img = img.clone()
 
-        # 2. 完全计算
         txt_seq_len = txt.shape[0]
         img_seq_len = img.shape[0]
         for i in range(self.double_blocks_num):
@@ -232,7 +223,6 @@ class HunyuanTransformerInferAdaCaching(BaseHunyuanTransformerInfer):
             x = super().infer_single_block_2(weights.single_blocks[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, out, mod_gate, tr_mod_gate, token_replace_vec, frist_frame_token_num)
         img = x[:img_seq_len, ...]
 
-        # 3. 缓存残差到Transformer实例中
         self.previous_residual=img - ori_img
 
         return img, vec
@@ -307,17 +297,14 @@ class HunyuanTransformerInferCustomCaching(BaseHunyuanTransformerInfer):
         self.cache = {}
 
     def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        # 1. 读取数组
         index = self.scheduler.step_index
         caching_records = self.scheduler.caching_records
 
-        # 2. 判断完全计算，或者使用缓存
         if caching_records[index]:
             img, vec = self.infer_calculating(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
         else:
             img, vec = self.infer_using_cache(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
         
-        # 3. 更新数组
         if index <= self.scheduler.infer_steps - 2:
             should_calc = super().calculate_should_calc(img, vec, weights)
             self.scheduler.caching_records[index+1] = should_calc
@@ -325,10 +312,8 @@ class HunyuanTransformerInferCustomCaching(BaseHunyuanTransformerInfer):
         return img, vec
 
     def infer_calculating(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        # 1. 拷贝噪声输入
         ori_img = img.clone()
 
-        # 2. 完全计算
         txt_seq_len = txt.shape[0]
         img_seq_len = img.shape[0]
         for i in range(self.double_blocks_num):
@@ -342,7 +327,6 @@ class HunyuanTransformerInferCustomCaching(BaseHunyuanTransformerInfer):
             x = super().infer_single_block_2(weights.single_blocks[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, out, mod_gate, tr_mod_gate, token_replace_vec, frist_frame_token_num)
         img = x[:img_seq_len, ...]
 
-        # 3. 缓存残差到Transformer实例中
         self.previous_residual=img - ori_img
         super().derivative_approximation(self.cache, "previous_residual", self.previous_residual)
 

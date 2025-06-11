@@ -7,7 +7,6 @@ from lightx2v.common.offload.manager import WeightAsyncStreamManager
 from lightx2v.utils.envs import *
 
 class BaseHunyuanTransformerInfer(BaseTransformerInfer):
-    # 1. 初始化
     def __init__(self, config):
         self.config = config
         self.attention_type = config.get("attention_type", "flash_attn2")
@@ -219,7 +218,7 @@ class BaseHunyuanTransformerInfer(BaseTransformerInfer):
 
     # 1. only in tea-cache, judge next step
     def calculate_should_calc(self, img, vec, weights):
-        # 1. 时间步嵌入调制
+        # 1. timestep embedding
         inp = img.clone()
         vec_ = vec.clone()
         img_mod1_shift, img_mod1_scale, _, _, _, _ = weights.double_blocks[0].img_mod.apply(vec_).chunk(6, dim=-1)
@@ -227,7 +226,7 @@ class BaseHunyuanTransformerInfer(BaseTransformerInfer):
         modulated_inp = normed_inp * (1 + img_mod1_scale) + img_mod1_shift
         del normed_inp, inp, vec_
 
-        # 2. L1距离计算
+        # 2. L1 calculate
         if self.scheduler.step_index == 0 or self.scheduler.step_index == self.scheduler.infer_steps - 1:
             should_calc = True
             self.accumulated_rel_l1_distance = 0
@@ -244,7 +243,7 @@ class BaseHunyuanTransformerInfer(BaseTransformerInfer):
         self.previous_modulated_input = modulated_inp
         del modulated_inp
 
-        # 3. 返回判断
+        # 3. return the judgement
         return should_calc
 
     # 1. get taylor step_diff when there is only one caching_records in scheduler
@@ -263,11 +262,11 @@ class HunyuanTransformerInfer(BaseHunyuanTransformerInfer):
 
     @torch.compile(disable=not CHECK_ENABLE_GRAPH_MODE())
     def infer(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        # 1. 读取数组
+        # 1. read list
         index = self.scheduler.step_index
         caching_records = self.scheduler.caching_records
 
-        # 2. 判断完全计算，或者使用缓存
+        # 2. judge to fully calculate or use cache
         if caching_records[index]:
             return self.infer_calculating(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis,token_replace_vec, frist_frame_token_num)
         else:

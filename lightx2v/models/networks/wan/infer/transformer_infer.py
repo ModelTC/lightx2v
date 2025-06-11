@@ -7,21 +7,20 @@ from lightx2v.utils.envs import *
 
 
 class BaseWanTransformerInfer(BaseTransformerInfer):
-    # 1. 初始化
     def __init__(self, config):
-        # 1.1 配置 + 任务 + 注意力
+        # 1.1 config + task + attention
         self.config = config
         self.task = config["task"]
         self.attention_type = config.get("attention_type", "flash_attn2")
 
-        # 1.2 块数量:30, 头数量, 输入维度, 窗口大小
+        # 1.2 blocks_num:30, head_num, in_dim, window_size
         self.blocks_num = config["num_layers"]
         self.num_heads = config["num_heads"]
         self.head_dim = config["dim"] // config["num_heads"]
         self.window_size = config.get("window_size", (-1, -1))
         self.parallel_attention = None
 
-        # 1.3 缓存切换状态专用
+        # 1.3 switch status for cache
         self.infer_conditional = True
 
     # per block
@@ -233,10 +232,10 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
 
     # calculate should_calc
     def calculate_should_calc(self, weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context):
-        # 1. 时间步嵌入调制
+        # 1. timestep embedding
         modulated_inp = embed0 if self.use_ret_steps else embed
 
-        # 2. L1距离计算
+        # 2. L1 calculate
         should_calc = False
         if self.infer_conditional:
             if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
@@ -270,7 +269,7 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
                     self.accumulated_rel_l1_distance_odd = 0
             self.previous_e0_odd = modulated_inp.clone()
 
-        # 3. 返回判断
+        # 3. return the judgement
         return should_calc
 
     # 1. get taylor step_diff when there is two caching_records in scheduler
@@ -298,11 +297,11 @@ class WanTransformerInfer(BaseWanTransformerInfer):
 
     @torch.compile(disable=not CHECK_ENABLE_GRAPH_MODE())
     def infer(self, weights, embed, grid_sizes, x, embed0, seq_lens, freqs, context):
-        # 1. 读取数组
+        # 1. read list
         index = self.scheduler.step_index
         caching_records = self.scheduler.caching_records
 
-        # 2. 判断完全计算，或者使用缓存
+        # 2. judge to fully calculate or use cache
         if caching_records[index]:
             return self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
         else:

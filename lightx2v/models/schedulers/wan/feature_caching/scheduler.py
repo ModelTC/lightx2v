@@ -1,7 +1,6 @@
 from lightx2v.models.schedulers.wan.scheduler import WanScheduler
 
 
-# 1. TeaCaching: 对单步去噪的前半段，后半段分别缓存
 class WanSchedulerTeaCaching(WanScheduler):
     def __init__(self, config):
         super().__init__(config)
@@ -10,7 +9,6 @@ class WanSchedulerTeaCaching(WanScheduler):
         self.transformer_infer.clear()
 
 
-# 1. Taylor: 对单步去噪的前半段，后半段分别缓存
 class WanSchedulerTaylorCaching(WanScheduler):
     def __init__(self, config):
         super().__init__(config)
@@ -23,7 +21,6 @@ class WanSchedulerTaylorCaching(WanScheduler):
         self.transformer_infer.clear()
     
 
-# 1. Ada: 对单步去噪的前半段，后半段分别缓存
 class WanSchedulerAdaCaching(WanScheduler):
     def __init__(self, config):
         super().__init__(config)
@@ -32,7 +29,6 @@ class WanSchedulerAdaCaching(WanScheduler):
         self.transformer_infer.clear()
 
 
-# 1. Custom: 对单步去噪的前半段，后半段分别缓存
 class WanSchedulerCustomCaching(WanScheduler):
     def __init__(self, config):
         super().__init__(config)

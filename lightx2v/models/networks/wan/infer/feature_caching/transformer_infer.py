@@ -4,7 +4,6 @@ import torch
 
 # 1. TeaCaching
 class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
-    # 1. 初始化
     def __init__(self, config):
         super().__init__(config)
 
@@ -223,7 +222,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
             if caching_records[index]:
                 x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
 
-                # 1. 计算接下来需要跳过的步数
+                # 1. calculate the skipped step length
                 if index <= self.scheduler.infer_steps - 2:
                     self.args_even.skipped_step_length = self.calculate_skip_step_length()
                     for i in range(1, self.args_even.skipped_step_length):
@@ -239,7 +238,7 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
             if caching_records[index]:
                 x = self.infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
 
-                # 1. 计算接下来需要跳过的步数
+                # 1. calculate the skipped step length
                 if index <= self.scheduler.infer_steps - 2:
                     self.args_odd.skipped_step_length = self.calculate_skip_step_length()
                     for i in range(1, self.args_odd.skipped_step_length):
