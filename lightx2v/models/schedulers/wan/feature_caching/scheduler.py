@@ -7,8 +7,7 @@ class WanSchedulerTeaCaching(WanScheduler):
         super().__init__(config)
 
     def clear(self):
-        # TODO
-        pass
+        self.transformer_infer.clear()
 
 
 # 1. Taylor: 对单步去噪的前半段，后半段分别缓存
@@ -21,8 +20,7 @@ class WanSchedulerTaylorCaching(WanScheduler):
         self.caching_records_2 = (pattern * ((config.infer_steps + 3) // 4))[:config.infer_steps]
 
     def clear(self):
-        # TODO
-        pass
+        self.transformer_infer.clear()
     
 
 # 1. Ada: 对单步去噪的前半段，后半段分别缓存
@@ -31,8 +29,7 @@ class WanSchedulerAdaCaching(WanScheduler):
         super().__init__(config)
 
     def clear(self):
-        # TODO
-        pass
+        self.transformer_infer.clear()
 
 
 # 1. Custom: 对单步去噪的前半段，后半段分别缓存
@@ -41,5 +38,4 @@ class WanSchedulerCustomCaching(WanScheduler):
         super().__init__(config)
 
     def clear(self):
-        # TODO
-        pass
+        self.transformer_infer.clear()

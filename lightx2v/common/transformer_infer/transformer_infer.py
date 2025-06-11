@@ -21,6 +21,7 @@ class BaseTransformerInfer(ABC):
 
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
+        self.scheduler.transformer_infer = self
 
     # 1. when fully calcualted, stored in cache
     def derivative_approximation(self, block_cache, module_name, out):

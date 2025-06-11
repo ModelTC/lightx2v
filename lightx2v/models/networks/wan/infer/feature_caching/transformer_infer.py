@@ -74,6 +74,23 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
             x += self.previous_residual_odd
         return x
     
+    def clear(self):
+        if self.previous_residual_even is not None:
+            self.previous_residual_even = self.previous_residual_even.cpu()
+        if self.previous_residual_odd is not None:
+            self.previous_residual_odd = self.previous_residual_odd.cpu()
+        if self.previous_e0_even is not None:
+            self.previous_e0_even = self.previous_e0_even.cpu()
+        if self.previous_e0_odd is not None:
+            self.previous_e0_odd = self.previous_e0_odd.cpu()
+
+        self.previous_residual_even = None
+        self.previous_residual_odd = None
+        self.previous_e0_even = None
+        self.previous_e0_odd = None
+
+        torch.cuda.empty_cache()
+
 
 class WanTransformerInferTaylorCaching(BaseWanTransformerInfer):
     def __init__(self, config):
@@ -171,6 +188,20 @@ class WanTransformerInferTaylorCaching(BaseWanTransformerInfer):
 
         return x
 
+    def clear(self):
+        for cache in self.blocks_cache_even:
+            for key in cache:
+                if cache[key] is not None:
+                    cache[key] = cache[key].cpu()
+            cache.clear()
+
+        for cache in self.blocks_cache_odd:
+            for key in cache:
+                if cache[key] is not None:
+                    cache[key] = cache[key].cpu()
+            cache.clear()
+        torch.cuda.empty_cache()
+
 
 class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
     def __init__(self, config):
@@ -221,7 +252,6 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
             super().switch_status()
 
         return x
-        
 
     def infer_calculating(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
         ori_x = x.clone()
@@ -328,6 +358,31 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 self.args_odd.previous_residual_tiny = self.args_odd.now_residual_tiny
                 return new_rate
 
+    def clear(self):
+        if self.args_even.previous_residual is not None:
+            self.args_even.previous_residual = self.args_even.previous_residual.cpu()
+        if self.args_even.previous_residual_tiny is not None:
+            self.args_even.previous_residual_tiny = self.args_even.previous_residual_tiny.cpu()
+        if self.args_even.now_residual_tiny is not None:
+            self.args_even.now_residual_tiny = self.args_even.now_residual_tiny.cpu()
+
+        if self.args_odd.previous_residual is not None:
+            self.args_odd.previous_residual = self.args_odd.previous_residual.cpu()
+        if self.args_odd.previous_residual_tiny is not None:
+            self.args_odd.previous_residual_tiny = self.args_odd.previous_residual_tiny.cpu()
+        if self.args_odd.now_residual_tiny is not None:
+            self.args_odd.now_residual_tiny = self.args_odd.now_residual_tiny.cpu()
+
+        self.args_even.previous_residual = None
+        self.args_even.previous_residual_tiny = None
+        self.args_even.now_residual_tiny = None
+
+        self.args_odd.previous_residual = None
+        self.args_odd.previous_residual_tiny = None
+        self.args_odd.now_residual_tiny = None
+
+        torch.cuda.empty_cache()
+
 
 class AdaArgs:
     def __init__(self, config):
@@ -423,3 +478,30 @@ class WanTransformerInferCustomCaching(BaseWanTransformerInfer):
         else:
             x += super().taylor_formula(self.cache_odd["previous_residual"])
         return x
+    
+    def clear(self):
+        if self.previous_residual_even is not None:
+            self.previous_residual_even = self.previous_residual_even.cpu()
+        if self.previous_residual_odd is not None:
+            self.previous_residual_odd = self.previous_residual_odd.cpu()
+        if self.previous_e0_even is not None:
+            self.previous_e0_even = self.previous_e0_even.cpu()
+        if self.previous_e0_odd is not None:
+            self.previous_e0_odd = self.previous_e0_odd.cpu()
+
+        for key in self.cache_even:
+            if self.cache_even[key] is not None and hasattr(self.cache_even[key], "cpu"):
+                self.cache_even[key] = self.cache_even[key].cpu()
+        self.cache_even.clear()
+
+        for key in self.cache_odd:
+            if self.cache_odd[key] is not None and hasattr(self.cache_odd[key], "cpu"):
+                self.cache_odd[key] = self.cache_odd[key].cpu()
+        self.cache_odd.clear()
+
+        self.previous_residual_even = None
+        self.previous_residual_odd = None
+        self.previous_e0_even = None
+        self.previous_e0_odd = None
+
+        torch.cuda.empty_cache()

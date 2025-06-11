@@ -55,6 +55,15 @@ class HunyuanTransformerInferTeaCaching(BaseHunyuanTransformerInfer):
         img += self.previous_residual
         return img, vec
     
+    def clear(self):
+        if self.previous_residual is not None:
+            self.previous_residual = self.previous_residual.cpu()
+        if self.previous_modulated_input is not None:
+            self.previous_modulated_input = self.previous_modulated_input.cpu()
+
+        self.previous_modulated_input = None
+        self.previous_residual = None
+        torch.cuda.empty_cache()
 
 class HunyuanTransformerInferTaylorCaching(BaseHunyuanTransformerInfer):
     def __init__(self, config):
@@ -141,6 +150,21 @@ class HunyuanTransformerInferTaylorCaching(BaseHunyuanTransformerInfer):
         out = out * mod_gate
         x = x + out
         return x
+
+    def clear(self):
+        for cache in self.double_blocks_cache:
+            for key in cache:
+                if cache[key] is not None:
+                    cache[key] = cache[key].cpu()
+            cache.clear()
+        
+        for cache in self.single_blocks_cache:
+            for key in cache:
+                if cache[key] is not None:
+                    cache[key] = cache[key].cpu()
+            cache.clear()
+
+        torch.cuda.empty_cache()
 
 
 class HunyuanTransformerInferAdaCaching(BaseHunyuanTransformerInfer):
@@ -256,6 +280,20 @@ class HunyuanTransformerInferAdaCaching(BaseHunyuanTransformerInfer):
             self.previous_residual_tiny = self.now_residual_tiny
             return new_rate
 
+    def clear(self):
+        if self.previous_residual is not None:
+            self.previous_residual = self.previous_residual.cpu()
+        if self.previous_residual_tiny is not None:
+            self.previous_residual_tiny = self.previous_residual_tiny.cpu()
+        if self.now_residual_tiny is not None:
+            self.now_residual_tiny = self.now_residual_tiny.cpu()
+
+        self.previous_residual = None
+        self.previous_residual_tiny = None
+        self.now_residual_tiny = None
+        
+        torch.cuda.empty_cache()
+
 
 class HunyuanTransformerInferCustomCaching(BaseHunyuanTransformerInfer):
     def __init__(self, config):
@@ -313,3 +351,13 @@ class HunyuanTransformerInferCustomCaching(BaseHunyuanTransformerInfer):
     def infer_using_cache(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
         img += super().taylor_formula(self.cache["previous_residual"])
         return img, vec
+    
+    def clear(self):
+        if self.previous_residual is not None:
+            self.previous_residual = self.previous_residual.cpu()
+        if self.previous_modulated_input is not None:
+            self.previous_modulated_input = self.previous_modulated_input.cpu()
+
+        self.previous_modulated_input = None
+        self.previous_residual = None
+        torch.cuda.empty_cache()

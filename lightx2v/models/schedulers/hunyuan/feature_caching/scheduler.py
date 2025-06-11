@@ -7,16 +7,7 @@ class HunyuanSchedulerTeaCaching(HunyuanScheduler):
         super().__init__(config)
 
     def clear(self):
-        # TODO: Transformer实例的缓存清理
-        # if self.previous_residual is not None:
-        #     self.previous_residual = self.previous_residual.cpu()
-        # if self.previous_modulated_input is not None:
-        #     self.previous_modulated_input = self.previous_modulated_input.cpu()
-
-        # self.previous_modulated_input = None
-        # self.previous_residual = None
-        # torch.cuda.empty_cache()
-        pass
+        self.transformer_infer.clear()
 
 
 class HunyuanSchedulerTaylorCaching(HunyuanScheduler):
@@ -26,8 +17,7 @@ class HunyuanSchedulerTaylorCaching(HunyuanScheduler):
         self.caching_records = (pattern * ((config.infer_steps + 3) // 4))[:config.infer_steps]
 
     def clear(self):
-        # TODO: Transformer实例的缓存清理
-        pass
+        self.transformer_infer.clear()
 
 
 class HunyuanSchedulerAdaCaching(HunyuanScheduler):
@@ -35,8 +25,7 @@ class HunyuanSchedulerAdaCaching(HunyuanScheduler):
         super().__init__(config)
 
     def clear(self):
-        # TODO: Transformer实例的缓存清理
-        pass
+        self.transformer_infer.clear()
 
 
 class HunyuanSchedulerCustomCaching(HunyuanScheduler):
@@ -44,5 +33,4 @@ class HunyuanSchedulerCustomCaching(HunyuanScheduler):
         super().__init__(config)
 
     def clear(self):
-        # TODO: Transformer实例的缓存清理
-        pass
+        self.transformer_infer.clear()
