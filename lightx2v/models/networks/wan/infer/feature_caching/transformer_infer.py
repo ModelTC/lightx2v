@@ -411,10 +411,10 @@ class WanTransformerInferCustomCaching(BaseWanTransformerInfer):
 
         if self.infer_conditional:
             self.previous_residual_even = x - ori_x
-            super.derivative_approximation(self.cache_even, "previous_residual", self.previous_residual_even)
+            super().derivative_approximation(self.cache_even, "previous_residual", self.previous_residual_even)
         else:
             self.previous_residual_odd = x - ori_x
-            super.derivative_approximation(self.cache_odd, "previous_residual", self.previous_residual_odd)
+            super().derivative_approximation(self.cache_odd, "previous_residual", self.previous_residual_odd)
         return x
 
     def infer_using_cache(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
