@@ -2,7 +2,7 @@ import torch
 import math
 from ..utils import compute_freqs, compute_freqs_causvid, compute_freqs_dist, apply_rotary_emb
 from lightx2v.utils.envs import *
-from lightx2v.models.networks.wan.infer.feature_caching.transformer_infer_1 import WanTransformerInfer
+from lightx2v.models.networks.wan.infer.transformer_infer import WanTransformerInfer
 
 
 class WanTransformerInferCausVid(WanTransformerInfer):
