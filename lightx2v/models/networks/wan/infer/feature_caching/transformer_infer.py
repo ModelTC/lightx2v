@@ -309,12 +309,18 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
                 cache_diff = cache_diff * moreg
 
                 metric_thres, cache_rates = list(self.codebook.keys()), list(self.codebook.values())
-                if cache_diff < metric_thres[0]: new_rate = cache_rates[0]
-                elif cache_diff < metric_thres[1]: new_rate = cache_rates[1]
-                elif cache_diff < metric_thres[2]: new_rate = cache_rates[2]
-                elif cache_diff < metric_thres[3]: new_rate = cache_rates[3]
-                elif cache_diff < metric_thres[4]: new_rate = cache_rates[4]
-                else: new_rate = cache_rates[-1]
+                if cache_diff < metric_thres[0]: 
+                    new_rate = cache_rates[0]
+                elif cache_diff < metric_thres[1]: 
+                    new_rate = cache_rates[1]
+                elif cache_diff < metric_thres[2]: 
+                    new_rate = cache_rates[2]
+                elif cache_diff < metric_thres[3]: 
+                    new_rate = cache_rates[3]
+                elif cache_diff < metric_thres[4]: 
+                    new_rate = cache_rates[4]
+                else: 
+                    new_rate = cache_rates[-1]
                 
                 self.args_even.previous_residual_tiny = self.args_even.now_residual_tiny
                 return new_rate
