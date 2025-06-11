@@ -8,5 +8,5 @@
         "mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm",
         "weight_auto_quant": true
     },
-    "feature_caching": "TaylorSeer"
+    "feature_caching": "Taylor"
 }
