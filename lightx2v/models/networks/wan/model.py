@@ -55,7 +55,7 @@ class WanModel:
             self.transformer_infer_class = WanTransformerInfer
         elif self.config["feature_caching"] == "Tea":
             self.transformer_infer_class = WanTransformerInferTeaCaching
-        elif self.config["feature_caching"] == "TaylorSeer":
+        elif self.config["feature_caching"] == "Taylor":
             self.transformer_infer_class = WanTransformerInferTaylorCaching
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config['feature_caching']}")

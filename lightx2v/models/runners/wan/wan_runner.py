@@ -93,7 +93,7 @@ class WanRunner(DefaultRunner):
             scheduler = WanScheduler(self.config)
         elif self.config.feature_caching == "Tea":
             scheduler = WanSchedulerTeaCaching(self.config)
-        elif self.config.feature_caching == "TaylorSeer":
+        elif self.config.feature_caching == "Taylor":
             scheduler = WanSchedulerTaylorCaching(self.config)
         else:
             raise NotImplementedError(f"Unsupported feature_caching type: {self.config.feature_caching}")
