@@ -24,7 +24,6 @@ class BaseWanTransformerInfer(BaseTransformerInfer):
         self.infer_conditional = True
 
         if self.config["cpu_offload"]:
-            self.cpu_offload = True
             self.offload_granularity = self.config.get("offload_granularity", "block")
             self.weights_stream_mgr = WeightAsyncStreamManager()
 
@@ -301,7 +300,7 @@ class WanTransformerInfer(BaseWanTransformerInfer):
             return self.infer_using_cache(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
 
     def infer_calculating(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
-        if not self.cpu_offload:
+        if not self.config.cpu_offload:
             return self._infer_calculating(weights, grid_sizes, x, embed0, seq_lens, freqs, context)
         else:
             if self.offload_granularity == "block":

@@ -20,7 +20,6 @@ class BaseHunyuanTransformerInfer(BaseTransformerInfer):
         if self.config["cpu_offload"]:
             self.double_weights_stream_mgr = WeightAsyncStreamManager()
             self.single_weights_stream_mgr = WeightAsyncStreamManager()
-            self.cpu_offload = True
 
     # per double block
     def infer_double_block_1(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num):
@@ -312,7 +311,7 @@ class HunyuanTransformerInfer(BaseHunyuanTransformerInfer):
             return self.infer_using_cache(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
     def infer_calculating(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
-        if not self.cpu_offload:
+        if not self.config.cpu_offload:
             return self._infer_calculating(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None)
         else:
             return self._infer_calculating_offload(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None)
