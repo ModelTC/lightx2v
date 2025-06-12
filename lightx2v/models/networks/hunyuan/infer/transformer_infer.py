@@ -312,6 +312,12 @@ class HunyuanTransformerInfer(BaseHunyuanTransformerInfer):
             return self.infer_using_cache(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
 
     def infer_calculating(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
+        if not self.cpu_offload:
+            return self._infer_calculating(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None)
+        else:
+            return self._infer_calculating_offload(weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None)
+
+    def _infer_calculating(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
         txt_seq_len = txt.shape[0]
         img_seq_len = img.shape[0]
         for i in range(self.double_blocks_num):
@@ -368,6 +374,114 @@ class HunyuanTransformerInfer(BaseHunyuanTransformerInfer):
             x = super().infer_single_block_2(
                 weights.single_blocks[i], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, out, mod_gate, tr_mod_gate, token_replace_vec, frist_frame_token_num
             )
+        img = x[:img_seq_len, ...]
+        return img, vec
+
+    def _infer_calculating_offload(self, weights, img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec=None, frist_frame_token_num=None):
+        txt_seq_len = txt.shape[0]
+        img_seq_len = img.shape[0]
+        for i in range(self.double_blocks_num):
+            if i == 0:
+                self.double_weights_stream_mgr.active_weights[0] = weights.double_blocks[0]
+                self.double_weights_stream_mgr.active_weights[0].to_cuda()
+
+            with torch.cuda.stream(self.double_weights_stream_mgr.compute_stream):
+                (
+                    img_out,
+                    txt_out,
+                    img_mod1_gate,
+                    img_mod2_shift,
+                    img_mod2_scale,
+                    img_mod2_gate,
+                    tr_img_mod1_gate,
+                    tr_img_mod2_shift,
+                    tr_img_mod2_scale,
+                    tr_img_mod2_gate,
+                    txt_mod1_gate,
+                    txt_mod2_shift,
+                    txt_mod2_scale,
+                    txt_mod2_gate,
+                ) = super().infer_double_block_1(self.double_weights_stream_mgr.active_weights[0], img, txt, vec, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num)
+                img, txt, img_out, txt_out, img_mod2_gate, txt_mod2_gate = super().infer_double_block_2(
+                    self.double_weights_stream_mgr.active_weights[0],
+                    img,
+                    txt,
+                    vec,
+                    cu_seqlens_qkv,
+                    max_seqlen_qkv,
+                    freqs_cis,
+                    token_replace_vec,
+                    frist_frame_token_num,
+                    img_out,
+                    txt_out,
+                    img_mod1_gate,
+                    img_mod2_shift,
+                    img_mod2_scale,
+                    img_mod2_gate,
+                    tr_img_mod1_gate,
+                    tr_img_mod2_shift,
+                    tr_img_mod2_scale,
+                    tr_img_mod2_gate,
+                    txt_mod1_gate,
+                    txt_mod2_shift,
+                    txt_mod2_scale,
+                    txt_mod2_gate,
+                )
+                img, txt = super().infer_double_block_3(
+                    self.double_weights_stream_mgr.active_weights[0],
+                    img,
+                    txt,
+                    vec,
+                    cu_seqlens_qkv,
+                    max_seqlen_qkv,
+                    freqs_cis,
+                    token_replace_vec,
+                    frist_frame_token_num,
+                    img_out,
+                    txt_out,
+                    img_mod2_gate,
+                    txt_mod2_gate,
+                )
+
+            if i < self.double_blocks_num - 1:
+                self.double_weights_stream_mgr.prefetch_weights(i + 1, weights.double_blocks)
+            self.double_weights_stream_mgr.swap_weights()
+
+        x = torch.cat((img, txt), 0)
+        img = img.cpu()
+        txt = txt.cpu()
+        del img, txt
+        torch.cuda.empty_cache()
+
+        for i in range(self.single_blocks_num):
+            if i == 0:
+                self.single_weights_stream_mgr.active_weights[0] = weights.single_blocks[0]
+                self.single_weights_stream_mgr.active_weights[0].to_cuda()
+
+            with torch.cuda.stream(self.single_weights_stream_mgr.compute_stream):
+                out, mod_gate, tr_mod_gate = super().infer_single_block_1(
+                    self.single_weights_stream_mgr.active_weights[0], x, vec, txt_seq_len, cu_seqlens_qkv, max_seqlen_qkv, freqs_cis, token_replace_vec, frist_frame_token_num
+                )
+                x = super().infer_single_block_2(
+                    self.single_weights_stream_mgr.active_weights[0],
+                    x,
+                    vec,
+                    txt_seq_len,
+                    cu_seqlens_qkv,
+                    max_seqlen_qkv,
+                    freqs_cis,
+                    out,
+                    mod_gate,
+                    tr_mod_gate,
+                    token_replace_vec,
+                    frist_frame_token_num,
+                )
+
+            if i < self.single_blocks_num - 1:
+                self.single_weights_stream_mgr.prefetch_weights(i + 1, weights.single_blocks)
+            self.single_weights_stream_mgr.swap_weights()
+            torch.cuda.empty_cache()
+
         img = x[:img_seq_len, ...]
         return img, vec
 
