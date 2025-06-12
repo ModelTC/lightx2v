@@ -21,23 +21,23 @@ class HunyuanRunner(DefaultRunner):
     def __init__(self, config):
         super().__init__(config)
 
-    def load_transformer(self, init_device):
-        return HunyuanModel(self.config.model_path, self.config, init_device, self.config)
+    def load_transformer(self):
+        return HunyuanModel(self.config.model_path, self.config, self.init_device, self.config)
 
-    def load_image_encoder(self, init_device):
+    def load_image_encoder(self):
         return None
 
-    def load_text_encoder(self, init_device):
+    def load_text_encoder(self):
         if self.config.task == "t2v":
-            text_encoder_1 = TextEncoderHFLlamaModel(os.path.join(self.config.model_path, "text_encoder"), init_device)
+            text_encoder_1 = TextEncoderHFLlamaModel(os.path.join(self.config.model_path, "text_encoder"), self.init_device)
         else:
-            text_encoder_1 = TextEncoderHFLlavaModel(os.path.join(self.config.model_path, "text_encoder_i2v"), init_device)
-        text_encoder_2 = TextEncoderHFClipModel(os.path.join(self.config.model_path, "text_encoder_2"), init_device)
+            text_encoder_1 = TextEncoderHFLlavaModel(os.path.join(self.config.model_path, "text_encoder_i2v"), self.init_device)
+        text_encoder_2 = TextEncoderHFClipModel(os.path.join(self.config.model_path, "text_encoder_2"), self.init_device)
         text_encoders = [text_encoder_1, text_encoder_2]
         return text_encoders
 
-    def load_vae(self, init_device):
-        vae_model = VideoEncoderKLCausal3DModel(self.config.model_path, dtype=torch.float16, device=init_device, config=self.config)
+    def load_vae(self):
+        vae_model = VideoEncoderKLCausal3DModel(self.config.model_path, dtype=torch.float16, device=self.init_device, config=self.config)
         return vae_model, vae_model
 
     def init_scheduler(self):

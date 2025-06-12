@@ -77,6 +77,8 @@ def cache_video(
             for frame in tensor.numpy():
                 writer.append_data(frame)
             writer.close()
+            del tensor
+            torch.cuda.empty_cache()
             return cache_file
         except Exception as e:
             error = e

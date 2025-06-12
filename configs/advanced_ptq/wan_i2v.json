@@ -14,5 +14,5 @@
         "mm_type": "W-int8-channel-sym-A-int8-channel-sym-dynamic-Vllm",
         "quant_method": "smoothquant"
     },
-    "quant_model_path": "/path/to/int8_model"
+    "dit_quantized_ckpt": "/path/to/dit_int8"
 }

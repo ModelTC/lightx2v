@@ -1,6 +1,4 @@
 import torch
-import sgl_kernel
-import torch.cuda.amp as amp
 import torch.distributed as dist
 
 

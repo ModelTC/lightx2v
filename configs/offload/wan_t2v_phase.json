@@ -17,5 +17,5 @@
     },
     "tiny_vae": true,
     "tiny_vae_path": "/mnt/afs_2/gushiqiao/x2v_models/taew2_1.pth",
-    "text_encoder_offload_granularity": "block"
+    "t5_offload_granularity": "block"
 }

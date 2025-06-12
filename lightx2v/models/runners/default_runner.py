@@ -26,6 +26,8 @@ class DefaultRunner:
                 logger.warning("No prompt enhancer server available, disable prompt enhancer.")
 
     def init_modules(self):
+        logger.info("Initializing runner modules...")
+        self.set_init_device()
         if self.config["mode"] == "split_server":
             self.tensor_transporter = TensorTransporter()
             self.image_transporter = ImageTransporter()
@@ -45,7 +47,8 @@ class DefaultRunner:
             else:
                 self.run_input_encoder = self.run_input_encoder_server_t2v
         else:
-            self.load_model()
+            if not self.config.get("lazy_load", False):
+                self.load_model()
             self.run_dit = self.run_dit_local
             self.run_vae_decoder = self.run_vae_decoder_local
             if self.config["task"] == "i2v":
@@ -53,23 +56,21 @@ class DefaultRunner:
             else:
                 self.run_input_encoder = self.run_input_encoder_local_t2v
 
-    def get_init_device(self):
+    def set_init_device(self):
         if self.config["parallel_attn_type"]:
             cur_rank = dist.get_rank()
             torch.cuda.set_device(cur_rank)
         if self.config.cpu_offload:
-            init_device = torch.device("cpu")
+            self.init_device = torch.device("cpu")
         else:
-            init_device = torch.device("cuda")
-        return init_device
+            self.init_device = torch.device("cuda")
 
     @ProfilingContext("Load models")
     def load_model(self):
-        init_device = self.get_init_device()
-        self.text_encoders = self.load_text_encoder(init_device)
-        self.model = self.load_transformer(init_device)
-        self.image_encoder = self.load_image_encoder(init_device)
-        self.vae_encoder, self.vae_decoder = self.load_vae(init_device)
+        self.model = self.load_transformer()
+        self.text_encoders = self.load_text_encoder()
+        self.image_encoder = self.load_image_encoder()
+        self.vae_encoder, self.vae_decoder = self.load_vae()
 
     def check_sub_servers(self, task_type):
         urls = self.config.get("sub_servers", {}).get(task_type, [])
@@ -124,7 +125,10 @@ class DefaultRunner:
     def end_run(self):
         self.model.scheduler.clear()
         del self.inputs, self.model.scheduler
+        if self.config.get("lazy_load", False):
+            del self.model
         torch.cuda.empty_cache()
+        gc.collect()
 
     @ProfilingContext("Run Encoders")
     async def run_input_encoder_local_i2v(self):
@@ -133,16 +137,22 @@ class DefaultRunner:
         clip_encoder_out = self.run_image_encoder(img)
         vae_encode_out, kwargs = self.run_vae_encoder(img)
         text_encoder_output = self.run_text_encoder(prompt, img)
+        torch.cuda.empty_cache()
+        gc.collect()
         return self.get_encoder_output_i2v(clip_encoder_out, vae_encode_out, text_encoder_output, img)
 
     @ProfilingContext("Run Encoders")
     async def run_input_encoder_local_t2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         text_encoder_output = self.run_text_encoder(prompt, None)
+        torch.cuda.empty_cache()
+        gc.collect()
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
 
     @ProfilingContext("Run DiT")
     async def run_dit_local(self, kwargs):
+        if self.config.get("lazy_load", False):
+            self.model = self.load_transformer()
         self.init_scheduler()
         self.model.scheduler.prepare(self.inputs["image_encoder_output"])
         latents, generator = self.run()
@@ -151,7 +161,13 @@ class DefaultRunner:
 
     @ProfilingContext("Run VAE Decoder")
     async def run_vae_decoder_local(self, latents, generator):
+        if self.config.get("lazy_load", False):
+            self.vae_decoder = self.load_vae_decoder()
         images = self.vae_decoder.decode(latents, generator=generator, config=self.config)
+        if self.config.get("lazy_load", False):
+            del self.vae_decoder
+            torch.cuda.empty_cache()
+            gc.collect()
         return images
 
     @ProfilingContext("Save video")
@@ -228,12 +244,16 @@ class DefaultRunner:
         n_prompt = self.config.get("negative_prompt", "")
         img = Image.open(self.config["image_path"]).convert("RGB")
         clip_encoder_out, vae_encode_out, text_encoder_output = await self.post_encoders_i2v(prompt, img, n_prompt)
+        torch.cuda.empty_cache()
+        gc.collect()
         return self.get_encoder_output_i2v(clip_encoder_out, vae_encode_out, text_encoder_output, img)
 
     async def run_input_encoder_server_t2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         n_prompt = self.config.get("negative_prompt", "")
         text_encoder_output = await self.post_encoders_t2v(prompt, n_prompt)
+        torch.cuda.empty_cache()
+        gc.collect()
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
 
     async def run_dit_server(self, kwargs):
@@ -265,5 +285,5 @@ class DefaultRunner:
         images = await self.run_vae_decoder(latents, generator)
         self.save_video(images)
         del latents, generator, images
-        gc.collect()
         torch.cuda.empty_cache()
+        gc.collect()

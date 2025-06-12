@@ -1,17 +1,34 @@
 import torch
 from abc import ABCMeta, abstractmethod
 from lightx2v.utils.registry_factory import RMS_WEIGHT_REGISTER
-import sgl_kernel
+
+try:
+    import sgl_kernel
+except ImportError:
+    sgl_kernel = None
 
 
 class RMSWeightTemplate(metaclass=ABCMeta):
-    def __init__(self, weight_name, eps=1e-6):
+    def __init__(self, weight_name, lazy_load=False, lazy_load_file=None, eps=1e-6):
         self.weight_name = weight_name
         self.eps = eps
+        self.lazy_load = lazy_load
+        self.lazy_load_file = lazy_load_file
         self.config = {}
 
+    def load_from_disk(self):
+        if not torch._dynamo.is_compiling():
+            self.weight = self.lazy_load_file.get_tensor(self.weight_name).to(torch.bfloat16).pin_memory()
+        else:
+            self.weight = self.lazy_load_file.get_tensor(self.weight_name).to(torch.bfloat16)
+
     def load(self, weight_dict):
-        self.weight = weight_dict[self.weight_name].cuda()
+        if not self.lazy_load:
+            self.weight = weight_dict[self.weight_name]
+            self.pinned_weight = torch.empty(self.weight.shape, pin_memory=True, dtype=self.weight.dtype)
+
+    def clear(self):
+        del self.weight
 
     @abstractmethod
     def apply(self, input_tensor):
@@ -22,16 +39,22 @@ class RMSWeightTemplate(metaclass=ABCMeta):
             self.config = config
 
     def to_cpu(self, non_blocking=False):
-        self.weight = self.weight.to("cpu", non_blocking=non_blocking)
+        if hasattr(self, "pinned_weight"):
+            self.weight = self.pinned_weight.copy_(self.weight, non_blocking=non_blocking).cpu()
+        else:
+            self.weight = self.weight.to("cpu", non_blocking=non_blocking)
 
     def to_cuda(self, non_blocking=False):
         self.weight = self.weight.cuda(non_blocking=non_blocking)
 
+    def _calculate_size(self):
+        return self.weight.numel() * self.weight.element_size()
+
 
 @RMS_WEIGHT_REGISTER("Default")
 class RMSWeight(RMSWeightTemplate):
-    def __init__(self, weight_name, eps=1e-6):
-        super().__init__(weight_name, eps)
+    def __init__(self, weight_name, lazy_load=False, lazy_load_file=None, eps=1e-6):
+        super().__init__(weight_name, lazy_load, lazy_load_file, eps)
 
     def apply(self, input_tensor):
         input_tensor = input_tensor * torch.rsqrt(input_tensor.pow(2).mean(-1, keepdim=True) + self.eps)
@@ -47,8 +70,8 @@ class RMSWeight(RMSWeightTemplate):
 
 @RMS_WEIGHT_REGISTER("FP32")
 class RMSWeightFP32(RMSWeight):
-    def __init__(self, weight_name, eps=1e-6):
-        super().__init__(weight_name, eps)
+    def __init__(self, weight_name, lazy_load=False, lazy_load_file=None, eps=1e-6):
+        super().__init__(weight_name, lazy_load, lazy_load_file, eps)
 
     def apply(self, input_tensor):
         input_tensor = input_tensor.float()
@@ -60,12 +83,17 @@ class RMSWeightFP32(RMSWeight):
 
 @RMS_WEIGHT_REGISTER("sgl-kernel")
 class RMSWeightSgl(RMSWeight):
-    def __init__(self, weight_name, eps=1e-6):
-        super().__init__(weight_name, eps)
+    def __init__(self, weight_name, lazy_load=False, lazy_load_file=None, eps=1e-6):
+        super().__init__(weight_name, lazy_load, lazy_load_file, eps)
 
     def apply(self, input_tensor):
-        input_tensor = input_tensor.contiguous()
-        orig_shape = input_tensor.shape
-        input_tensor = input_tensor.view(-1, orig_shape[-1])
-        input_tensor = sgl_kernel.rmsnorm(input_tensor, self.weight, self.eps).view(orig_shape)
+        if sgl_kernel is None:
+            # sgl_kernel is not available, fallback to default implementation
+            input_tensor = input_tensor * torch.rsqrt(input_tensor.pow(2).mean(-1, keepdim=True) + self.eps)
+            input_tensor = input_tensor * self.weight
+        else:
+            input_tensor = input_tensor.contiguous()
+            orig_shape = input_tensor.shape
+            input_tensor = input_tensor.view(-1, orig_shape[-1])
+            input_tensor = sgl_kernel.rmsnorm(input_tensor, self.weight, self.eps).view(orig_shape)
         return input_tensor

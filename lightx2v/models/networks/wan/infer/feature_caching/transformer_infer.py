@@ -19,7 +19,7 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
             else:
                 rescale_func = np.poly1d(self.scheduler.coefficients)
                 self.scheduler.accumulated_rel_l1_distance_even += rescale_func(
-                    ((modulated_inp - self.scheduler.previous_e0_even).abs().mean() / self.scheduler.previous_e0_even.abs().mean()).cpu().item()
+                    ((modulated_inp - self.scheduler.previous_e0_even.cuda()).abs().mean() / self.scheduler.previous_e0_even.cuda().abs().mean()).cpu().item()
                 )
                 if self.scheduler.accumulated_rel_l1_distance_even < self.scheduler.teacache_thresh:
                     should_calc_even = False
@@ -27,6 +27,11 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                     should_calc_even = True
                     self.scheduler.accumulated_rel_l1_distance_even = 0
             self.scheduler.previous_e0_even = modulated_inp.clone()
+            if self.config["cpu_offload"]:
+                self.scheduler.previous_e0_even = self.scheduler.previous_e0_even.cpu()
+                modulated_inp = modulated_inp.cpu()
+                del modulated_inp
+                torch.cuda.empty_cache()
 
         else:  # odd -> unconditon
             self.scheduler.is_even = False
@@ -36,7 +41,7 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
             else:
                 rescale_func = np.poly1d(self.scheduler.coefficients)
                 self.scheduler.accumulated_rel_l1_distance_odd += rescale_func(
-                    ((modulated_inp - self.scheduler.previous_e0_odd).abs().mean() / self.scheduler.previous_e0_odd.abs().mean()).cpu().item()
+                    ((modulated_inp - self.scheduler.previous_e0_odd.cuda()).abs().mean() / self.scheduler.previous_e0_odd.cuda().abs().mean()).cpu().item()
                 )
                 if self.scheduler.accumulated_rel_l1_distance_odd < self.scheduler.teacache_thresh:
                     should_calc_odd = False
@@ -44,10 +49,15 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                     should_calc_odd = True
                     self.scheduler.accumulated_rel_l1_distance_odd = 0
             self.scheduler.previous_e0_odd = modulated_inp.clone()
+            if self.config["cpu_offload"]:
+                self.scheduler.previous_e0_odd = self.scheduler.previous_e0_odd.cpu()
+                modulated_inp = modulated_inp.cpu()
+                del modulated_inp
+                torch.cuda.empty_cache()
 
         if self.scheduler.is_even:
             if not should_calc_even:
-                x += self.scheduler.previous_residual_even
+                x += self.scheduler.previous_residual_even.cuda()
             else:
                 ori_x = x.clone()
                 x = super().infer(
@@ -62,12 +72,13 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                 )
                 self.scheduler.previous_residual_even = x - ori_x
                 if self.config["cpu_offload"]:
+                    self.scheduler.previous_residual_even = self.scheduler.previous_residual_even.cpu()
                     ori_x = ori_x.to("cpu")
                     del ori_x
                     torch.cuda.empty_cache()
         else:
             if not should_calc_odd:
-                x += self.scheduler.previous_residual_odd
+                x += self.scheduler.previous_residual_odd.cuda()
             else:
                 ori_x = x.clone()
                 x = super().infer(
@@ -82,6 +93,7 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                 )
                 self.scheduler.previous_residual_odd = x - ori_x
                 if self.config["cpu_offload"]:
+                    self.scheduler.previous_residual_odd = self.scheduler.previous_residual_odd.cpu()
                     ori_x = ori_x.to("cpu")
                     del ori_x
                     torch.cuda.empty_cache()

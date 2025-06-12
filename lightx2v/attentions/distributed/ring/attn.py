@@ -4,8 +4,13 @@ import torch.nn.functional as F
 
 # from lightx2v.attentions import attention
 from lightx2v.attentions.distributed.comm.ring_comm import RingComm
-import flash_attn
-from flash_attn.flash_attn_interface import _flash_attn_forward
+
+try:
+    import flash_attn
+    from flash_attn.flash_attn_interface import _flash_attn_forward
+except ImportError:
+    flash_attn = None
+    _flash_attn_forward = None
 from typing import Optional, Tuple
 
 
