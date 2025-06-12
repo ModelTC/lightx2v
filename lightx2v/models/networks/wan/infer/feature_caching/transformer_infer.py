@@ -55,10 +55,17 @@ class WanTransformerInferTeaCaching(BaseWanTransformerInfer):
         ori_x = x.clone()
 
         for block_idx in range(self.blocks_num):
-            y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
-            attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
-            y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
-            x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
+            if embed0.dim() == 3:
+                modulation = weights.blocks[block_idx].modulation.tensor.unsqueeze(2)
+                embed0 = (modulation + embed0).chunk(6, dim=1)
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in embed0]
+            elif embed0.dim() == 2:
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.blocks[block_idx].modulation.tensor + embed0).chunk(6, dim=1)
+
+            y_out = super().infer_block_1(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, embed0, seq_lens, freqs, context, shift_msa, scale_msa)
+            attn_out = super().infer_block_2(weights.blocks[block_idx].compute_phases[1], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
+            y_out = super().infer_block_3(weights.blocks[block_idx].compute_phases[2], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
+            x = super().infer_block_4(None, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
 
         if self.infer_conditional:
             self.previous_residual_even = x - ori_x
@@ -124,25 +131,32 @@ class WanTransformerInferTaylorCaching(BaseWanTransformerInfer):
 
     def infer_calculating(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
         for block_idx in range(self.blocks_num):
-            y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
+            if embed0.dim() == 3:
+                modulation = weights.blocks[block_idx].modulation.tensor.unsqueeze(2)
+                embed0 = (modulation + embed0).chunk(6, dim=1)
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in embed0]
+            elif embed0.dim() == 2:
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.blocks[block_idx].modulation.tensor + embed0).chunk(6, dim=1)
+
+            y_out = super().infer_block_1(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, embed0, seq_lens, freqs, context, shift_msa, scale_msa)
             if self.infer_conditional:
                 super().derivative_approximation(self.blocks_cache_even[block_idx], "self_attn_out", y_out)
             else:
                 super().derivative_approximation(self.blocks_cache_odd[block_idx], "self_attn_out", y_out)
 
-            attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
+            attn_out = super().infer_block_2(weights.blocks[block_idx].compute_phases[1], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
             if self.infer_conditional:
                 super().derivative_approximation(self.blocks_cache_even[block_idx], "cross_attn_out", attn_out)
             else:
                 super().derivative_approximation(self.blocks_cache_odd[block_idx], "cross_attn_out", attn_out)
 
-            y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
+            y_out = super().infer_block_3(weights.blocks[block_idx].compute_phases[2], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
             if self.infer_conditional:
                 super().derivative_approximation(self.blocks_cache_even[block_idx], "ffn_out", y_out)
             else:
                 super().derivative_approximation(self.blocks_cache_odd[block_idx], "ffn_out", y_out)
 
-            x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
+            x = super().infer_block_4(None, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
         return x
 
     def infer_using_cache(self, weights, grid_sizes, x, embed0, seq_lens, freqs, context):
@@ -256,16 +270,23 @@ class WanTransformerInferAdaCaching(BaseWanTransformerInfer):
         ori_x = x.clone()
 
         for block_idx in range(self.blocks_num):
-            y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
+            if embed0.dim() == 3:
+                modulation = weights.blocks[block_idx].modulation.tensor.unsqueeze(2)
+                embed0 = (modulation + embed0).chunk(6, dim=1)
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in embed0]
+            elif embed0.dim() == 2:
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.blocks[block_idx].modulation.tensor + embed0).chunk(6, dim=1)
+
+            y_out = super().infer_block_1(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, embed0, seq_lens, freqs, context, shift_msa, scale_msa)
             if block_idx == self.decisive_double_block_id:
                 if self.infer_conditional:
                     self.args_even.now_residual_tiny = y_out * gate_msa.squeeze(0)
                 else:
                     self.args_odd.now_residual_tiny = y_out * gate_msa.squeeze(0)
 
-            attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
-            y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
-            x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
+            attn_out = super().infer_block_2(weights.blocks[block_idx].compute_phases[1], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
+            y_out = super().infer_block_3(weights.blocks[block_idx].compute_phases[2], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
+            x = super().infer_block_4(None, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
 
         if self.infer_conditional:
             self.args_even.previous_residual = x - ori_x
@@ -467,10 +488,17 @@ class WanTransformerInferCustomCaching(BaseWanTransformerInfer):
         ori_x = x.clone()
 
         for block_idx in range(self.blocks_num):
-            y_out, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = super().infer_block_1(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context)
-            attn_out = super().infer_block_2(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
-            y_out = super().infer_block_3(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
-            x = super().infer_block_4(weights.blocks[block_idx], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
+            if embed0.dim() == 3:
+                modulation = weights.blocks[block_idx].modulation.tensor.unsqueeze(2)
+                embed0 = (modulation + embed0).chunk(6, dim=1)
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [ei.squeeze(1) for ei in embed0]
+            elif embed0.dim() == 2:
+                shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (weights.blocks[block_idx].modulation.tensor + embed0).chunk(6, dim=1)
+
+            y_out = super().infer_block_1(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, embed0, seq_lens, freqs, context, shift_msa, scale_msa)
+            attn_out = super().infer_block_2(weights.blocks[block_idx].compute_phases[1], grid_sizes, x, embed0, seq_lens, freqs, context, y_out, gate_msa)
+            y_out = super().infer_block_3(weights.blocks[block_idx].compute_phases[2], grid_sizes, x, embed0, seq_lens, freqs, context, attn_out, c_shift_msa, c_scale_msa)
+            x = super().infer_block_4(None, grid_sizes, x, embed0, seq_lens, freqs, context, y_out, c_gate_msa)
 
         if self.infer_conditional:
             self.previous_residual_even = x - ori_x
