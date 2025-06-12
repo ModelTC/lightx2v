@@ -8,7 +8,7 @@ from lightx2v.utils.registry_factory import RUNNER_REGISTER
 from lightx2v.models.runners.wan.wan_runner import WanRunner
 from lightx2v.models.runners.default_runner import DefaultRunner
 from lightx2v.models.schedulers.wan.scheduler import WanScheduler
-from lightx2v.models.schedulers.wan.causvid.scheduler import WanCausVidScheduler
+from lightx2v.models.schedulers.wan.step_distill.scheduler import WanStepDistillScheduler
 from lightx2v.utils.profiler import ProfilingContext4Debug, ProfilingContext
 from lightx2v.models.input_encoders.hf.t5.model import T5EncoderModel
 from lightx2v.models.input_encoders.hf.xlm_roberta.model import CLIPModel
@@ -38,7 +38,7 @@ class WanCausVidRunner(WanRunner):
         self.num_fragments = self.config["num_fragments"]
 
     def init_scheduler(self):
-        scheduler = WanCausVidScheduler(self.config)
+        scheduler = WanStepDistillScheduler(self.config)
         self.model.set_scheduler(scheduler)
 
     def set_target_shape(self):

@@ -11,6 +11,7 @@ import torchvision.transforms.functional as TF
 from lightx2v.utils.registry_factory import RUNNER_REGISTER
 from lightx2v.models.runners.hunyuan.hunyuan_runner import HunyuanRunner
 from lightx2v.models.runners.wan.wan_runner import WanRunner
+from lightx2v.models.runners.wan.wan_distill_runner import WanDistillRunner
 from lightx2v.models.runners.wan.wan_causvid_runner import WanCausVidRunner
 from lightx2v.models.runners.wan.wan_skyreels_v2_df_runner import WanSkyreelsV2DFRunner
 
@@ -102,7 +103,7 @@ async def get_task_status(message: TaskStatusMessage):
 if __name__ == "__main__":
     ProcessManager.register_signal_handler()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df", "cogvideox"], default="hunyuan")
+    parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_distill", "wan2.1_causvid", "wan2.1_skyreels_v2_df", "cogvideox"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--config_json", type=str, required=True)
