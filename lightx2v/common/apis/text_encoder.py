@@ -53,7 +53,7 @@ class TextEncoderRunner:
         self.runner_cls = RUNNER_REGISTER[self.config.model_cls]
 
         self.runner = self.runner_cls(config)
-        self.runner.text_encoders = self.runner.load_text_encoder(self.runner.get_init_device())
+        self.runner.text_encoders = self.runner.load_text_encoder()
 
     def _run_text_encoder(self, text, img, n_prompt):
         if img is not None:

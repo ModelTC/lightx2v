@@ -23,8 +23,8 @@ class WanDistillRunner(WanRunner):
     def __init__(self, config):
         super().__init__(config)
 
-    def load_transformer(self, init_device):
-        model = WanDistillModel(self.config.model_path, self.config, init_device)
+    def load_transformer(self):
+        model = WanDistillModel(self.config.model_path, self.config, self.init_device)
         if self.config.lora_path:
             lora_wrapper = WanLoraWrapper(model)
             lora_name = lora_wrapper.load_lora(self.config.lora_path)

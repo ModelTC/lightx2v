@@ -24,10 +24,12 @@ class DefaultRunner:
             if not self.check_sub_servers("prompt_enhancer"):
                 self.has_prompt_enhancer = False
                 logger.warning("No prompt enhancer server available, disable prompt enhancer.")
+        if not self.has_prompt_enhancer:
+            self.config["use_prompt_enhancer"] = False
+        self.set_init_device()
 
     def init_modules(self):
         logger.info("Initializing runner modules...")
-        self.set_init_device()
         if self.config["mode"] == "split_server":
             self.tensor_transporter = TensorTransporter()
             self.image_transporter = ImageTransporter()
@@ -93,6 +95,7 @@ class DefaultRunner:
 
     def set_inputs(self, inputs):
         self.config["prompt"] = inputs.get("prompt", "")
+        self.config["use_prompt_enhancer"] = False
         if self.has_prompt_enhancer:
             self.config["use_prompt_enhancer"] = inputs.get("use_prompt_enhancer", False)  # Reset use_prompt_enhancer from clinet side.
         self.config["negative_prompt"] = inputs.get("negative_prompt", "")

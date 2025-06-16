@@ -29,8 +29,8 @@ class WanCausVidRunner(WanRunner):
         self.infer_blocks = self.model.config.num_blocks
         self.num_fragments = self.model.config.num_fragments
 
-    def load_transformer(self, init_device):
-        return WanCausVidModel(self.config.model_path, self.config, init_device)
+    def load_transformer(self):
+        return WanCausVidModel(self.config.model_path, self.config, self.init_device)
 
     def set_inputs(self, inputs):
         super().set_inputs(inputs)

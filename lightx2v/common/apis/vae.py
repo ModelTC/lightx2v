@@ -56,7 +56,7 @@ class VAERunner:
         self.runner_cls = RUNNER_REGISTER[self.config.model_cls]
 
         self.runner = self.runner_cls(config)
-        self.runner.vae_encoder, self.runner.vae_decoder = self.runner.load_vae(self.runner.get_init_device())
+        self.runner.vae_encoder, self.runner.vae_decoder = self.runner.load_vae()
 
     def _run_vae_encoder(self, img):
         img = image_transporter.load_image(img)

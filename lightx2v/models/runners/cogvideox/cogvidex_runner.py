@@ -16,19 +16,19 @@ class CogvideoxRunner(DefaultRunner):
     def __init__(self, config):
         super().__init__(config)
 
-    def load_transformer(self, init_device):
+    def load_transformer(self):
         model = CogvideoxModel(self.config)
         return model
 
-    def load_image_encoder(self, init_device):
+    def load_image_encoder(self):
         return None
 
-    def load_text_encoder(self, init_device):
+    def load_text_encoder(self):
         text_encoder = T5EncoderModel_v1_1_xxl(self.config)
         text_encoders = [text_encoder]
         return text_encoders
 
-    def load_vae(self, init_device):
+    def load_vae(self):
         vae_model = CogvideoxVAE(self.config)
         return vae_model, vae_model
 
