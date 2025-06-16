@@ -1,8 +1,6 @@
-FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04 AS base
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel AS base
 
-WORKDIR /workspace
-
-COPY . /workspace/lightx2v/
+WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
@@ -12,27 +10,28 @@ ENV LC_ALL=C.UTF-8
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list \
     && sed -i 's|http://security.ubuntu.com/ubuntu/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list
 
-RUN apt-get update && apt install -y software-properties-common  \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y vim tmux zip unzip wget git cmake build-essential \
-     curl libibverbs-dev ca-certificates iproute2 \
-     ffmpeg libsm6 libxext6 \
-    && apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip \
+RUN apt-get update && apt-get install -y vim tmux zip unzip wget git build-essential libibverbs-dev ca-certificates \
+    curl iproute2 ffmpeg libsm6 libxext6 kmod ccache libnuma-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
-RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple \
-    && pip install -r /workspace/lightx2v/requirements.txt
+RUN pip install --no-cache-dir packaging ninja cmake scikit-build-core uv ruff pre-commit -U
 
-# Install again separately to bypass the version conflict check
-RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple \
-    && pip install transformers==4.45.2
+RUN git clone https://github.com/vllm-project/vllm.git && cd vllm \
+    && python use_existing_torch.py && pip install -r requirements/build.txt \
+    && pip install --no-cache-dir --no-build-isolation -v -e .
 
-# install flash-attention 2
-RUN cd lightx2v/3rd/flash-attention && pip install --no-cache-dir -v -e .
+RUN git clone https://github.com/sgl-project/sglang.git && cd sglang/sgl-kernel \
+    && make build && make clean
 
-# install flash-attention 3, only if hopper
-RUN cd lightx2v/3rd/flash-attention/hopper && pip install --no-cache-dir -v -e .
+RUN pip install --no-cache-dir diffusers transformers tokenizers accelerate safetensors opencv-python numpy imageio \
+    imageio-ffmpeg einops loguru qtorch ftfy easydict
+
+RUN git clone https://github.com/Dao-AILab/flash-attention.git --recursive
+
+RUN cd flash-attention && python setup.py install && rm -rf build
+
+RUN cd flash-attention/hopper && python setup.py install && rm -rf build
+
+WORKDIR /workspace
