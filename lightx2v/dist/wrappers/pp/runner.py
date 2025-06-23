@@ -12,19 +12,25 @@ class PipelineParallelWanRunnerWrapper:
         self.runner = runner
         self.config = config
         
+        self.wramup_steps = self.config.get("wramup_steps", 40)
+        
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         
-        self._wrap(self.runner.model, self.config)
+        self._wrap(self.runner, self.config)
         
     def __getattr__(self, name: str):
         if name in self.__dict__:
             return getattr(self, name)
         else:
             return getattr(self.runner, name)
+
+    def _wrap(self, runner, config):
+        runner.model = PipelineParallelWanModelWrapper(runner.model, config)
+        self.runner.run = self.run
         
-    def _wrap(self, model, config):
-        model = PipelineParallelWanModelWrapper(model, config)
+    def is_warmup(self, step_index):
+        return step_index < self.wramup_steps
         
     async def run_pipeline(self):
         if self.config["use_prompt_enhancer"]:
@@ -51,7 +57,8 @@ class PipelineParallelWanRunnerWrapper:
                 self.model.scheduler.step_pre(step_index=step_index)
 
             with ProfilingContext4Debug("infer"):
-                self.model.infer(self.inputs)
+                logger.info(f"is warmup: {self.is_warmup(step_index)}")
+                self.model.infer(self.inputs, is_warmup=self.is_warmup(step_index))
 
             # if rank_step == self.world_size - 1:
             with ProfilingContext4Debug("step_post"):

@@ -63,6 +63,25 @@ def compute_freqs_dist(s, c, grid_sizes, freqs):
     return freqs_i_rank
 
 
+def compute_freqs_by_patch(s, c, grid_sizes, freqs, patch_index, patch_num):
+    freqs = freqs.split([c - 2 * (c // 3), c // 3, c // 3], dim=1)
+    f, h, w = grid_sizes[0].tolist()
+    seq_len = f * h * w
+    freqs_i = torch.cat(
+        [
+            freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
+            freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
+            freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1),
+        ],
+        dim=-1,
+    ).reshape(seq_len, 1, -1)
+
+    freqs_i = pad_freqs(freqs_i, s * patch_num)
+    s_per_rank = s
+    freqs_i_rank = freqs_i[(patch_index * s_per_rank) : ((patch_index + 1) * s_per_rank), :, :]
+    return freqs_i_rank
+
+
 def apply_rotary_emb(x, freqs_i):
     n = x.size(1)
     seq_len = freqs_i.size(0)

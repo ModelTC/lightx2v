@@ -15,19 +15,33 @@ class PipelineParallelWanModelWrapper:
             return getattr(self, name)
         else:
             return getattr(self.model, name)
+        
+    def __delattr__(self, name: str):
+        if name in self.__dict__:
+            del self.__dict__[name]
+        else:
+            del self.model.__dict__[name]
 
     def _wrap_transformer(self, model, config):
         model.transformer_weights = PipelineParallelWanTransformerWeightsWrapper(model.transformer_weights, config)
         model.transformer_infer = PipelineParallelWanTransformerInferWrapper(model.transformer_infer, config)
         model.transformer_infer.set_blocks_num(model.transformer_weights.get_blocks_num())
+        model.transformer_infer.init_kv_cache_manager()
         
-    def infer(self, inputs):
+    def infer(self, inputs, is_warmup=True):
+        self.model.transformer_infer.reset_block_index()
+        
         if self.config["cpu_offload"]:
             self.pre_weight.to_cuda()
             self.post_weight.to_cuda()
+            
+        # import torch
+        # if torch.distributed.get_rank() == 0:
+        #     import pdb; pdb.set_trace()
+        # import time; time.sleep(99999)
 
         embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=True)
-        x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+        x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out, is_warmup=is_warmup)
         noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
         if self.config["feature_caching"] == "Tea":
@@ -38,7 +52,7 @@ class PipelineParallelWanModelWrapper:
 
         if self.config["enable_cfg"]:
             embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=False)
-            x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out)
+            x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out, is_warmup=is_warmup)
             noise_pred_uncond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
             if self.config["feature_caching"] == "Tea":
