@@ -10,7 +10,7 @@ import torchvision.transforms.functional as TF
 import numpy as np
 from PIL import Image
 from lightx2v.text2v.models.text_encoders.hf.llama.model import TextEncoderHFLlamaModel
-from lightx2v.text2v.models.text_encoders.hf.clip.model import TextEncoderHFClipModel
+from lightx2v.text2v.models.text_encoders.trt.clip.model import TextEncoderHFClipModel
 from lightx2v.text2v.models.text_encoders.hf.t5.model import T5EncoderModel
 from lightx2v.text2v.models.text_encoders.hf.llava.model import TextEncoderHFLlavaModel
 
@@ -22,7 +22,7 @@ from lightx2v.text2v.models.schedulers.wan.feature_caching.scheduler import WanS
 from lightx2v.text2v.models.networks.hunyuan.model import HunyuanModel
 from lightx2v.text2v.models.networks.wan.model import WanModel
 
-from lightx2v.text2v.models.video_encoders.hf.autoencoder_kl_causal_3d.model import VideoEncoderKLCausal3DModel
+from lightx2v.text2v.models.video_encoders.trt.autoencoder_kl_causal_3d.model import VideoEncoderKLCausal3DModel
 from lightx2v.text2v.models.video_encoders.hf.wan.vae import WanVAE
 from lightx2v.utils.utils import save_videos_grid, seed_all, cache_video
 from lightx2v.common.ops import *
@@ -54,6 +54,7 @@ def load_models(args, model_config):
             text_len=model_config["text_len"],
             dtype=torch.bfloat16,
             device=init_device,
+            engine_path="/mtc/wq/project/sd/code/lightx2v/mycode/onnx/t5_fp32/t5_bf16.engine",
             checkpoint_path=os.path.join(args.model_path, "models_t5_umt5-xxl-enc-bf16.pth"),
             tokenizer_path=os.path.join(args.model_path, "google/umt5-xxl"),
             shard_fn=None,

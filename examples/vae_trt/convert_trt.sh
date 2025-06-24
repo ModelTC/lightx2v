@@ -12,5 +12,5 @@ export PYTHONPATH="./":$PYTHONPATH
 #     --optShapes=inp:1x16x17x32x16 \
 #     --maxShapes=inp:1x16x17x32x32
 
-model_path=""
+model_path="/mtc/yongyang/models/x2v_models/hunyuan/lightx2v_format/t2v/"
 python examples/vae_trt/convert_vae_trt_engine.py --model_path ${model_path}

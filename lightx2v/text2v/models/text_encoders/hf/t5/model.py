@@ -7,7 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .tokenizer import HuggingfaceTokenizer
+from lightx2v.text2v.models.text_encoders.hf.t5.tokenizer import HuggingfaceTokenizer
+# from .tokenizer import HuggingfaceTokenizer
 
 __all__ = [
     "T5Model",
@@ -459,15 +460,7 @@ def umt5_xxl(**kwargs):
 
 
 class T5EncoderModel:
-    def __init__(
-        self,
-        text_len,
-        dtype=torch.bfloat16,
-        device=torch.cuda.current_device(),
-        checkpoint_path=None,
-        tokenizer_path=None,
-        shard_fn=None,
-    ):
+    def __init__(self, text_len, dtype=torch.bfloat16, device=None, checkpoint_path=None, tokenizer_path=None, shard_fn=None, **kwargs):
         self.text_len = text_len
         self.dtype = dtype
         self.device = device
@@ -497,8 +490,6 @@ class T5EncoderModel:
             self.to_cuda()
 
         ids, mask = self.tokenizer(texts, return_mask=True, add_special_tokens=True)
-        ids = ids.cuda()
-        mask = mask.cuda()
         seq_lens = mask.gt(0).sum(dim=1).long()
         context = self.model(ids, mask)
 
@@ -509,17 +500,24 @@ class T5EncoderModel:
 
 
 if __name__ == "__main__":
-    checkpoint_dir = ""
+    checkpoint_dir = "/mtc/wq/project/sd/models/Wan2.1-T2V-1.3B"
     t5_checkpoint = "models_t5_umt5-xxl-enc-bf16.pth"
     t5_tokenizer = "google/umt5-xxl"
     model = T5EncoderModel(
         text_len=512,
-        dtype=torch.bfloat16,
-        device=torch.device("cuda"),
+        dtype=torch.float16,
+        device=torch.device("cpu"),
         checkpoint_path=os.path.join(checkpoint_dir, t5_checkpoint),
         tokenizer_path=os.path.join(checkpoint_dir, t5_tokenizer),
         shard_fn=None,
     )
     text = "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage."
-    outputs = model.infer(text)
+    from dataclasses import dataclass
+
+    @dataclass
+    class TempArgs:
+        cpu_offload: False
+
+    args = TempArgs(cpu_offload=False)
+    outputs = model.infer(text, args)
     print(outputs)

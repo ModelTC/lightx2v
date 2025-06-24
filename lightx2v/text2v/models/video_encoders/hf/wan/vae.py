@@ -651,7 +651,6 @@ def _video_vae(pretrained_path=None, z_dim=None, device="cpu", **kwargs):
 
 
 class WanVAE(nn.Module):
-
     def __init__(
         self,
         z_dim=16,
