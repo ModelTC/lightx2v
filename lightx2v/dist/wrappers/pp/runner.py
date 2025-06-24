@@ -57,7 +57,7 @@ class PipelineParallelWanRunnerWrapper:
                 self.model.scheduler.step_pre(step_index=step_index)
 
             with ProfilingContext4Debug("infer"):
-                logger.info(f"is warmup: {self.is_warmup(step_index)}")
+                # logger.info(f"is warmup: {self.is_warmup(step_index)}")
                 self.model.infer(self.inputs, is_warmup=self.is_warmup(step_index))
 
             # if rank_step == self.world_size - 1:

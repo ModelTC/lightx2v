@@ -1,3 +1,5 @@
+import enum
+from requests import patch
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
@@ -6,7 +8,8 @@ from lightx2v.models.networks.wan.infer.transformer_infer import (
     WanTransformerInfer,
 )
 from lightx2v.models.networks.wan.infer.utils import compute_freqs, compute_freqs_dist, compute_freqs_by_patch, apply_rotary_emb
-from lightx2v.dist.wrappers.pp.kv_cache import PipelineParallelKVCacheManager
+from lightx2v.dist.wrappers.pp.kv_cache import PipelineParallelKVCacheManager, RingAttnCacheManager
+from lightx2v.attentions.distributed.ring.attn import ring_attn_sub, update_out_and_lse
 from loguru import logger
 
 
@@ -25,6 +28,9 @@ class PipelineParallelWanTransformerInferWrapper:
         
         self.infer_func = self._infer_without_offload
         
+        self.use_kv_cache = True
+        self.use_ring_attn_cache = False
+        
         
     def set_blocks_num(self, blocks_num):
         self.transformer_infer.blocks_num = blocks_num
@@ -34,6 +40,7 @@ class PipelineParallelWanTransformerInferWrapper:
         
     def init_kv_cache_manager(self):
         self.kv_cache_manager = PipelineParallelKVCacheManager(kv_cache_len=self.transformer_infer.blocks_num, patch_num=self.patch_num)
+        self.ring_attn_cache_manager = RingAttnCacheManager(cache_len=self.transformer_infer.blocks_num, patch_num=self.patch_num)
         
     def get_patch_inputs(self, x):
         patch_size = self.patch_num
@@ -84,7 +91,7 @@ class PipelineParallelWanTransformerInferWrapper:
     # @torch.compile(disable=not CHECK_ENABLE_GRAPH_MODE())
     def infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, is_warmup):
         if is_warmup:
-            logger.info(f"warmup infer is running")
+            # logger.info(f"warmup infer is running")
             self.transformer_infer._infer_self_attn = self._infer_self_attn
             if self.rank == 0:
                 x = self.infer_func(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
@@ -98,7 +105,7 @@ class PipelineParallelWanTransformerInferWrapper:
                 dist.send(x, dst=self.rank+1)
             dist.broadcast(x, src=self.world_size-1)
         else:
-            logger.info(f"kv-cache infer is running")
+            # logger.info(f"kv-cache infer is running")
             self.transformer_infer._infer_self_attn = self._infer_self_attn_cached
             ori_x = x
             xs = self.get_patch_inputs(x)
@@ -126,7 +133,7 @@ class PipelineParallelWanTransformerInferWrapper:
         return x
     
     def _infer_self_attn_cached(self, weights, x, shift_msa, scale_msa, gate_msa, grid_sizes, freqs, seq_lens):
-        logger.info(f"[RANK{self.rank}] cur block idx: {self.block_index}, cur patch idx: {self.patch_index}")
+        # logger.info(f"[RANK{self.rank}] cur block idx: {self.block_index}, cur patch idx: {self.patch_index}")
         if hasattr(weights, "smooth_norm1_weight"):
             norm1_weight = (1 + scale_msa) * weights.smooth_norm1_weight.tensor
             norm1_bias = shift_msa * weights.smooth_norm1_bias.tensor
@@ -150,67 +157,128 @@ class PipelineParallelWanTransformerInferWrapper:
 
         cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(q, k_lens=seq_lens)
         
-        k, v = self.get_kv_cache_from_manager(cur_key=k, cur_value=v)
+        if self.use_kv_cache:
+            k, v = self.get_kv_cache_from_manager(cur_key=k, cur_value=v)
 
-        attn_out = weights.self_attn_1.apply(
-            q=q,
-            k=k,
-            v=v,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_k,
-            max_seqlen_q=q.size(0),
-            max_seqlen_kv=k.size(0),
-            model_cls=self.config["model_cls"],
-        )
+            attn_out = weights.self_attn_1.apply(
+                q=q,
+                k=k,
+                v=v,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=q.size(0),
+                max_seqlen_kv=k.size(0),
+                model_cls=self.config["model_cls"],
+            )
+        elif self.use_ring_attn_cache:
+            # if self.rank == 0:
+            #     import pdb; pdb.set_trace()
+            # else:
+            #     import time; time.sleep(99999)
+            q = q.unsqueeze(0)
+            k = k.unsqueeze(0)
+            v = v.unsqueeze(0)
+            sub_patch_out, sub_patch_lse = ring_attn_sub(q, k, v)
+            patch_out = self.ring_attn_cache_manager.get_full_out_with_cache(sub_patch_out, sub_patch_lse, self.patch_index, self.block_index)
+            attn_out = patch_out
 
         y = weights.self_attn_o.apply(attn_out)
         x.add_(y * gate_msa.squeeze(0))
         return x
 
     def _infer_self_attn(self, weights, x, shift_msa, scale_msa, gate_msa, grid_sizes, freqs, seq_lens):
-        if hasattr(weights, "smooth_norm1_weight"):
-            norm1_weight = (1 + scale_msa) * weights.smooth_norm1_weight.tensor
-            norm1_bias = shift_msa * weights.smooth_norm1_bias.tensor
-        else:
-            norm1_weight = 1 + scale_msa
-            norm1_bias = shift_msa
+        full_x = x
+        if self.use_kv_cache:
+            if hasattr(weights, "smooth_norm1_weight"):
+                norm1_weight = (1 + scale_msa) * weights.smooth_norm1_weight.tensor
+                norm1_bias = shift_msa * weights.smooth_norm1_bias.tensor
+            else:
+                norm1_weight = 1 + scale_msa
+                norm1_bias = shift_msa
 
-        norm1_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
-        norm1_out = (norm1_out * norm1_weight + norm1_bias).squeeze(0)
+            norm1_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
+            norm1_out = (norm1_out * norm1_weight + norm1_bias).squeeze(0)
 
-        s, n, d = *norm1_out.shape[:1], self.num_heads, self.head_dim
-        q = weights.self_attn_norm_q.apply(weights.self_attn_q.apply(norm1_out)).view(s, n, d)
-        k = weights.self_attn_norm_k.apply(weights.self_attn_k.apply(norm1_out)).view(s, n, d)
-        v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
+            s, n, d = *norm1_out.shape[:1], self.num_heads, self.head_dim
+            q = weights.self_attn_norm_q.apply(weights.self_attn_q.apply(norm1_out)).view(s, n, d)
+            k = weights.self_attn_norm_k.apply(weights.self_attn_k.apply(norm1_out)).view(s, n, d)
+            v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
 
-        if not self.parallel_attention:
             freqs_i = compute_freqs(q.size(2) // 2, grid_sizes, freqs)
-        else:
-            freqs_i = compute_freqs_dist(q.size(0), q.size(2) // 2, grid_sizes, freqs)
 
-        q = apply_rotary_emb(q, freqs_i)
-        k = apply_rotary_emb(k, freqs_i)
+            q = apply_rotary_emb(q, freqs_i)
+            k = apply_rotary_emb(k, freqs_i)
 
-        cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(q, k_lens=seq_lens)
-        
-        # if torch.distributed.get_rank() == 0:
-        #     import pdb; pdb.set_trace()
-        # import time; time.sleep(9999)
-        self.update_kv_cache_manager(full_key=k, full_value=v)
-        # print(self.kv_cache_manager.key_cache_list)
-        # print(self.kv_cache_manager.value_cache_list)
+            cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(q, k_lens=seq_lens)
+            
+            self.update_kv_cache_manager(full_key=k, full_value=v)
+            
+            # if self.rank == 0:
+            #     import pdb; pdb.set_trace()
+            # else:
+            #     import time; time.sleep(9999)
 
-        attn_out = weights.self_attn_1.apply(
-            q=q,
-            k=k,
-            v=v,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_k,
-            max_seqlen_q=q.size(0),
-            max_seqlen_kv=k.size(0),
-            model_cls=self.config["model_cls"],
-        )
+            attn_out = weights.self_attn_1.apply(
+                q=q,
+                k=k,
+                v=v,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_k,
+                max_seqlen_q=q.size(0),
+                max_seqlen_kv=k.size(0),
+                model_cls=self.config["model_cls"],
+            )
+        elif self.use_ring_attn_cache:
+            xs = self.get_patch_inputs(x)
+            qs, ks, vs = [], [], []
+            for patch_index, x in enumerate(xs):
+                self.patch_index = patch_index
+                if hasattr(weights, "smooth_norm1_weight"):
+                    norm1_weight = (1 + scale_msa) * weights.smooth_norm1_weight.tensor
+                    norm1_bias = shift_msa * weights.smooth_norm1_bias.tensor
+                else:
+                    norm1_weight = 1 + scale_msa
+                    norm1_bias = shift_msa
 
+                norm1_out = torch.nn.functional.layer_norm(x, (x.shape[1],), None, None, 1e-6)
+                norm1_out = (norm1_out * norm1_weight + norm1_bias).squeeze(0)
+
+                s, n, d = *norm1_out.shape[:1], self.num_heads, self.head_dim
+                q = weights.self_attn_norm_q.apply(weights.self_attn_q.apply(norm1_out)).view(s, n, d)
+                k = weights.self_attn_norm_k.apply(weights.self_attn_k.apply(norm1_out)).view(s, n, d)
+                v = weights.self_attn_v.apply(norm1_out).view(s, n, d)
+
+                freqs_i = compute_freqs_by_patch(q.size(0), q.size(2) // 2, grid_sizes, freqs, patch_index=self.patch_index, patch_num=self.patch_num)
+
+                q = apply_rotary_emb(q, freqs_i)
+                k = apply_rotary_emb(k, freqs_i)
+
+                cu_seqlens_q, cu_seqlens_k = self._calculate_q_k_len(q, k_lens=seq_lens)
+                
+                q = q.unsqueeze(0)
+                k = k.unsqueeze(0)
+                v = v.unsqueeze(0)
+                
+                qs.append(q)
+                ks.append(k)
+                vs.append(v)
+            
+            full_out = []
+            
+            for q_patch_index, q in enumerate(qs):
+                patch_out, patch_lse = None, None
+                for kv_patch_index, (k, v) in enumerate(zip(ks, vs)):
+                    sub_patch_out, sub_patch_lse = ring_attn_sub(q, k, v)
+                
+                    self.ring_attn_cache_manager.update_cache(sub_patch_out, sub_patch_lse, q_patch_index, kv_patch_index, self.block_index)
+                    
+                    patch_out, patch_lse = update_out_and_lse(patch_out, patch_lse, sub_patch_out, sub_patch_lse)
+                full_out.append(patch_out)
+                
+            full_out = torch.cat(full_out, dim=1)
+                    
+            attn_out = full_out.to(torch.bfloat16).squeeze(0).reshape(q.shape[1]*self.patch_num, -1)
+            
         y = weights.self_attn_o.apply(attn_out)
-        x.add_(y * gate_msa.squeeze(0))
-        return x
+        full_x.add_(y * gate_msa.squeeze(0))
+        return full_x
