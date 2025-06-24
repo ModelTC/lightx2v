@@ -1,7 +1,7 @@
 # LightX2V: Light Video Generation Inference Framework
 
 <div align="center" id="lightx2v">
-<img alt="logo" src="assets/img_lightx2v.jpg" width=75%></img>
+<img alt="logo" src="assets/img_lightx2v.png" width=75%></img>
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ModelTC/lightx2v)
