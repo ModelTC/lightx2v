@@ -18,10 +18,12 @@ class PipelineParallelWanTransformerInferWrapper:
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         
-        self.patch_num=self.config.get("patch_num", 4)
+        self.patch_num=self.config.get("patch_num", 2)
         self.patch_results = [None for i in range(self.patch_num)]
         
         self.reset_block_index()
+        
+        self.infer_func = self._infer_without_offload
         
         
     def set_blocks_num(self, blocks_num):
@@ -64,6 +66,21 @@ class PipelineParallelWanTransformerInferWrapper:
         else:
             return getattr(self.transformer_infer, name)
         
+    def _infer_without_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+        for block_idx in range(self.blocks_num):
+            self.block_index = block_idx
+            x = self.infer_block(
+                weights.blocks[block_idx],
+                grid_sizes,
+                embed,
+                x,
+                embed0,
+                seq_lens,
+                freqs,
+                context,
+            )
+        return x
+        
     # @torch.compile(disable=not CHECK_ENABLE_GRAPH_MODE())
     def infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, is_warmup):
         if is_warmup:
@@ -80,7 +97,6 @@ class PipelineParallelWanTransformerInferWrapper:
                 x = self.infer_func(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
                 dist.send(x, dst=self.rank+1)
             dist.broadcast(x, src=self.world_size-1)
-            self.block_index += 1
         else:
             logger.info(f"kv-cache infer is running")
             self.transformer_infer._infer_self_attn = self._infer_self_attn_cached
@@ -110,6 +126,7 @@ class PipelineParallelWanTransformerInferWrapper:
         return x
     
     def _infer_self_attn_cached(self, weights, x, shift_msa, scale_msa, gate_msa, grid_sizes, freqs, seq_lens):
+        logger.info(f"[RANK{self.rank}] cur block idx: {self.block_index}, cur patch idx: {self.patch_index}")
         if hasattr(weights, "smooth_norm1_weight"):
             norm1_weight = (1 + scale_msa) * weights.smooth_norm1_weight.tensor
             norm1_bias = shift_msa * weights.smooth_norm1_bias.tensor
