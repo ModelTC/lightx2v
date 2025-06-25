@@ -21,7 +21,7 @@ class PipelineParallelWanTransformerInferWrapper:
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         
-        self.patch_num=self.config.get("patch_num", 2)
+        self.patch_num=self.config.get("patch_num", 4)
         self.patch_results = [None for i in range(self.patch_num)]
         
         self.reset_block_index()
@@ -105,9 +105,10 @@ class PipelineParallelWanTransformerInferWrapper:
                 dist.send(x, dst=self.rank+1)
             dist.broadcast(x, src=self.world_size-1)
         else:
-            # logger.info(f"kv-cache infer is running")
+            # logger.info(f"[RANK{self.rank}] kv-cache infer is running")
+            # if self.rank == 0:
+            #     import pdb; pdb.set_trace()
             self.transformer_infer._infer_self_attn = self._infer_self_attn_cached
-            ori_x = x
             xs = self.get_patch_inputs(x)
             # if self.rank == 0:
             #     import pdb; pdb.set_trace()
@@ -115,6 +116,7 @@ class PipelineParallelWanTransformerInferWrapper:
                 self.patch_index = patch_index
                 if self.rank == 0:
                     x = self.infer_func(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                    self.patch_results[patch_index] = x
                     dist.send(x, dst=self.rank+1)
                 elif self.rank == self.world_size-1:
                     dist.recv(x, src=self.rank-1)
@@ -123,11 +125,12 @@ class PipelineParallelWanTransformerInferWrapper:
                 else:
                     dist.recv(x, src=self.rank-1)
                     x = self.infer_func(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                    self.patch_results[patch_index] = x
                     dist.send(x, dst=self.rank+1)
-            if self.rank == self.world_size-1:
-                full_x = torch.cat(self.patch_results, dim=0)
-            else:
-                full_x = torch.empty_like(ori_x)
+            full_x = torch.cat(self.patch_results, dim=0)
+            # logger.info(f"[RANK{self.rank}] ori_x shape: {ori_x.shape}, full_x shape: {full_x.shape}")
+            # if self.rank == self.world_size-1:
+            #     import pdb; pdb.set_trace()
             dist.broadcast(full_x, src=self.world_size-1)
             x = full_x
         return x
