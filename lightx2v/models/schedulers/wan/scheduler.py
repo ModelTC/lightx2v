@@ -113,6 +113,15 @@ class WanScheduler(BaseScheduler):
         x0_pred = sample - sigma_t * model_output
         return x0_pred
 
+    def reset(self):
+        self.model_outputs = [None] * self.solver_order
+        self.timestep_list = [None] * self.solver_order
+        self.last_sample = None
+        self.noise_pred = None
+        self.this_order = None
+        self.lower_order_nums = 0
+        self.prepare_latents(self.config.target_shape, dtype=torch.float32)
+
     def multistep_uni_p_bh_update(
         self,
         model_output: torch.Tensor,
