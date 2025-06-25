@@ -34,18 +34,9 @@ class PipelineParallelWanModelWrapper:
         if self.config["cpu_offload"]:
             self.pre_weight.to_cuda()
             self.post_weight.to_cuda()
-            
-        # import torch
-        # if torch.distributed.get_rank() == 0:
-        #     import pdb; pdb.set_trace()
-        # import time; time.sleep(99999)
 
         embed, grid_sizes, pre_infer_out = self.pre_infer.infer(self.pre_weight, inputs, positive=True)
         x = self.transformer_infer.infer(self.transformer_weights, grid_sizes, embed, *pre_infer_out, is_warmup=is_warmup)
-        # import torch
-        # if torch.distributed.get_rank() == 0:
-        #     import pdb; pdb.set_trace()
-        # import time; time.sleep(99999)
         noise_pred_cond = self.post_infer.infer(self.post_weight, x, embed, grid_sizes)[0]
 
         if self.config["feature_caching"] == "Tea":

@@ -12,7 +12,7 @@ class PipelineParallelWanRunnerWrapper:
         self.runner = runner
         self.config = config
         
-        self.wramup_steps = self.config.get("wramup_steps", 10)
+        self.wramup_steps = self.config.get("wramup_steps", 4)
         
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
