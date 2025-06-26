@@ -372,6 +372,7 @@ class AudioAdapterPipe:
         self.device = device
         self.generator = generator
         self.audio_encoder_dtype = torch.float16
+        ##音频编码器
         self.audio_encoder = AutoModel.from_pretrained(audio_encoder_repo)
 
         self.audio_encoder.eval()

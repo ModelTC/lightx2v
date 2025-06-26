@@ -11,7 +11,7 @@ from lightx2v.models.schedulers.wan.scheduler import WanScheduler
 from lightx2v.models.networks.wan.model import WanModel
 from lightx2v.utils.profiler import ProfilingContext4Debug, ProfilingContext
 from lightx2v.models.input_encoders.hf.t5.model import T5EncoderModel
-from lightx2v.models.input_encoders.hf.xlm_roberta.model import CLIPModel
+from lightx2v.models.input_encoders.hf.xlm_roberta.model import CLIPModel, WanVideoIPHandler
 from lightx2v.models.networks.wan.audio_model import WanAudioModel
 from lightx2v.models.networks.wan.lora_adapter import WanLoraWrapper
 from lightx2v.models.video_encoders.hf.wan.vae import WanVAE
@@ -243,7 +243,8 @@ class WanAudioRunner(WanRunner):
         super().__init__(config)
 
     def load_audio_models(self):
-        self.audio_encoder = AutoFeatureExtractor.from_pretrained(self.config["model_path"], subfolder="audio_encoder")
+        ##音频特征提取器
+        self.audio_preprocess = AutoFeatureExtractor.from_pretrained(self.config["model_path"], subfolder="audio_encoder")
         audio_adaper = AudioAdapter.from_transformer(
             self.model,
             audio_feature_dim=1024,
@@ -264,6 +265,18 @@ class WanAudioRunner(WanRunner):
         base_model = WanAudioModel(self.config.model_path, self.config, self.init_device)
         return base_model
 
+    def load_image_encoder(self):
+ 
+        image_encoder = WanVideoIPHandler(
+            "CLIPModel",
+            repo_or_path="/mnt/aigc/zoemodels/Wan21/Wan2.1-I2V-14B-720P-Diffusers",
+            require_grad=False,
+            mode='eval',
+            device=self.init_device,
+            dtype=torch.float16)
+
+        return image_encoder
+
     def run_image_encoder(self, config, vae_model):
         ref_img = Image.open(config.image_path)
         ref_img = (np.array(ref_img).astype(np.float32) - 127.5) / 127.5
@@ -275,8 +288,7 @@ class WanAudioRunner(WanRunner):
         cond_frms, tgt_h, tgt_w = adaptive_resize(ref_img)
         config.tgt_h = tgt_h
         config.tgt_w = tgt_w
-
-        clip_encoder_out = self.image_encoder.visual([cond_frms.squeeze(0)[:, None, :, :]], config).squeeze(0).to(torch.bfloat16)
+        clip_encoder_out = self.image_encoder.encode(cond_frms).squeeze(0).to(torch.bfloat16)
 
         cond_frms = rearrange(cond_frms, "1 C H W -> 1 C 1 H W")
         lat_h, lat_w = tgt_h // 8, tgt_w // 8
@@ -392,7 +404,7 @@ class WanAudioRunner(WanRunner):
                 if expected_frames < max_num_frames:
                     useful_length = audio_array.shape[0]
                     audio_array = np.concatenate((audio_array, np.zeros(max_num_audio_length)[: max_num_audio_length - useful_length]), axis=0)
-                audio_input_feat = self.audio_encoder(audio_array, sampling_rate=audio_sr, return_tensors="pt").input_values.squeeze(0)
+                audio_input_feat = self.audio_preprocess(audio_array, sampling_rate=audio_sr, return_tensors="pt").input_values.squeeze(0)
 
             elif res_frame_num > 5 and idx == interval_num - 1:  # 最后一段可能不够81帧
                 prev_frames = torch.zeros((1, 3, max_num_frames, tgt_h, tgt_w), device=device)
@@ -403,7 +415,7 @@ class WanAudioRunner(WanRunner):
                 audio_array = audio_array_ori[audio_start:audio_end]
                 useful_length = audio_array.shape[0]
                 audio_array = np.concatenate((audio_array, np.zeros(max_num_audio_length)[: max_num_audio_length - useful_length]), axis=0)
-                audio_input_feat = self.audio_encoder(audio_array, sampling_rate=audio_sr, return_tensors="pt").input_values.squeeze(0)
+                audio_input_feat = self.audio_preprocess(audio_array, sampling_rate=audio_sr, return_tensors="pt").input_values.squeeze(0)
 
             else:  # 中间段满81帧带pre_latens
                 prev_frames = torch.zeros((1, 3, max_num_frames, tgt_h, tgt_w), device=device)
@@ -412,7 +424,7 @@ class WanAudioRunner(WanRunner):
                 prev_len = prev_token_length
                 audio_start, audio_end = get_audio_range(idx * max_num_frames - idx * prev_frame_length, (idx + 1) * max_num_frames - idx * prev_frame_length, fps=target_fps, audio_sr=audio_sr)
                 audio_array = audio_array_ori[audio_start:audio_end]
-                audio_input_feat = self.audio_encoder(audio_array, sampling_rate=audio_sr, return_tensors="pt").input_values.squeeze(0)
+                audio_input_feat = self.audio_preprocess(audio_array, sampling_rate=audio_sr, return_tensors="pt").input_values.squeeze(0)
 
             self.inputs["audio_encoder_output"] = audio_input_feat.to(device)
 
