@@ -7,12 +7,8 @@ from diffusers.models.embeddings import TimestepEmbedding, Timesteps
 from einops import rearrange
 from transformers import AutoModel
 from loguru import logger
-import pdb
-
 import os
 import safetensors
-
-from typing import List, Optional, Tuple, Union
 
 
 def load_safetensors(in_path: str):

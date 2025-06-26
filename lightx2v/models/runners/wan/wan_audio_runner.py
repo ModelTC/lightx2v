@@ -31,7 +31,6 @@ from torchvision.transforms.functional import resize
 import subprocess
 import warnings
 from typing import Optional, Tuple, Union
-import pdb
 
 
 def get_crop_bbox(ori_h, ori_w, tgt_h, tgt_w):
@@ -417,9 +416,6 @@ class WanAudioRunner(WanRunner):
 
             self.inputs["audio_encoder_output"] = audio_input_feat.to(device)
 
-            if idx != 0:
-                self.model.scheduler.reset()
-
             if prev_latents is not None:
                 ltnt_channel, nframe, height, width = self.model.scheduler.latents.shape
                 bs = 1
@@ -447,6 +443,11 @@ class WanAudioRunner(WanRunner):
 
             latents = self.model.scheduler.latents
             generator = self.model.scheduler.generator
+
+            if self.config.feature_caching == "Tea":
+                self.model.scheduler.clear()
+            self.model.scheduler.reset()
+
             gen_video = self.vae_decoder.decode(latents, generator=generator, config=self.config)
 
             # gen_img = vae_handler.decode(xt.to(vae_dtype))

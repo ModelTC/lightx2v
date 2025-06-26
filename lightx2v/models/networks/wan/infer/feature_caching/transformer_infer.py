@@ -7,7 +7,7 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
 
-    def infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+    def infer(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, audio_dit_blocks=None):
         modulated_inp = embed0 if self.scheduler.use_ret_steps else embed
 
         # teacache
@@ -69,6 +69,7 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                     seq_lens,
                     freqs,
                     context,
+                    audio_dit_blocks,
                 )
                 self.scheduler.previous_residual_even = x - ori_x
                 if self.config["cpu_offload"]:
@@ -90,6 +91,7 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                     seq_lens,
                     freqs,
                     context,
+                    audio_dit_blocks,
                 )
                 self.scheduler.previous_residual_odd = x - ori_x
                 if self.config["cpu_offload"]:
@@ -97,4 +99,5 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                     ori_x = ori_x.to("cpu")
                     del ori_x
                     torch.cuda.empty_cache()
+
         return x

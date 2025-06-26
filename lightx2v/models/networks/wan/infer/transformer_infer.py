@@ -3,8 +3,6 @@ from .utils import compute_freqs_audio, compute_freqs_audio_dist, apply_rotary_e
 from lightx2v.common.offload.manager import WeightAsyncStreamManager, LazyWeightAsyncStreamManager
 from lightx2v.utils.envs import *
 from loguru import logger
-import pdb
-import os
 
 
 class WanTransformerInfer:
