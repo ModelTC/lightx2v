@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # set path and first
-lightx2v_path=
-model_path=
+lightx2v_path='/home/huangxinchi/workspace/temp/lightx2v'
+model_path='/data/nvme0/yongyang/models/x2v_models/wan/Wan2.1-I2V-14B-480P'
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
-    cuda_devices=0
+    cuda_devices=2
     echo "Warn: CUDA_VISIBLE_DEVICES is not set, using default value: ${cuda_devices}, change at shell script or set env variable."
     export CUDA_VISIBLE_DEVICES=${cuda_devices}
 fi
@@ -29,6 +29,7 @@ export ENABLE_PROFILING_DEBUG=true
 export ENABLE_GRAPH_MODE=false
 export DTYPE=BF16
 
+# nsys profile -o 1gpu_offload \
 python -m lightx2v.infer \
 --model_cls wan2.1 \
 --task i2v \

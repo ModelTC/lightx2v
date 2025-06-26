@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # set path and first
-lightx2v_path=
-model_path=
+lightx2v_path='/home/huangxinchi/workspace/temp/lightx2v'
+model_path='/data/nvme0/yongyang/models/x2v_models/wan/Wan2.1-T2V-1.3B'
 
 # check section
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
@@ -28,11 +28,12 @@ export DTYPE=BF16
 export ENABLE_PROFILING_DEBUG=true
 export ENABLE_GRAPH_MODE=false
 
+# nsys profile -o offload_debug2 \
 python -m lightx2v.infer \
 --model_cls wan2.1 \
 --task t2v \
 --model_path $model_path \
---config_json ${lightx2v_path}/configs/wan_t2v.json \
+--config_json ${lightx2v_path}/configs/offload/wan_t2v_block.json \
 --prompt "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage." \
 --negative_prompt "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走" \
 --save_video_path ${lightx2v_path}/save_results/output_lightx2v_wan_t2v.mp4

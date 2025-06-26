@@ -10,6 +10,6 @@
     "sample_shift": 8,
     "enable_cfg": true,
     "cpu_offload": false,
-    "parallel_attn_type": "ulysses",
+    "parallel_attn_type": "pipefusion",
     "parallel_vae": true
 }
