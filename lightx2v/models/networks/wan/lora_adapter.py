@@ -61,9 +61,9 @@ class WanLoraWrapper:
         prefix = "diffusion_model."
 
         for key in lora_weights.keys():
-            if key.endswith("lora_A.weight") and key.startswith(prefix):
-                base_name = key[len(prefix) :].replace("lora_A.weight", "weight")
-                b_key = key.replace("lora_A.weight", "lora_B.weight")
+            if key.endswith("lora_down.weight") and key.startswith(prefix):
+                base_name = key[len(prefix) :].replace("lora_down.weight", "weight")
+                b_key = key.replace("lora_down.weight", "lora_up.weight")
                 if b_key in lora_weights:
                     lora_pairs[base_name] = (key, b_key)
 
@@ -72,7 +72,8 @@ class WanLoraWrapper:
             if name in lora_pairs:
                 if name not in self.override_dict:
                     self.override_dict[name] = param.clone().cpu()
-
+                # import pdb
+                # pdb.set_trace()
                 name_lora_A, name_lora_B = lora_pairs[name]
                 lora_A = lora_weights[name_lora_A].to(param.device, param.dtype)
                 lora_B = lora_weights[name_lora_B].to(param.device, param.dtype)

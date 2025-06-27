@@ -263,17 +263,20 @@ class WanAudioRunner(WanRunner):
 
     def load_transformer(self):
         base_model = WanAudioModel(self.config.model_path, self.config, self.init_device)
+
+        if self.config.lora_path:
+            assert not self.config.get("dit_quantized", False) or self.config.mm_config.get("weight_auto_quant", False)
+            lora_wrapper = WanLoraWrapper(base_model)
+            lora_name = lora_wrapper.load_lora(self.config.lora_path)
+            lora_wrapper.apply_lora(lora_name, self.config.strength_model)
+            logger.info(f"Loaded LoRA: {lora_name}")
+
         return base_model
 
     def load_image_encoder(self):
- 
         image_encoder = WanVideoIPHandler(
-            "CLIPModel",
-            repo_or_path="/mnt/aigc/zoemodels/Wan21/Wan2.1-I2V-14B-720P-Diffusers",
-            require_grad=False,
-            mode='eval',
-            device=self.init_device,
-            dtype=torch.float16)
+            "CLIPModel", repo_or_path="/mnt/aigc/zoemodels/Wan21/Wan2.1-I2V-14B-720P-Diffusers", require_grad=False, mode="eval", device=self.init_device, dtype=torch.float16
+        )
 
         return image_encoder
 

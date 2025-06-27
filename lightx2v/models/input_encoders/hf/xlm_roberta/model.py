@@ -430,17 +430,10 @@ class CLIPModel:
 
 
 class WanVideoIPHandler:
-
-    def __init__(self,
-                 model_name,
-                 repo_or_path,
-                 require_grad=False,
-                 mode='eval',
-                 device='cuda',
-                 dtype=torch.float16):
+    def __init__(self, model_name, repo_or_path, require_grad=False, mode="eval", device="cuda", dtype=torch.float16):
         # image_processor = CLIPImageProcessor.from_pretrained(
         #     repo_or_path, subfolder='image_processor')
-        ''' 720P-I2V-diffusers config is
+        """720P-I2V-diffusers config is
             "size": {
                 "shortest_edge": 224
             }
@@ -451,14 +444,11 @@ class WanVideoIPHandler:
         }
         but Wan2.1 official use no_crop resize by default
         so I don't use CLIPImageProcessor
-        '''
-        image_encoder = CLIPVisionModel.from_pretrained(
-            repo_or_path, subfolder='image_encoder', torch_dtype=dtype)
-        logger.info(
-            f'Using image encoder {model_name} from {repo_or_path}'
-        )
+        """
+        image_encoder = CLIPVisionModel.from_pretrained(repo_or_path, subfolder="image_encoder", torch_dtype=dtype)
+        logger.info(f"Using image encoder {model_name} from {repo_or_path}")
         image_encoder.requires_grad_(require_grad)
-        if mode == 'eval':
+        if mode == "eval":
             image_encoder.eval()
         else:
             image_encoder.train()
@@ -478,16 +468,10 @@ class WanVideoIPHandler:
         if img_tensor.ndim == 5:  # B C T H W
             # img_tensor = img_tensor[:, :, 0]
             img_tensor = rearrange(img_tensor, "B C 1 H W -> B C H W")
-        img_tensor = torch.clamp(
-            img_tensor.float() * 0.5 + 0.5, min=0.0, max=1.0).to(self.device)
-        img_tensor = F.interpolate(
-            img_tensor, size=self.size, mode='bicubic', align_corners=False)
+        img_tensor = torch.clamp(img_tensor.float() * 0.5 + 0.5, min=0.0, max=1.0).to(self.device)
+        img_tensor = F.interpolate(img_tensor, size=self.size, mode="bicubic", align_corners=False)
         img_tensor = self.normalize(img_tensor).to(self.dtype)
- 
-        logger.info(
-            f'Image tensor shape after processing: {img_tensor}')
-        image_embeds = self.image_encoder(
-            pixel_values=img_tensor, output_hidden_states=True)
-        logger.info(
-            f'Image embeds : {image_embeds.hidden_states[-1]}')
+
+        image_embeds = self.image_encoder(pixel_values=img_tensor, output_hidden_states=True)
+
         return image_embeds.hidden_states[-1]

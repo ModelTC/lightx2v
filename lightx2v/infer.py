@@ -48,6 +48,7 @@ async def main():
 
     parser.add_argument("--prompt", type=str, default="", help="The input prompt for text-to-video generation")
     parser.add_argument("--negative_prompt", type=str, default="")
+    parser.add_argument("--lora_path", type=str, default="", help="The lora file path")
     parser.add_argument("--prompt_path", type=str, default="", help="The path to input prompt file")
     parser.add_argument("--audio_path", type=str, default="", help="The path to input audio file")
     parser.add_argument("--image_path", type=str, default="", help="The path to input image file or path for image-to-video (i2v) task")
