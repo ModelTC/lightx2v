@@ -4,10 +4,11 @@ from lightx2v.common.offload.manager import (
     WeightAsyncStreamManager,
     LazyWeightAsyncStreamManager,
 )
+from lightx2v.common.transformer_infer.transformer_infer import BaseTransformerInfer
 from lightx2v.utils.envs import *
 
 
-class WanTransformerInfer:
+class WanTransformerInfer(BaseTransformerInfer):
     def __init__(self, config):
         self.config = config
         self.task = config["task"]
@@ -49,8 +50,10 @@ class WanTransformerInfer:
         else:
             self.infer_func = self._infer_without_offload
 
-    def set_scheduler(self, scheduler):
-        self.scheduler = scheduler
+        self.infer_conditional = True
+
+    def switch_status(self):
+        self.infer_conditional = not self.infer_conditional
 
     def _calculate_q_k_len(self, q, k_lens):
         q_lens = torch.tensor([q.size(0)], dtype=torch.int32, device=q.device)
