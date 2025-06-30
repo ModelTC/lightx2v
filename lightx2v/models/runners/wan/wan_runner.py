@@ -117,7 +117,7 @@ class WanRunner(DefaultRunner):
             scheduler = WanScheduler(self.config)
         elif self.config.feature_caching == "Tea":
             scheduler = WanSchedulerTeaCaching(self.config)
-        elif self.config.feature_caching == "Taylor":
+        elif self.config.feature_caching == "TaylorSeer":
             scheduler = WanSchedulerTaylorCaching(self.config)
         elif self.config.feature_caching == "Ada":
             scheduler = WanSchedulerAdaCaching(self.config)

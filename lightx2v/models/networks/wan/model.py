@@ -62,7 +62,7 @@ class WanModel:
             self.transformer_infer_class = WanTransformerInfer
         elif self.config["feature_caching"] == "Tea":
             self.transformer_infer_class = WanTransformerInferTeaCaching
-        elif self.config["feature_caching"] == "Taylor":
+        elif self.config["feature_caching"] == "TaylorSeer":
             self.transformer_infer_class = WanTransformerInferTaylorCaching
         elif self.config["feature_caching"] == "Ada":
             self.transformer_infer_class = WanTransformerInferAdaCaching

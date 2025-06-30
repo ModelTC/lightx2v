@@ -305,13 +305,23 @@ class WanTransformerInferTaylorCaching(WanTransformerInfer, BaseTaylorCachingTra
         for cache in self.blocks_cache_even:
             for key in cache:
                 if cache[key] is not None:
-                    cache[key] = cache[key].cpu()
+                    if isinstance(cache[key], torch.Tensor):
+                        cache[key] = cache[key].cpu()
+                    elif isinstance(cache[key], dict):
+                        for k, v in cache[key].items():
+                            if isinstance(v, torch.Tensor):
+                                cache[key][k] = v.cpu()
             cache.clear()
 
         for cache in self.blocks_cache_odd:
             for key in cache:
                 if cache[key] is not None:
-                    cache[key] = cache[key].cpu()
+                    if isinstance(cache[key], torch.Tensor):
+                        cache[key] = cache[key].cpu()
+                    elif isinstance(cache[key], dict):
+                        for k, v in cache[key].items():
+                            if isinstance(v, torch.Tensor):
+                                cache[key][k] = v.cpu()
             cache.clear()
         torch.cuda.empty_cache()
 
