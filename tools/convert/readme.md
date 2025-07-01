@@ -108,7 +108,7 @@ python converter.py \
   --quantized \
   --output /Path/To/output \
   --output_ext .pth \
-  --output_name clip_int8.pth \
+  --output_name clip_int8 \
   --dtype torch.int8 \
   --model_type wan_clip
 
@@ -119,7 +119,7 @@ python converter.py \
   --quantized \
   --output /Path/To/output \
   --output_ext .pth \
-  --output_name clip_fp8.pth \
+  --output_name clip_fp8 \
   --dtype torch.float8_e4m3fn \
   --model_type wan_clip
 ```

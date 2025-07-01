@@ -1,0 +1,19 @@
+{
+    "infer_steps": 40,
+    "target_video_length": 81,
+    "target_height": 480,
+    "target_width": 832,
+    "attention_type": "flash_attn3",
+    "seed": 442,
+    "sample_guide_scale": 5,
+    "sample_shift": 3,
+    "enable_cfg": true,
+    "cpu_offload": false,
+    "feature_caching": "Custom",
+    "coefficients": [
+        [2.57151496e05, -3.54229917e04, 1.40286849e03, -1.35890334e01, 1.32517977e-01],
+        [-3.02331670e02, 2.23948934e02, -5.25463970e01, 5.87348440e00, -2.01973289e-01]
+    ],
+    "use_ret_steps": true,
+    "teacache_thresh": 0.26
+}
