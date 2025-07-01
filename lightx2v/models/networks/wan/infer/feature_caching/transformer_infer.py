@@ -2,13 +2,14 @@ from ..transformer_infer import WanTransformerInfer
 from lightx2v.common.transformer_infer.transformer_infer import BaseTaylorCachingTransformerInfer
 import torch
 import numpy as np
+import gc
 
 
 # 1. TeaCaching
 class WanTransformerInferTeaCaching(WanTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
-
+        self.cnt = 0
         self.teacache_thresh = config.teacache_thresh
         self.accumulated_rel_l1_distance_even = 0
         self.previous_e0_even = None
@@ -16,71 +17,18 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
         self.accumulated_rel_l1_distance_odd = 0
         self.previous_e0_odd = None
         self.previous_residual_odd = None
-
         self.use_ret_steps = config.use_ret_steps
-        self.set_attributes_by_task_and_model()
-        self.cnt = 0
-
-    # only in Wan2.1 TeaCaching
-    def set_attributes_by_task_and_model(self):
-        if self.config.task == "i2v":
-            if self.use_ret_steps:
-                if self.config.target_width == 480 or self.config.target_height == 480:
-                    self.coefficients = [
-                        2.57151496e05,
-                        -3.54229917e04,
-                        1.40286849e03,
-                        -1.35890334e01,
-                        1.32517977e-01,
-                    ]
-                if self.config.target_width == 720 or self.config.target_height == 720:
-                    self.coefficients = [
-                        8.10705460e03,
-                        2.13393892e03,
-                        -3.72934672e02,
-                        1.66203073e01,
-                        -4.17769401e-02,
-                    ]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = self.config.infer_steps * 2
-            else:
-                if self.config.target_width == 480 or self.config.target_height == 480:
-                    self.coefficients = [
-                        -3.02331670e02,
-                        2.23948934e02,
-                        -5.25463970e01,
-                        5.87348440e00,
-                        -2.01973289e-01,
-                    ]
-                if self.config.target_width == 720 or self.config.target_height == 720:
-                    self.coefficients = [
-                        -114.36346466,
-                        65.26524496,
-                        -18.82220707,
-                        4.91518089,
-                        -0.23412683,
-                    ]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = self.config.infer_steps * 2 - 2
-
-        elif self.config.task == "t2v":
-            if self.use_ret_steps:
-                if "1.3B" in self.config.model_path:
-                    self.coefficients = [-5.21862437e04, 9.23041404e03, -5.28275948e02, 1.36987616e01, -4.99875664e-02]
-                if "14B" in self.config.model_path:
-                    self.coefficients = [-3.03318725e05, 4.90537029e04, -2.65530556e03, 5.87365115e01, -3.15583525e-01]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = self.config.infer_steps * 2
-            else:
-                if "1.3B" in self.config.model_path:
-                    self.coefficients = [2.39676752e03, -1.31110545e03, 2.01331979e02, -8.29855975e00, 1.37887774e-01]
-                if "14B" in self.config.model_path:
-                    self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = self.config.infer_steps * 2 - 2
+        if self.use_ret_steps:
+            self.coefficients = self.config.coefficients[0]
+            self.ret_steps = 5 * 2
+            self.cutoff_steps = self.config.infer_steps * 2
+        else:
+            self.coefficients = self.config.coefficients[1]
+            self.ret_steps = 1 * 2
+            self.cutoff_steps = self.config.infer_steps * 2 - 2
 
     # calculate should_calc
-    def calculate_should_calc(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+    def calculate_should_calc(self, embed, embed0):
         # 1. timestep embedding
         modulated_inp = embed0 if self.use_ret_steps else embed
 
@@ -92,13 +40,15 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                 self.accumulated_rel_l1_distance_even = 0
             else:
                 rescale_func = np.poly1d(self.coefficients)
-                self.accumulated_rel_l1_distance_even += rescale_func(((modulated_inp - self.previous_e0_even).abs().mean() / self.previous_e0_even.abs().mean()).cpu().item())
+                self.accumulated_rel_l1_distance_even += rescale_func(((modulated_inp - self.previous_e0_even.cuda()).abs().mean() / self.previous_e0_even.cuda().abs().mean()).cpu().item())
                 if self.accumulated_rel_l1_distance_even < self.teacache_thresh:
                     should_calc = False
                 else:
                     should_calc = True
                     self.accumulated_rel_l1_distance_even = 0
             self.previous_e0_even = modulated_inp.clone()
+            if self.config["cpu_offload"]:
+                self.previous_e0_even = self.previous_e0_even.cpu()
 
         else:
             if self.cnt < self.ret_steps or self.cnt >= self.cutoff_steps:
@@ -106,13 +56,26 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
                 self.accumulated_rel_l1_distance_odd = 0
             else:
                 rescale_func = np.poly1d(self.coefficients)
-                self.accumulated_rel_l1_distance_odd += rescale_func(((modulated_inp - self.previous_e0_odd).abs().mean() / self.previous_e0_odd.abs().mean()).cpu().item())
+                self.accumulated_rel_l1_distance_odd += rescale_func(((modulated_inp - self.previous_e0_odd.cuda()).abs().mean() / self.previous_e0_odd.cuda().abs().mean()).cpu().item())
                 if self.accumulated_rel_l1_distance_odd < self.teacache_thresh:
                     should_calc = False
                 else:
                     should_calc = True
                     self.accumulated_rel_l1_distance_odd = 0
             self.previous_e0_odd = modulated_inp.clone()
+
+            if self.config["cpu_offload"]:
+                self.previous_e0_odd = self.previous_e0_odd.cpu()
+
+        if self.config["cpu_offload"]:
+            modulated_inp = modulated_inp.cpu()
+            del modulated_inp
+            torch.cuda.empty_cache()
+            gc.collect()
+
+        if self.clean_cuda_cache:
+            del embed, embed0
+            torch.cuda.empty_cache()
 
         # 3. return the judgement
         return should_calc
@@ -122,54 +85,71 @@ class WanTransformerInferTeaCaching(WanTransformerInfer):
             index = self.scheduler.step_index
             caching_records = self.scheduler.caching_records
             if index <= self.scheduler.infer_steps - 1:
-                should_calc = self.calculate_should_calc(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                should_calc = self.calculate_should_calc(embed, embed0)
                 self.scheduler.caching_records[index] = should_calc
 
             if caching_records[index]:
                 x = self.infer_calculating(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
             else:
-                x = self.infer_using_cache(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                x = self.infer_using_cache(x)
 
         else:
             index = self.scheduler.step_index
             caching_records_2 = self.scheduler.caching_records_2
             if index <= self.scheduler.infer_steps - 1:
-                should_calc = self.calculate_should_calc(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                should_calc = self.calculate_should_calc(embed, embed0)
                 self.scheduler.caching_records_2[index] = should_calc
 
             if caching_records_2[index]:
                 x = self.infer_calculating(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
             else:
-                x = self.infer_using_cache(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                x = self.infer_using_cache(x)
 
         if self.config.enable_cfg:
             self.switch_status()
 
         self.cnt += 1
 
+        if self.clean_cuda_cache:
+            del grid_sizes, embed, embed0, seq_lens, freqs, context
+            torch.cuda.empty_cache()
+
         return x
 
     def infer_calculating(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         ori_x = x.clone()
 
-        for block_idx in range(self.blocks_num):
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_phase_1(weights.blocks[block_idx], grid_sizes, embed, x, embed0, seq_lens, freqs, context)
-            y_out = self.infer_phase_2(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, seq_lens, freqs, shift_msa, scale_msa)
-            attn_out = self.infer_phase_3(weights.blocks[block_idx].compute_phases[1], x, context, y_out, gate_msa)
-            y_out = self.infer_phase_4(weights.blocks[block_idx].compute_phases[2], x, attn_out, c_shift_msa, c_scale_msa)
-            x = self.infer_phase_5(x, y_out, c_gate_msa)
-
+        x = super().infer(
+            weights,
+            grid_sizes,
+            embed,
+            x,
+            embed0,
+            seq_lens,
+            freqs,
+            context,
+        )
         if self.infer_conditional:
             self.previous_residual_even = x - ori_x
+            if self.config["cpu_offload"]:
+                self.previous_residual_even = self.previous_residual_even.cpu()
         else:
             self.previous_residual_odd = x - ori_x
+            if self.config["cpu_offload"]:
+                self.previous_residual_odd = self.previous_residual_odd.cpu()
+
+        if self.config["cpu_offload"]:
+            ori_x = ori_x.to("cpu")
+            del ori_x
+            torch.cuda.empty_cache()
+            gc.collect()
         return x
 
-    def infer_using_cache(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+    def infer_using_cache(self, x):
         if self.infer_conditional:
-            x += self.previous_residual_even
+            x.add_(self.previous_residual_even.cuda())
         else:
-            x += self.previous_residual_odd
+            x.add_(self.previous_residual_odd.cuda())
         return x
 
     def clear(self):
@@ -241,27 +221,27 @@ class WanTransformerInferTaylorCaching(WanTransformerInfer, BaseTaylorCachingTra
 
     def infer_calculating(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         for block_idx in range(self.blocks_num):
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_phase_1(weights.blocks[block_idx], grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_modulation(weights.blocks[block_idx].compute_phases[0], embed0)
 
-            y_out = self.infer_phase_2(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, seq_lens, freqs, shift_msa, scale_msa)
+            y_out = self.infer_self_attn(weights.blocks[block_idx].compute_phases[1], grid_sizes, x, seq_lens, freqs, shift_msa, scale_msa)
             if self.infer_conditional:
                 self.derivative_approximation(self.blocks_cache_even[block_idx], "self_attn_out", y_out)
             else:
                 self.derivative_approximation(self.blocks_cache_odd[block_idx], "self_attn_out", y_out)
 
-            attn_out = self.infer_phase_3(weights.blocks[block_idx].compute_phases[1], x, context, y_out, gate_msa)
+            attn_out = self.infer_cross_attn(weights.blocks[block_idx].compute_phases[2], x, context, y_out, gate_msa)
             if self.infer_conditional:
                 self.derivative_approximation(self.blocks_cache_even[block_idx], "cross_attn_out", attn_out)
             else:
                 self.derivative_approximation(self.blocks_cache_odd[block_idx], "cross_attn_out", attn_out)
 
-            y_out = self.infer_phase_4(weights.blocks[block_idx].compute_phases[2], x, attn_out, c_shift_msa, c_scale_msa)
+            y_out = self.infer_ffn(weights.blocks[block_idx].compute_phases[3], x, attn_out, c_shift_msa, c_scale_msa)
             if self.infer_conditional:
                 self.derivative_approximation(self.blocks_cache_even[block_idx], "ffn_out", y_out)
             else:
                 self.derivative_approximation(self.blocks_cache_odd[block_idx], "ffn_out", y_out)
 
-            x = self.infer_phase_5(x, y_out, c_gate_msa)
+            x = self.post_process(x, y_out, c_gate_msa)
         return x
 
     def infer_using_cache(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
@@ -272,7 +252,7 @@ class WanTransformerInferTaylorCaching(WanTransformerInfer, BaseTaylorCachingTra
     # 1. taylor using caching
     def infer_block(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, i):
         # 1. shift, scale, gate
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_phase_1(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+        _, _, gate_msa, _, _, c_gate_msa = self.infer_modulation(weights, embed0)
 
         # 2. residual and taylor
         if self.infer_conditional:
@@ -369,7 +349,7 @@ class WanTransformerInferAdaCaching(WanTransformerInfer):
                         if (index + i) <= self.scheduler.infer_steps - 1:
                             self.scheduler.caching_records_2[index + i] = False
             else:
-                x = self.infer_using_cache(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                x = self.infer_using_cache(xt)
 
         if self.config.enable_cfg:
             self.switch_status()
@@ -380,18 +360,18 @@ class WanTransformerInferAdaCaching(WanTransformerInfer):
         ori_x = x.clone()
 
         for block_idx in range(self.blocks_num):
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_phase_1(weights.blocks[block_idx], grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_modulation(weights.blocks[block_idx].compute_phases[0], embed0)
 
-            y_out = self.infer_phase_2(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, seq_lens, freqs, shift_msa, scale_msa)
+            y_out = self.infer_self_attn(weights.blocks[block_idx].compute_phases[1], grid_sizes, x, seq_lens, freqs, shift_msa, scale_msa)
             if block_idx == self.decisive_double_block_id:
                 if self.infer_conditional:
                     self.args_even.now_residual_tiny = y_out * gate_msa.squeeze(0)
                 else:
                     self.args_odd.now_residual_tiny = y_out * gate_msa.squeeze(0)
 
-            attn_out = self.infer_phase_3(weights.blocks[block_idx].compute_phases[1], x, context, y_out, gate_msa)
-            y_out = self.infer_phase_4(weights.blocks[block_idx].compute_phases[2], x, attn_out, c_shift_msa, c_scale_msa)
-            x = self.infer_phase_5(x, y_out, c_gate_msa)
+            attn_out = self.infer_cross_attn(weights.blocks[block_idx].compute_phases[2], x, context, y_out, gate_msa)
+            y_out = self.infer_ffn(weights.blocks[block_idx].compute_phases[3], x, attn_out, c_shift_msa, c_scale_msa)
+            x = self.post_process(x, y_out, c_gate_msa)
 
         if self.infer_conditional:
             self.args_even.previous_residual = x - ori_x
@@ -399,7 +379,7 @@ class WanTransformerInferAdaCaching(WanTransformerInfer):
             self.args_odd.previous_residual = x - ori_x
         return x
 
-    def infer_using_cache(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+    def infer_using_cache(self, x):
         if self.infer_conditional:
             x += self.args_even.previous_residual
         else:
@@ -542,7 +522,7 @@ class AdaArgs:
 class WanTransformerInferCustomCaching(WanTransformerInfer, BaseTaylorCachingTransformerInfer):
     def __init__(self, config):
         super().__init__(config)
-
+        self.cnt = 0
         self.teacache_thresh = config.teacache_thresh
         self.accumulated_rel_l1_distance_even = 0
         self.previous_e0_even = None
@@ -552,68 +532,15 @@ class WanTransformerInferCustomCaching(WanTransformerInfer, BaseTaylorCachingTra
         self.previous_residual_odd = None
         self.cache_even = {}
         self.cache_odd = {}
-
         self.use_ret_steps = config.use_ret_steps
-        self.set_attributes_by_task_and_model()
-        self.cnt = 0
-
-    # only in Wan2.1 TeaCaching
-    def set_attributes_by_task_and_model(self):
-        if self.config.task == "i2v":
-            if self.use_ret_steps:
-                if self.config.target_width == 480 or self.config.target_height == 480:
-                    self.coefficients = [
-                        2.57151496e05,
-                        -3.54229917e04,
-                        1.40286849e03,
-                        -1.35890334e01,
-                        1.32517977e-01,
-                    ]
-                if self.config.target_width == 720 or self.config.target_height == 720:
-                    self.coefficients = [
-                        8.10705460e03,
-                        2.13393892e03,
-                        -3.72934672e02,
-                        1.66203073e01,
-                        -4.17769401e-02,
-                    ]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = self.config.infer_steps * 2
-            else:
-                if self.config.target_width == 480 or self.config.target_height == 480:
-                    self.coefficients = [
-                        -3.02331670e02,
-                        2.23948934e02,
-                        -5.25463970e01,
-                        5.87348440e00,
-                        -2.01973289e-01,
-                    ]
-                if self.config.target_width == 720 or self.config.target_height == 720:
-                    self.coefficients = [
-                        -114.36346466,
-                        65.26524496,
-                        -18.82220707,
-                        4.91518089,
-                        -0.23412683,
-                    ]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = self.config.infer_steps * 2 - 2
-
-        elif self.config.task == "t2v":
-            if self.use_ret_steps:
-                if "1.3B" in self.config.model_path:
-                    self.coefficients = [-5.21862437e04, 9.23041404e03, -5.28275948e02, 1.36987616e01, -4.99875664e-02]
-                if "14B" in self.config.model_path:
-                    self.coefficients = [-3.03318725e05, 4.90537029e04, -2.65530556e03, 5.87365115e01, -3.15583525e-01]
-                self.ret_steps = 5 * 2
-                self.cutoff_steps = self.config.infer_steps * 2
-            else:
-                if "1.3B" in self.config.model_path:
-                    self.coefficients = [2.39676752e03, -1.31110545e03, 2.01331979e02, -8.29855975e00, 1.37887774e-01]
-                if "14B" in self.config.model_path:
-                    self.coefficients = [-5784.54975374, 5449.50911966, -1811.16591783, 256.27178429, -13.02252404]
-                self.ret_steps = 1 * 2
-                self.cutoff_steps = self.config.infer_steps * 2 - 2
+        if self.use_ret_steps:
+            self.coefficients = self.config.coefficients[0]
+            self.ret_steps = 5 * 2
+            self.cutoff_steps = self.config.infer_steps * 2
+        else:
+            self.coefficients = self.config.coefficients[1]
+            self.ret_steps = 1 * 2
+            self.cutoff_steps = self.config.infer_steps * 2 - 2
 
     # 1. get taylor step_diff when there is two caching_records in scheduler
     def get_taylor_step_diff(self):
@@ -682,7 +609,7 @@ class WanTransformerInferCustomCaching(WanTransformerInfer, BaseTaylorCachingTra
             if caching_records[index]:
                 x = self.infer_calculating(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
             else:
-                x = self.infer_using_cache(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                x = self.infer_using_cache(x)
 
         else:
             index = self.scheduler.step_index
@@ -694,7 +621,7 @@ class WanTransformerInferCustomCaching(WanTransformerInfer, BaseTaylorCachingTra
             if caching_records_2[index]:
                 x = self.infer_calculating(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
             else:
-                x = self.infer_using_cache(weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+                x = self.infer_using_cache(x)
 
         if self.config.enable_cfg:
             self.switch_status()
@@ -707,12 +634,12 @@ class WanTransformerInferCustomCaching(WanTransformerInfer, BaseTaylorCachingTra
         ori_x = x.clone()
 
         for block_idx in range(self.blocks_num):
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_phase_1(weights.blocks[block_idx], grid_sizes, embed, x, embed0, seq_lens, freqs, context)
+            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = self.infer_modulation(weights.blocks[block_idx].compute_phases[0], embed0)
 
-            y_out = self.infer_phase_2(weights.blocks[block_idx].compute_phases[0], grid_sizes, x, seq_lens, freqs, shift_msa, scale_msa)
-            attn_out = self.infer_phase_3(weights.blocks[block_idx].compute_phases[1], x, context, y_out, gate_msa)
-            y_out = self.infer_phase_4(weights.blocks[block_idx].compute_phases[2], x, attn_out, c_shift_msa, c_scale_msa)
-            x = self.infer_phase_5(x, y_out, c_gate_msa)
+            y_out = self.infer_self_attn(weights.blocks[block_idx].compute_phases[1], grid_sizes, x, seq_lens, freqs, shift_msa, scale_msa)
+            attn_out = self.infer_cross_attn(weights.blocks[block_idx].compute_phases[2], x, context, y_out, gate_msa)
+            y_out = self.infer_ffn(weights.blocks[block_idx].compute_phases[3], x, attn_out, c_shift_msa, c_scale_msa)
+            x = self.post_process(x, y_out, c_gate_msa)
 
         if self.infer_conditional:
             self.previous_residual_even = x - ori_x
@@ -722,7 +649,7 @@ class WanTransformerInferCustomCaching(WanTransformerInfer, BaseTaylorCachingTra
             self.derivative_approximation(self.cache_odd, "previous_residual", self.previous_residual_odd)
         return x
 
-    def infer_using_cache(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+    def infer_using_cache(self, x):
         if self.infer_conditional:
             x += self.taylor_formula(self.cache_even["previous_residual"])
         else:

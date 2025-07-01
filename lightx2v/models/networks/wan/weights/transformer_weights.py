@@ -34,13 +34,8 @@ class WanTransformerAttentionBlock(WeightModule):
         self.config = config
         self.quant_method = config["mm_config"].get("quant_method", None)
         self.sparge = config.get("sparge", False)
-        self.register_parameter(
-            "modulation",
-            TENSOR_REGISTER["Default"](f"blocks.{self.block_index}.modulation"),
-        )
 
         self.lazy_load = self.config.get("lazy_load", False)
-
         if self.lazy_load:
             lazy_load_path = os.path.join(self.config.dit_quantized_ckpt, f"block_{block_index}.safetensors")
             self.lazy_load_file = safe_open(lazy_load_path, framework="pt", device="cpu")
@@ -49,6 +44,14 @@ class WanTransformerAttentionBlock(WeightModule):
 
         self.compute_phases = WeightModuleList(
             [
+                WanModulation(
+                    block_index,
+                    task,
+                    mm_type,
+                    config,
+                    self.lazy_load,
+                    self.lazy_load_file,
+                ),
                 WanSelfAttention(
                     block_index,
                     task,
@@ -79,6 +82,29 @@ class WanTransformerAttentionBlock(WeightModule):
         self.add_module("compute_phases", self.compute_phases)
 
 
+class WanModulation(WeightModule):
+    def __init__(self, block_index, task, mm_type, config, lazy_load, lazy_load_file):
+        super().__init__()
+        self.block_index = block_index
+        self.mm_type = mm_type
+        self.task = task
+        self.config = config
+        self.quant_method = config["mm_config"].get("quant_method", None)
+        self.sparge = config.get("sparge", False)
+
+        self.lazy_load = lazy_load
+        self.lazy_load_file = lazy_load_file
+
+        self.add_module(
+            "modulation",
+            TENSOR_REGISTER["Default"](
+                f"blocks.{self.block_index}.modulation",
+                self.lazy_load,
+                self.lazy_load_file,
+            ),
+        )
+
+
 class WanSelfAttention(WeightModule):
     def __init__(self, block_index, task, mm_type, config, lazy_load, lazy_load_file):
         super().__init__()
@@ -92,7 +118,7 @@ class WanSelfAttention(WeightModule):
         self.lazy_load = lazy_load
         self.lazy_load_file = lazy_load_file
 
-        self.register_parameter(
+        self.add_module(
             "norm1",
             LN_WEIGHT_REGISTER["Default"](),
         )
@@ -160,7 +186,7 @@ class WanSelfAttention(WeightModule):
         else:
             self.add_module("self_attn_1", ATTN_WEIGHT_REGISTER[self.config["attention_type"]]())
         if self.quant_method in ["smoothquant", "awq"]:
-            self.register_parameter(
+            self.add_module(
                 "smooth_norm1_weight",
                 TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm1.weight",
@@ -168,7 +194,7 @@ class WanSelfAttention(WeightModule):
                     self.lazy_load_file,
                 ),
             )
-            self.register_parameter(
+            self.add_module(
                 "smooth_norm1_bias",
                 TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm1.bias",
@@ -292,7 +318,7 @@ class WanFFN(WeightModule):
         self.lazy_load = lazy_load
         self.lazy_load_file = lazy_load_file
 
-        self.register_parameter(
+        self.add_module(
             "norm2",
             LN_WEIGHT_REGISTER["Default"](),
         )
@@ -317,7 +343,7 @@ class WanFFN(WeightModule):
         )
 
         if self.quant_method in ["smoothquant", "awq"]:
-            self.register_parameter(
+            self.add_module(
                 "smooth_norm2_weight",
                 TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm3.weight",
@@ -325,7 +351,7 @@ class WanFFN(WeightModule):
                     self.lazy_load_file,
                 ),
             )
-            self.register_parameter(
+            self.add_module(
                 "smooth_norm2_bias",
                 TENSOR_REGISTER["Default"](
                     f"blocks.{self.block_index}.affine_norm3.bias",

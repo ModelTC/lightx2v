@@ -7,7 +7,7 @@ class WanPreInfer:
     def __init__(self, config):
         assert (config["dim"] % config["num_heads"]) == 0 and (config["dim"] // config["num_heads"]) % 2 == 0
         d = config["dim"] // config["num_heads"]
-
+        self.clean_cuda_cache = config.get("clean_cuda_cache", False)
         self.task = config["task"]
         self.freqs = torch.cat(
             [
@@ -87,15 +87,21 @@ class WanPreInfer:
             out = weights.text_embedding_0.apply(stacked.squeeze(0))
         out = torch.nn.functional.gelu(out, approximate="tanh")
         context = weights.text_embedding_2.apply(out)
+        if self.clean_cuda_cache:
+            del out, stacked
+            torch.cuda.empty_cache()
 
         if self.task == "i2v":
             context_clip = weights.proj_0.apply(clip_fea)
             context_clip = weights.proj_1.apply(context_clip)
-            context_clip = torch.nn.functional.gelu(context_clip, approximate="none")
+            # context_clip = torch.nn.functional.gelu(context_clip, approximate="none")
+            context_clip = torch.nn.functional.gelu(context_clip, approximate="tanh")
             context_clip = weights.proj_3.apply(context_clip)
             context_clip = weights.proj_4.apply(context_clip)
             context = torch.concat([context_clip, context], dim=0)
-
+        if self.clean_cuda_cache:
+            del context_clip, clip_fea
+            torch.cuda.empty_cache()
         return (
             embed,
             grid_sizes,

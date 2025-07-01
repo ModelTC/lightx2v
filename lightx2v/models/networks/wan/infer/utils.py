@@ -75,6 +75,39 @@ def apply_rotary_emb(x, freqs_i):
     return x_i.to(torch.bfloat16)
 
 
+def apply_rotary_emb_chunk(x, freqs_i, chunk_size=100, remaining_chunk_size=100):
+    n = x.size(1)
+    seq_len = freqs_i.size(0)
+
+    output_chunks = []
+    for start in range(0, seq_len, chunk_size):
+        end = min(start + chunk_size, seq_len)
+        x_chunk = x[start:end]
+        freqs_chunk = freqs_i[start:end]
+
+        x_chunk_complex = torch.view_as_complex(x_chunk.to(torch.float32).reshape(end - start, n, -1, 2))
+        x_chunk_embedded = torch.view_as_real(x_chunk_complex * freqs_chunk).flatten(2).to(torch.bfloat16)
+        output_chunks.append(x_chunk_embedded)
+        del x_chunk_complex, x_chunk_embedded
+        torch.cuda.empty_cache()
+
+    result = []
+    for chunk in output_chunks:
+        result.append(chunk)
+    del output_chunks
+    torch.cuda.empty_cache()
+
+    for start in range(seq_len, x.size(0), remaining_chunk_size):
+        end = min(start + remaining_chunk_size, x.size(0))
+        result.append(x[start:end])
+
+    x_i = torch.cat(result, dim=0)
+    del result
+    torch.cuda.empty_cache()
+
+    return x_i.to(torch.bfloat16)
+
+
 def rope_params(max_seq_len, dim, theta=10000):
     assert dim % 2 == 0
     freqs = torch.outer(
