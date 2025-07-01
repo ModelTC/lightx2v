@@ -94,8 +94,7 @@ class WanPreInfer:
         if self.task == "i2v":
             context_clip = weights.proj_0.apply(clip_fea)
             context_clip = weights.proj_1.apply(context_clip)
-            # context_clip = torch.nn.functional.gelu(context_clip, approximate="none")
-            context_clip = torch.nn.functional.gelu(context_clip, approximate="tanh")
+            context_clip = torch.nn.functional.gelu(context_clip, approximate="none")
             context_clip = weights.proj_3.apply(context_clip)
             context_clip = weights.proj_4.apply(context_clip)
             context = torch.concat([context_clip, context], dim=0)
