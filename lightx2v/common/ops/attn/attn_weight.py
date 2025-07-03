@@ -3,37 +3,41 @@ import torch.nn as nn
 from abc import ABCMeta, abstractmethod
 from lightx2v.utils.registry_factory import ATTN_WEIGHT_REGISTER
 import torch.nn.functional as F
+from loguru import logger
 
 try:
     from spas_sage_attn.autotune import SparseAttentionMeansim
 except ImportError:
-    print("SparseAttentionMeansim not found, please install sparge first")
+    logger.info("SparseAttentionMeansim not found, please install sparge first")
     SparseAttentionMeansim = None
 
 try:
     from flash_attn.flash_attn_interface import flash_attn_varlen_func
 except ImportError:
-    print("flash_attn_varlen_func not found, please install flash_attn2 first")
+    logger.info("flash_attn_varlen_func not found, please install flash_attn2 first")
     flash_attn_varlen_func = None
 
 try:
     from flash_attn_interface import flash_attn_varlen_func as flash_attn_varlen_func_v3
 except ImportError:
-    print("flash_attn_varlen_func_v3 not found, please install flash_attn3 first")
+    logger.info("flash_attn_varlen_func_v3 not found, please install flash_attn3 first")
     flash_attn_varlen_func_v3 = None
 
-if torch.cuda.get_device_capability(0) == (8, 9):
+if torch.cuda.get_device_capability(0)[0] <= 8 and torch.cuda.get_device_capability(0)[1] <= 9:
     try:
         from sageattention import sageattn_qk_int8_pv_fp16_triton as sageattn
     except ImportError:
-        print("sageattn not found, please install sageattention first")
+        logger.info("sageattn not found, please install sageattention first")
         sageattn = None
 else:
     try:
         from sageattention import sageattn
     except ImportError:
-        print("sageattn not found, please install sageattention first")
+        logger.info("sageattn not found, please install sageattention first")
         sageattn = None
+
+
+from lightx2v.attentions.common.radial_attn import radial_attn
 
 
 class AttnWeightTemplate(metaclass=ABCMeta):
@@ -69,7 +73,7 @@ class FlashAttn2Weight(AttnWeightTemplate):
     def __init__(self):
         self.config = {}
 
-    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None):
+    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None, mask_map=None):
         x = flash_attn_varlen_func(
             q,
             k,
@@ -87,7 +91,7 @@ class FlashAttn3Weight(AttnWeightTemplate):
     def __init__(self):
         self.config = {}
 
-    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None):
+    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None, mask_map=None):
         x = flash_attn_varlen_func_v3(
             q,
             k,
@@ -97,6 +101,28 @@ class FlashAttn3Weight(AttnWeightTemplate):
             max_seqlen_q,
             max_seqlen_kv,
         )[0].reshape(max_seqlen_q, -1)
+        return x
+
+
+@ATTN_WEIGHT_REGISTER("radial_attn")
+class RadialAttnWeight(AttnWeightTemplate):
+    def __init__(self):
+        self.config = {}
+
+    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, mask_map=None, sparsity_type="radial", block_size=128, decay_factor=1, model_cls="wan"):
+        assert len(q.shape) == 3
+
+        x = radial_attn(
+            q,
+            k,
+            v,
+            mask_map=mask_map,
+            sparsity_type=sparsity_type,
+            block_size=block_size,
+            model_cls=model_cls[:3],  # Use first 3 characters to match "wan", "wan2", etc.
+            decay_factor=decay_factor,
+        )
+        x = x.view(max_seqlen_q, -1)
         return x
 
 

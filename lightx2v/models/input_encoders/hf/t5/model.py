@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from .tokenizer import HuggingfaceTokenizer
 from loguru import logger
-from lightx2v.models.input_encoders.hf.q_linear import QuantLinearInt8
+from lightx2v.models.input_encoders.hf.q_linear import QuantLinearInt8, QuantLinearFp8
 
 
 __all__ = [
@@ -76,6 +76,8 @@ class T5Attention(nn.Module):
         if quantized:
             if quant_scheme == "int8":
                 linear_cls = QuantLinearInt8
+            elif quant_scheme == "fp8":
+                linear_cls = QuantLinearFp8
         else:
             linear_cls = nn.Linear
 
@@ -131,6 +133,8 @@ class T5FeedForward(nn.Module):
         if quantized:
             if quant_scheme == "int8":
                 linear_cls = QuantLinearInt8
+            elif quant_scheme == "fp8":
+                linear_cls = QuantLinearFp8
         else:
             linear_cls = nn.Linear
         # layers

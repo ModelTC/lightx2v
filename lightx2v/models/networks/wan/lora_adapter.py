@@ -50,6 +50,7 @@ class WanLoraWrapper:
         self.model._init_weights(weight_dict)
 
         logger.info(f"Applied LoRA: {lora_name} with alpha={alpha}")
+        del lora_weights  # 删除节约显存
         return True
 
     @torch.no_grad()
@@ -85,7 +86,6 @@ class WanLoraWrapper:
             if name in lora_pairs:
                 if name not in self.override_dict:
                     self.override_dict[name] = param.clone().cpu()
-
                 name_lora_A, name_lora_B = lora_pairs[name]
                 lora_A = lora_weights[name_lora_A].to(param.device, param.dtype)
                 lora_B = lora_weights[name_lora_B].to(param.device, param.dtype)

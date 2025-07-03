@@ -2,14 +2,6 @@ import torch
 
 
 def cutlass_scaled_fp4_mm(mat_a, mat_b, scales_a, scales_b, alpha, bias=None):
-    """
-    mat_a: (m, k) cutlass::float_e2m1_t
-    mat_b: (n, k) cutlass::float_e2m1_t
-    scales_a: (m, 1) cutlass::float_ue4m3_t
-    scales_b: (n, 1) cutlass::float_ue4m3_t
-    alpha: (1, 1) float
-    bias: (m, n) cutlass::bfloat16_t
-    """
     m, n = mat_a.shape[0], mat_b.shape[0]
     out = torch.empty((m, n), dtype=torch.bfloat16, device=mat_a.device)
     torch.ops.lightx2v_kernel.cutlass_scaled_fp4_mm_sm120.default(out, mat_a, mat_b, scales_a, scales_b, alpha, bias)
@@ -61,3 +53,10 @@ def scaled_fp4_quant(input: torch.Tensor, input_global_scale: torch.Tensor):
     torch.ops.lightx2v_kernel.scaled_fp4_quant_sm120.default(output, input, output_scale, input_global_scale)
     output_scale = output_scale.view(torch.float8_e4m3fn)
     return output, output_scale
+
+
+def cutlass_scaled_mxfp6_mxfp8_mm(mat_a, mat_b, scales_a, scales_b, alpha, bias=None):
+    m, n = mat_a.shape[0], mat_b.shape[0]
+    out = torch.empty((m, n), dtype=torch.bfloat16, device=mat_a.device)
+    torch.ops.lightx2v_kernel.cutlass_scaled_mxfp6_mxfp8_mm_sm120.default(out, mat_a, mat_b, scales_a, scales_b, alpha, bias)
+    return out

@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import torch
+import gc
 from typing import List, Optional, Tuple, Union
 from lightx2v.models.schedulers.scheduler import BaseScheduler
 
@@ -114,6 +115,17 @@ class WanScheduler(BaseScheduler):
         sigma_t = self.sigmas[self.step_index]
         x0_pred = sample - sigma_t * model_output
         return x0_pred
+
+    def reset(self):
+        self.model_outputs = [None] * self.solver_order
+        self.timestep_list = [None] * self.solver_order
+        self.last_sample = None
+        self.noise_pred = None
+        self.this_order = None
+        self.lower_order_nums = 0
+        self.prepare_latents(self.config.target_shape, dtype=torch.float32)
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def multistep_uni_p_bh_update(
         self,

@@ -103,7 +103,7 @@ struct Fp4GemmSm120 {
 
 
 // Populates a Gemm::Arguments structure from the given commandline options
-typename Fp4GemmSm120::Gemm::Arguments args_from_options(
+typename Fp4GemmSm120::Gemm::Arguments args_from_options_nvfp4_nvfp4(
     at::Tensor& D,
     at::Tensor const& A,
     at::Tensor const& B,
@@ -176,7 +176,7 @@ typename Fp4GemmSm120::Gemm::Arguments args_from_options(
 }
 
 
-void runGemm(
+void runGemmNvfp4Sm120(
     at::Tensor& D,
     at::Tensor const& A,
     at::Tensor const& B,
@@ -190,7 +190,7 @@ void runGemm(
     cudaStream_t stream) {
   typename Fp4GemmSm120::Gemm gemm;
 
-  auto arguments = args_from_options(D, A, B, A_sf, B_sf, alpha, bias, m, n, k);
+  auto arguments = args_from_options_nvfp4_nvfp4(D, A, B, A_sf, B_sf, alpha, bias, m, n, k);
   size_t workspace_size = Fp4GemmSm120::Gemm::get_workspace_size(arguments);
   auto const workspace_options = torch::TensorOptions().dtype(torch::kUInt8).device(A.device());
   auto workspace = torch::empty(workspace_size, workspace_options);
@@ -308,5 +308,5 @@ void cutlass_scaled_fp4_mm_sm120(
   at::cuda::CUDAGuard device_guard{(char)A.get_device()};
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream(A.get_device());
 
-  runGemm(D, A, B, A_sf, B_sf, alpha, bias, m, n, k, stream);
+  runGemmNvfp4Sm120(D, A, B, A_sf, B_sf, alpha, bias, m, n, k, stream);
 }

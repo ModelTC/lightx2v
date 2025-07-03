@@ -93,13 +93,18 @@ class WanPreInfer:
 
         if self.task == "i2v":
             context_clip = weights.proj_0.apply(clip_fea)
+            if self.clean_cuda_cache:
+                del clip_fea
+                torch.cuda.empty_cache()
             context_clip = weights.proj_1.apply(context_clip)
             context_clip = torch.nn.functional.gelu(context_clip, approximate="none")
+            if self.clean_cuda_cache:
+                torch.cuda.empty_cache()
             context_clip = weights.proj_3.apply(context_clip)
             context_clip = weights.proj_4.apply(context_clip)
             context = torch.concat([context_clip, context], dim=0)
         if self.clean_cuda_cache:
-            del context_clip, clip_fea
+            del context_clip
             torch.cuda.empty_cache()
         return (
             embed,
