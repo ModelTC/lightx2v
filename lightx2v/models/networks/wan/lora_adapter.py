@@ -78,6 +78,7 @@ class WanLoraWrapper:
             try_lora_pair(key, "lora_down.weight", "lora_up.weight", "weight")
             try_lora_diff(key, "diff", "weight")
             try_lora_diff(key, "diff_b", "bias")
+            try_lora_diff(key, "diff_m", "modulation")
 
         applied_count = 0
         for name, param in weight_dict.items():
