@@ -252,7 +252,7 @@ class WanTransformerInferTaylorCaching(WanTransformerInfer, BaseTaylorCachingTra
     # 1. taylor using caching
     def infer_block(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context, i):
         # 1. shift, scale, gate
-        _, _, gate_msa, _, _, c_gate_msa = self.infer_modulation(weights, embed0)
+        _, _, gate_msa, _, _, c_gate_msa = self.infer_modulation(weights.compute_phases[0], embed0)
 
         # 2. residual and taylor
         if self.infer_conditional:
