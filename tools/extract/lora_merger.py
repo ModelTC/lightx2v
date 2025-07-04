@@ -226,13 +226,13 @@ def merge_lora_weights(source_weights: Dict[str, torch.Tensor], lora_weights: Di
     diff_weights = {}
 
     for lora_key, lora_tensor in lora_weights.items():
-        if lora_key.endswith(".lora_up"):
-            base_key = lora_key.replace(".lora_up", "")
+        if lora_key.endswith(".lora_up.weight"):
+            base_key = lora_key.replace(".lora_up.weight", "")
             if base_key not in lora_pairs:
                 lora_pairs[base_key] = {}
             lora_pairs[base_key]["up"] = lora_tensor
-        elif lora_key.endswith(".lora_down"):
-            base_key = lora_key.replace(".lora_down", "")
+        elif lora_key.endswith(".lora_down.weight"):
+            base_key = lora_key.replace(".lora_down.weight", "")
             if base_key not in lora_pairs:
                 lora_pairs[base_key] = {}
             lora_pairs[base_key]["down"] = lora_tensor

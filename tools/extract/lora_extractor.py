@@ -274,8 +274,8 @@ def _decompose_to_lora(diff: torch.Tensor, key: str, rank: int) -> Dict[str, tor
 
     # Generate LoRA weight key names
     base_key = key.replace(".weight", "")
-    lora_up_key = "diffusion_model." + f"{base_key}.lora_up"
-    lora_down_key = "diffusion_model." + f"{base_key}.lora_down"
+    lora_up_key = "diffusion_model." + f"{base_key}.lora_up.weight"
+    lora_down_key = "diffusion_model." + f"{base_key}.lora_down.weight"
 
     # Return the decomposed weights
     lora_weights = {lora_up_key: lora_up, lora_down_key: lora_down}
@@ -355,6 +355,9 @@ def extract_lora_from_diff(source_weights: Dict[str, torch.Tensor], target_weigh
         if diff_only or is_1d or param_count < 1000000:
             # Save diff directly
             lora_key = _generate_lora_diff_key(key)
+            if lora_key == "skip":
+                skipped_count += 1
+                continue
             lora_weights[lora_key] = diff
             diff_count += 1
 
@@ -401,15 +404,16 @@ def _generate_lora_diff_key(original_key: str) -> str:
     Returns:
         LoRA weight key name
     """
+    ret_key = "diffusion_model." + original_key
     if original_key.endswith(".weight"):
-        return original_key.replace(".weight", ".diff")
+        return ret_key.replace(".weight", ".diff")
     elif original_key.endswith(".bias"):
-        return original_key.replace(".bias", ".diff_b")
+        return ret_key.replace(".bias", ".diff_b")
     elif original_key.endswith(".modulation"):
-        return original_key.replace(".modulation", ".diff_m")
+        return ret_key.replace(".modulation", ".diff_m")
     else:
-        # If no matching suffix, directly add .diff
-        return "diffusion_model." + original_key + ".diff"
+        # If no matching suffix, skip
+        return "skip"
 
 
 def main():
