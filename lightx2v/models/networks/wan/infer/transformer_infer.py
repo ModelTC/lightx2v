@@ -298,7 +298,7 @@ class WanTransformerInfer(BaseTransformerInfer):
             if self.config.get("audio_sr", False):
                 freqs_i = compute_freqs_audio_dist(q.size(0), q.size(2) // 2, grid_sizes, freqs)
             else:
-                freqs_i = compute_freqs_dist(q.size(2) // 2, grid_sizes, freqs)
+                freqs_i = compute_freqs_dist(q.size(0), q.size(2) // 2, grid_sizes, freqs)
 
         freqs_i = self.zero_temporal_component_in_3DRoPE(seq_lens, freqs_i)
 
