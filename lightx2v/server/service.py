@@ -294,6 +294,9 @@ class VideoGenerationService:
                 "image_path": message.image_path,
                 "num_fragments": message.num_fragments,
                 "save_video_path": message.save_video_path,
+                "infer_steps": message.infer_steps,
+                "target_video_length": message.target_video_length,
+                "seed": message.seed,
             }
 
             # 处理网络图片

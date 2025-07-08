@@ -106,6 +106,9 @@ class ApiServer:
             use_prompt_enhancer: bool = Form(default=False),
             negative_prompt: str = Form(default=""),
             num_fragments: int = Form(default=1),
+            infer_steps: int = Form(default=5),
+            target_video_length: int = Form(default=81),
+            seed: int = Form(default=42),
         ):
             """通过表单创建视频生成任务"""
             # 处理上传的图片文件
@@ -130,6 +133,9 @@ class ApiServer:
                 image_path=image_path,
                 num_fragments=num_fragments,
                 save_video_path=save_video_path,
+                infer_steps=infer_steps,
+                target_video_length=target_video_length,
+                seed=seed,
             )
 
             try:
