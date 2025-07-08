@@ -10,15 +10,12 @@ from loguru import logger
 
 
 class DistributedManager:
-    """分布式管理器 - 遵循torch.dist规范"""
-
     def __init__(self):
         self.is_initialized = False
         self.rank = 0
         self.world_size = 1
 
     def init_process_group(self, rank: int, world_size: int, master_addr: str, master_port: str) -> bool:
-        """初始化进程组"""
         try:
             os.environ["RANK"] = str(rank)
             os.environ["WORLD_SIZE"] = str(world_size)
@@ -42,7 +39,6 @@ class DistributedManager:
             return False
 
     def cleanup(self):
-        """清理分布式环境"""
         try:
             if dist.is_initialized():
                 dist.destroy_process_group()
@@ -53,16 +49,13 @@ class DistributedManager:
             self.is_initialized = False
 
     def barrier(self):
-        """同步所有进程"""
         if self.is_initialized:
             dist.barrier()
 
     def is_rank_zero(self) -> bool:
-        """检查是否为rank 0"""
         return self.rank == 0
 
     def broadcast_task_data(self, task_data=None):  # type: ignore
-        """广播任务数据（rank=0发送，其他进程接收）"""
         if not self.is_initialized:
             return None
 
@@ -110,8 +103,6 @@ class DistributedManager:
 
 
 class DistributedWorker:
-    """分布式工作进程"""
-
     def __init__(self, rank: int, world_size: int, master_addr: str, master_port: str):
         self.rank = rank
         self.world_size = world_size
@@ -120,19 +111,15 @@ class DistributedWorker:
         self.dist_manager = DistributedManager()
 
     def init(self) -> bool:
-        """初始化工作进程"""
         return self.dist_manager.init_process_group(self.rank, self.world_size, self.master_addr, self.master_port)
 
     def cleanup(self):
-        """清理工作进程"""
         self.dist_manager.cleanup()
 
     def sync_and_report(self, task_id: str, status: str, result_queue, **kwargs):
-        """同步并报告结果（只有rank 0报告）"""
         # 同步所有进程
         self.dist_manager.barrier()
 
-        # 只有rank 0报告结果
         if self.dist_manager.is_rank_zero():
             result = {"task_id": task_id, "status": status, **kwargs}
             result_queue.put(result)
@@ -140,5 +127,4 @@ class DistributedWorker:
 
 
 def create_distributed_worker(rank: int, world_size: int, master_addr: str, master_port: str) -> DistributedWorker:
-    """创建分布式工作进程"""
     return DistributedWorker(rank, world_size, master_addr, master_port)

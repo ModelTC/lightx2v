@@ -21,8 +21,6 @@ mp.set_start_method("spawn", force=True)
 
 
 class FileService:
-    """文件服务"""
-
     def __init__(self, cache_dir: Path):
         self.cache_dir = cache_dir
         self.input_image_dir = cache_dir / "inputs" / "imgs"
@@ -33,7 +31,6 @@ class FileService:
             directory.mkdir(parents=True, exist_ok=True)
 
     async def download_image(self, image_url: str) -> Path:
-        """异步下载图片"""
         try:
             async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(image_url)
@@ -57,7 +54,6 @@ class FileService:
             raise
 
     def save_uploaded_file(self, file_content: bytes, filename: str) -> Path:
-        """保存上传的文件"""
         file_extension = Path(filename).suffix
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         file_path = self.input_image_dir / unique_filename
@@ -68,7 +64,6 @@ class FileService:
         return file_path
 
     def get_output_path(self, save_video_path: str) -> Path:
-        """获取输出路径"""
         video_path = Path(save_video_path)
         if not video_path.is_absolute():
             return self.output_video_dir / save_video_path
@@ -76,7 +71,6 @@ class FileService:
 
 
 def _distributed_inference_worker(rank, world_size, master_addr, master_port, args, task_queue, result_queue):
-    """分布式推理工作进程 - 优化版本"""
     task_data = None
     loop = None
     worker = None
@@ -163,8 +157,6 @@ def _distributed_inference_worker(rank, world_size, master_addr, master_port, ar
 
 
 class DistributedInferenceService:
-    """分布式推理服务 - 优化版本"""
-
     def __init__(self):
         self.task_queue = None
         self.result_queue = None
@@ -172,7 +164,6 @@ class DistributedInferenceService:
         self.is_running = False
 
     def start_distributed_inference(self, args) -> bool:
-        """启动分布式推理服务"""
         if self.is_running:
             logger.warning("分布式推理服务已在运行")
             return True
@@ -209,7 +200,6 @@ class DistributedInferenceService:
             return False
 
     def stop_distributed_inference(self):
-        """停止分布式推理服务"""
         if not self.is_running:
             return
 
@@ -245,7 +235,6 @@ class DistributedInferenceService:
             self.is_running = False
 
     def _clean_queues(self):
-        """清理队列"""
         for queue_obj in [self.task_queue, self.result_queue]:
             if queue_obj:
                 try:
@@ -255,7 +244,6 @@ class DistributedInferenceService:
                     pass
 
     def submit_task(self, task_data: dict) -> bool:
-        """提交任务到分布式推理服务"""
         if not self.is_running or not self.task_queue:
             logger.error("分布式推理服务未启动")
             return False
@@ -268,7 +256,6 @@ class DistributedInferenceService:
             return False
 
     def wait_for_result(self, task_id: str, timeout: int = 300) -> Optional[dict]:
-        """等待任务结果"""
         if not self.is_running or not self.result_queue:
             return None
 
@@ -292,14 +279,11 @@ class DistributedInferenceService:
 
 
 class VideoGenerationService:
-    """视频生成服务"""
-
     def __init__(self, file_service: FileService, inference_service: DistributedInferenceService):
         self.file_service = file_service
         self.inference_service = inference_service
 
     async def generate_video(self, message: TaskRequest) -> TaskResponse:
-        """生成视频"""
         try:
             # 处理图片路径
             task_data = {
@@ -345,11 +329,10 @@ class VideoGenerationService:
             raise
 
     def get_task_result(self, task_id: str) -> TaskResultResponse:
-        """获取任务结果"""
         result = ServiceStatus.get_status_task_id(task_id)
         save_video_path = result.get("save_video_path")
 
-        if save_video_path and Path(save_video_path).exists():
+        if save_video_path:
             file_path = Path(save_video_path)
             relative_path = file_path.relative_to(self.file_service.output_video_dir.resolve()) if str(file_path).startswith(str(self.file_service.output_video_dir.resolve())) else file_path.name
 
