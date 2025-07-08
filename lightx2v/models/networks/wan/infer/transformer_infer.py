@@ -6,6 +6,7 @@ from lightx2v.common.offload.manager import (
 )
 from lightx2v.common.transformer_infer.transformer_infer import BaseTransformerInfer
 from lightx2v.utils.envs import *
+from functools import partial
 
 
 class WanTransformerInfer(BaseTransformerInfer):
@@ -19,7 +20,11 @@ class WanTransformerInfer(BaseTransformerInfer):
         self.head_dim = config["dim"] // config["num_heads"]
         self.window_size = config.get("window_size", (-1, -1))
         self.parallel_attention = None
-        self.apply_rotary_emb_func = apply_rotary_emb_chunk if config.get("rotary_chunk", False) else apply_rotary_emb
+        if config.get("rotary_chunk", False):
+            chunk_size = config.get("rotary_chunk_size", 100)
+            self.apply_rotary_emb_func = partial(apply_rotary_emb_chunk, chunk_size=chunk_size)
+        else:
+            self.apply_rotary_emb_func = apply_rotary_emb
         self.clean_cuda_cache = self.config.get("clean_cuda_cache", False)
         if self.config["cpu_offload"]:
             if "offload_ratio" in self.config:
@@ -28,7 +33,10 @@ class WanTransformerInfer(BaseTransformerInfer):
                 offload_ratio = 1
             offload_granularity = self.config.get("offload_granularity", "block")
             if offload_granularity == "block":
-                self.infer_func = self._infer_with_offload
+                if not self.config.get("lazy_load", False):
+                    self.infer_func = self._infer_with_offload
+                else:
+                    self.infer_func = self._infer_with_lazy_offload
             elif offload_granularity == "phase":
                 if not self.config.get("lazy_load", False):
                     self.infer_func = self._infer_with_phases_offload
@@ -48,6 +56,7 @@ class WanTransformerInfer(BaseTransformerInfer):
                     phases_num=self.phases_num,
                     num_disk_workers=self.config.get("num_disk_workers", 2),
                     max_memory=self.config.get("max_memory", 2),
+                    offload_gra=offload_granularity,
                 )
         else:
             self.infer_func = self._infer_without_offload
@@ -92,6 +101,43 @@ class WanTransformerInfer(BaseTransformerInfer):
 
         return x
 
+    def _infer_with_lazy_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
+        self.weights_stream_mgr.prefetch_weights_from_disk(weights)
+
+        for block_idx in range(self.blocks_num):
+            if block_idx == 0:
+                block = self.weights_stream_mgr.pin_memory_buffer.get(block_idx)
+                block.to_cuda()
+                self.weights_stream_mgr.active_weights[0] = (block_idx, block)
+
+            if block_idx < self.blocks_num - 1:
+                self.weights_stream_mgr.prefetch_weights(block_idx + 1, weights.blocks)
+
+            with torch.cuda.stream(self.weights_stream_mgr.compute_stream):
+                x = self.infer_block(
+                    self.weights_stream_mgr.active_weights[0][1],
+                    grid_sizes,
+                    embed,
+                    x,
+                    embed0,
+                    seq_lens,
+                    freqs,
+                    context,
+                )
+
+            self.weights_stream_mgr.swap_weights()
+
+            if block_idx == self.blocks_num - 1:
+                self.weights_stream_mgr.pin_memory_buffer.pop_front()
+
+            self.weights_stream_mgr._async_prefetch_block(weights)
+
+        if self.clean_cuda_cache:
+            del grid_sizes, embed, embed0, seq_lens, freqs, context
+            torch.cuda.empty_cache()
+
+        return x
+
     def _infer_with_phases_offload(self, weights, grid_sizes, embed, x, embed0, seq_lens, freqs, context):
         for block_idx in range(weights.blocks_num):
             for phase_idx in range(self.phases_num):
@@ -129,7 +175,14 @@ class WanTransformerInfer(BaseTransformerInfer):
 
                 self.weights_stream_mgr.swap_phases()
 
-        torch.cuda.empty_cache()
+            if self.clean_cuda_cache:
+                del attn_out, y_out, y
+                torch.cuda.empty_cache()
+
+        if self.clean_cuda_cache:
+            del shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa
+            del grid_sizes, embed, embed0, seq_lens, freqs, context
+            torch.cuda.empty_cache()
 
         return x
 

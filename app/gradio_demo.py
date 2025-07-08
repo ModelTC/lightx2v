@@ -8,16 +8,11 @@ import gc
 from easydict import EasyDict
 from datetime import datetime
 from loguru import logger
-import sys
-from pathlib import Path
 
-module_path = str(Path(__file__).resolve().parent.parent)
-sys.path.append(module_path)
+import importlib.util
+import psutil
 
-from lightx2v.infer import init_runner
-from lightx2v.utils.envs import *
 
-# advance_ptq
 logger.add(
     "inference_logs.log",
     rotation="100 MB",
@@ -28,14 +23,110 @@ logger.add(
 )
 
 
-global_runner = None
-current_config = None
+def is_module_installed(module_name):
+    try:
+        spec = importlib.util.find_spec(module_name)
+        return spec is not None
+    except ModuleNotFoundError:
+        return False
+
+
+def get_available_quant_ops():
+    available_ops = []
+
+    vllm_installed = is_module_installed("vllm")
+    if vllm_installed:
+        available_ops.append(("vllm", True))
+    else:
+        available_ops.append(("vllm", False))
+
+    sgl_installed = is_module_installed("sgl_kernel")
+    if sgl_installed:
+        available_ops.append(("sgl", True))
+    else:
+        available_ops.append(("sgl", False))
+
+    q8f_installed = is_module_installed("q8_kernels")
+    if q8f_installed:
+        available_ops.append(("q8f", True))
+    else:
+        available_ops.append(("q8f", False))
+
+    return available_ops
+
+
+def get_available_attn_ops():
+    available_ops = []
+
+    vllm_installed = is_module_installed("flash_attn")
+    if vllm_installed:
+        available_ops.append(("flash_attn2", True))
+    else:
+        available_ops.append(("flash_attn2", False))
+
+    sgl_installed = is_module_installed("flash_attn_interface")
+    if sgl_installed:
+        available_ops.append(("flash_attn3", True))
+    else:
+        available_ops.append(("flash_attn3", False))
+
+    q8f_installed = is_module_installed("sageattention")
+    if q8f_installed:
+        available_ops.append(("sage_attn2", True))
+    else:
+        available_ops.append(("sage_attn2", False))
+
+    return available_ops
+
+
+def get_gpu_memory(gpu_idx=0):
+    if not torch.cuda.is_available():
+        return 0
+    try:
+        with torch.cuda.device(gpu_idx):
+            memory_info = torch.cuda.mem_get_info()
+            total_memory = memory_info[1] / (1024**3)  # Convert bytes to GB
+            return total_memory
+    except Exception as e:
+        logger.warning(f"Failed to get GPU memory: {e}")
+        return 0
+
+
+def get_cpu_memory():
+    available_bytes = psutil.virtual_memory().available
+    return available_bytes / 1024**3
 
 
 def generate_unique_filename(base_dir="./saved_videos"):
     os.makedirs(base_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return os.path.join(base_dir, f"{model_cls}_{timestamp}.mp4")
+
+
+def is_fp8_supported_gpu():
+    if not torch.cuda.is_available():
+        return False
+    compute_capability = torch.cuda.get_device_capability(0)
+    major, minor = compute_capability
+    return (major == 8 and minor == 9) or (major >= 9)
+
+
+global_runner = None
+current_config = None
+
+available_quant_ops = get_available_quant_ops()
+quant_op_choices = []
+for op_name, is_installed in available_quant_ops:
+    status_text = "✅ Installed" if is_installed else "❌ Not Installed"
+    display_text = f"{op_name} ({status_text})"
+    quant_op_choices.append((op_name, display_text))
+
+available_attn_ops = get_available_attn_ops()
+attn_op_choices = []
+for op_name, is_installed in available_attn_ops:
+    status_text = "✅ Installed" if is_installed else "❌ Not Installed"
+    display_text = f"{op_name} ({status_text})"
+    attn_op_choices.append((op_name, display_text))
 
 
 def run_inference(
@@ -53,6 +144,7 @@ def run_inference(
     sample_shift,
     enable_teacache,
     teacache_thresh,
+    use_ret_steps,
     enable_cfg,
     cfg_scale,
     dit_quant_scheme,
@@ -63,25 +155,29 @@ def run_inference(
     use_tiling_vae,
     lazy_load,
     precision_mode,
-    use_expandable_alloc,
     cpu_offload,
     offload_granularity,
+    offload_ratio,
     t5_offload_granularity,
     attention_type,
     quant_op,
     rotary_chunk,
+    rotary_chunk_size,
     clean_cuda_cache,
 ):
+    quant_op = quant_op.split("(")[0].strip()
+    attention_type = attention_type.split("(")[0].strip()
+
     global global_runner, current_config, model_path
 
     if os.path.exists(os.path.join(model_path, "config.json")):
         with open(os.path.join(model_path, "config.json"), "r") as f:
             model_config = json.load(f)
 
-    if task == "Text-to-Video":
-        task = "t2v"
-    elif task == "Image-to-Video":
+    if task == "Image to Video":
         task = "i2v"
+    elif task == "Text to Video":
+        task = "t2v"
 
     if task == "t2v":
         if model_type == "Wan2.1 1.3B":
@@ -124,7 +220,6 @@ def run_inference(
         if resolution in [
             "1280x720",
             "720x1280",
-            "1024x1024",
             "1280x544",
             "544x1280",
             "1104x832",
@@ -173,7 +268,7 @@ def run_inference(
     else:
         t5_quant_ckpt = None
 
-    is_clip_quant = clip_quant_scheme != "bf16"
+    is_clip_quant = clip_quant_scheme != "fp16"
     if is_clip_quant:
         if clip_quant_scheme == "int8":
             clip_quant_ckpt = os.path.join(model_path, "clip-int8.pth")
@@ -192,10 +287,6 @@ def run_inference(
         os.environ["DTYPE"] = "BF16"
     else:
         os.environ.pop("DTYPE", None)
-    if use_expandable_alloc:
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:true"
-    else:
-        os.environ.pop("PYTORCH_CUDA_ALLOC_CONF", None)
 
     if is_dit_quant:
         if quant_op == "vllm":
@@ -204,8 +295,11 @@ def run_inference(
             mm_type = f"W-{dit_quant_scheme}-channel-sym-A-{dit_quant_scheme}-channel-sym-dynamic-Sgl"
         elif quant_op == "q8f":
             mm_type = f"W-{dit_quant_scheme}-channel-sym-A-{dit_quant_scheme}-channel-sym-dynamic-Q8F"
+
+        dit_quantized_ckpt = os.path.join(model_path, dit_quant_scheme)
     else:
         mm_type = "Default"
+        dit_quantized_ckpt = None
 
     config = {
         "infer_steps": infer_steps,
@@ -219,15 +313,16 @@ def run_inference(
         "sample_shift": sample_shift,
         "cpu_offload": cpu_offload,
         "offload_granularity": offload_granularity,
+        "offload_ratio": offload_ratio,
         "t5_offload_granularity": t5_offload_granularity,
-        "dit_quantized_ckpt": model_path if is_dit_quant else None,
+        "dit_quantized_ckpt": dit_quantized_ckpt,
         "mm_config": {
             "mm_type": mm_type,
         },
         "fps": fps,
         "feature_caching": "Tea" if enable_teacache else "NoCaching",
-        "coefficients": coefficient,
-        "use_ret_steps": True,
+        "coefficients": coefficient[0] if use_ret_steps else coefficient[1],
+        "use_ret_steps": use_ret_steps,
         "teacache_thresh": teacache_thresh,
         "t5_quantized": is_t5_quant,
         "t5_quantized_ckpt": t5_quant_ckpt,
@@ -250,6 +345,7 @@ def run_inference(
         "use_prompt_enhancer": False,
         "text_len": 512,
         "rotary_chunk": rotary_chunk,
+        "rotary_chunk_size": rotary_chunk_size,
         "clean_cuda_cache": clean_cuda_cache,
     }
 
@@ -269,11 +365,10 @@ def run_inference(
     config["mode"] = "infer"
     config.update(model_config)
 
-    print(config)
     logger.info(f"Using model: {model_path}")
     logger.info(f"Inference configuration:\n{json.dumps(config, indent=4, ensure_ascii=False)}")
 
-    # 初始化或复用runner
+    # Initialize or reuse the runner
     runner = global_runner
     if needs_reinit:
         if runner is not None:
@@ -281,11 +376,15 @@ def run_inference(
             torch.cuda.empty_cache()
             gc.collect()
 
+        from lightx2v.infer import init_runner  # noqa
+
         runner = init_runner(config)
         current_config = config
 
         if not lazy_load:
             global_runner = runner
+    else:
+        runner.config = config
 
     asyncio.run(runner.run_pipeline())
 
@@ -297,35 +396,233 @@ def run_inference(
     return save_video_path
 
 
+def auto_configure(enable_auto_config, model_type, resolution):
+    default_config = {
+        "torch_compile_val": False,
+        "lazy_load_val": False,
+        "rotary_chunk_val": False,
+        "rotary_chunk_size_val": 100,
+        "clean_cuda_cache_val": False,
+        "cpu_offload_val": False,
+        "offload_granularity_val": "block",
+        "offload_ratio_val": 1,
+        "t5_offload_granularity_val": "model",
+        "attention_type_val": attn_op_choices[0][1],
+        "quant_op_val": quant_op_choices[0][1],
+        "dit_quant_scheme_val": "bf16",
+        "t5_quant_scheme_val": "bf16",
+        "clip_quant_scheme_val": "fp16",
+        "precision_mode_val": "fp32",
+        "use_tiny_vae_val": False,
+        "use_tiling_vae_val": False,
+        "enable_teacache_val": False,
+        "teacache_thresh_val": 0.26,
+        "use_ret_steps_val": False,
+    }
+
+    if not enable_auto_config:
+        return tuple(gr.update(value=default_config[key]) for key in default_config)
+
+    gpu_memory = round(get_gpu_memory())
+    cpu_memory = round(get_cpu_memory())
+
+    if is_fp8_supported_gpu():
+        quant_type = "fp8"
+    else:
+        quant_type = "int8"
+
+    attn_priority = ["sage_attn2", "flash_attn3", "flash_attn2"]
+    quant_op_priority = ["sgl", "vllm", "q8f"]
+
+    for op in attn_priority:
+        if dict(available_attn_ops).get(op):
+            default_config["attention_type_val"] = dict(attn_op_choices)[op]
+            break
+
+    for op in quant_op_priority:
+        if dict(available_quant_ops).get(op):
+            default_config["quant_op_val"] = dict(quant_op_choices)[op]
+            break
+
+    if resolution in [
+        "1280x720",
+        "720x1280",
+        "1280x544",
+        "544x1280",
+        "1104x832",
+        "832x1104",
+        "960x960",
+    ]:
+        res = "720p"
+    elif resolution in [
+        "960x544",
+        "544x960",
+    ]:
+        res = "540p"
+    else:
+        res = "480p"
+
+    if model_type in ["Wan2.1 14B"]:
+        is_14b = True
+    else:
+        is_14b = False
+
+    if res == "720p" and is_14b:
+        gpu_rules = [
+            (80, {}),
+            (48, {"cpu_offload_val": True, "offload_ratio_val": 0.5}),
+            (40, {"cpu_offload_val": True, "offload_ratio_val": 0.8}),
+            (32, {"cpu_offload_val": True, "offload_ratio_val": 1}),
+            (
+                24,
+                {
+                    "cpu_offload_val": True,
+                    "offload_ratio_val": 1,
+                    "t5_offload_granularity_val": "block",
+                    "precision_mode_val": "bf16",
+                    "use_tiling_vae_val": True,
+                },
+            ),
+            (
+                16,
+                {
+                    "cpu_offload_val": True,
+                    "offload_ratio_val": 1,
+                    "t5_offload_granularity_val": "block",
+                    "precision_mode_val": "bf16",
+                    "use_tiling_vae_val": True,
+                    "offload_granularity_val": "phase",
+                    "rotary_chunk_val": True,
+                    "rotary_chunk_size_val": 100,
+                },
+            ),
+            (
+                12,
+                {
+                    "cpu_offload_val": True,
+                    "offload_ratio_val": 1,
+                    "t5_offload_granularity_val": "block",
+                    "precision_mode_val": "bf16",
+                    "use_tiling_vae_val": True,
+                    "offload_granularity_val": "phase",
+                    "rotary_chunk_val": True,
+                    "rotary_chunk_size_val": 100,
+                    "clean_cuda_cache_val": True,
+                },
+            ),
+            (
+                8,
+                {
+                    "cpu_offload_val": True,
+                    "offload_ratio_val": 1,
+                    "t5_offload_granularity_val": "block",
+                    "precision_mode_val": "bf16",
+                    "use_tiling_vae_val": True,
+                    "offload_granularity_val": "phase",
+                    "rotary_chunk_val": True,
+                    "rotary_chunk_size_val": 100,
+                    "clean_cuda_cache_val": True,
+                    "t5_quant_scheme_val": quant_type,
+                    "clip_quant_scheme_val": quant_type,
+                    "dit_quant_scheme_val": quant_type,
+                    "lazy_load_val": True,
+                },
+            ),
+        ]
+
+    elif is_14b:
+        gpu_rules = [
+            (80, {}),
+            (48, {"cpu_offload_val": True, "offload_ratio_val": 0.2}),
+            (40, {"cpu_offload_val": True, "offload_ratio_val": 0.5}),
+            (24, {"cpu_offload_val": True, "offload_ratio_val": 0.8}),
+            (
+                16,
+                {
+                    "cpu_offload_val": True,
+                    "offload_ratio_val": 1,
+                    "t5_offload_granularity_val": "block",
+                    "precision_mode_val": "bf16",
+                    "use_tiling_vae_val": True,
+                    "offload_granularity_val": "block",
+                },
+            ),
+            (
+                8,
+                (
+                    {
+                        "cpu_offload_val": True,
+                        "offload_ratio_val": 1,
+                        "t5_offload_granularity_val": "block",
+                        "precision_mode_val": "bf16",
+                        "use_tiling_vae_val": True,
+                        "offload_granularity_val": "phase",
+                        "t5_quant_scheme_val": quant_type,
+                        "clip_quant_scheme_val": quant_type,
+                        "dit_quant_scheme_val": quant_type,
+                        "lazy_load_val": True,
+                        "rotary_chunk_val": True,
+                        "rotary_chunk_size_val": 10000,
+                    }
+                    if res == "540p"
+                    else {
+                        "cpu_offload_val": True,
+                        "offload_ratio_val": 1,
+                        "t5_offload_granularity_val": "block",
+                        "precision_mode_val": "bf16",
+                        "use_tiling_vae_val": True,
+                        "offload_granularity_val": "phase",
+                        "t5_quant_scheme_val": quant_type,
+                        "clip_quant_scheme_val": quant_type,
+                        "dit_quant_scheme_val": quant_type,
+                        "lazy_load_val": True,
+                    }
+                ),
+            ),
+        ]
+
+    if is_14b:
+        cpu_rules = [
+            (128, {}),
+            (64, {"dit_quant_scheme_val": quant_type}),
+            (32, {"dit_quant_scheme_val": quant_type, "lazy_load_val": True}),
+            (
+                16,
+                {
+                    "dit_quant_scheme_val": quant_type,
+                    "t5_quant_scheme_val": quant_type,
+                    "clip_quant_scheme_val": quant_type,
+                    "lazy_load_val": True,
+                    "dit_quant_scheme_val": quant_type,
+                },
+            ),
+        ]
+
+    for threshold, updates in gpu_rules:
+        if gpu_memory >= threshold:
+            default_config.update(updates)
+            break
+
+    for threshold, updates in cpu_rules:
+        if cpu_memory >= threshold:
+            default_config.update(updates)
+            break
+
+    return tuple(gr.update(value=default_config[key]) for key in default_config)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Light Video Generation")
-    parser.add_argument("--model_path", type=str, required=True, help="Model folder path")
-    parser.add_argument(
-        "--model_cls",
-        type=str,
-        choices=["wan2.1"],
-        default="wan2.1",
-        help="Model class to use",
-    )
-    parser.add_argument("--server_port", type=int, default=7862, help="Server port")
-    parser.add_argument("--server_name", type=str, default="0.0.0.0", help="Server name")
-    args = parser.parse_args()
-
-    global model_path, model_cls
-    model_path = args.model_path
-    model_cls = args.model_cls
-
     def update_model_type(task_type):
-        if task_type == "Image-to-Video":
+        if task_type == "Image to Video":
             return gr.update(choices=["Wan2.1 14B"], value="Wan2.1 14B")
-        elif task_type == "Text-to-Video":
+        elif task_type == "Text to Video":
             return gr.update(choices=["Wan2.1 14B", "Wan2.1 1.3B"], value="Wan2.1 14B")
 
     def toggle_image_input(task):
-        return gr.update(visible=(task == "Image-to-Video"))
+        return gr.update(visible=(task == "Image to Video"))
 
     with gr.Blocks(
-        title="Lightx2v (Lightweight Video Inference Generation Engine)",
+        title="Lightx2v (Lightweight Video Inference and Generation Engine)",
         css="""
         .main-content { max-width: 1400px; margin: auto; }
         .output-video { max-height: 650px; }
@@ -335,7 +632,7 @@ def main():
     """,
     ) as demo:
         gr.Markdown(f"# 🎬 {model_cls} Video Generator")
-        gr.Markdown(f"### Using model: {model_path}")
+        gr.Markdown(f"### Using Model: {model_path}")
 
         with gr.Tabs() as tabs:
             with gr.Tab("Basic Settings", id=1):
@@ -346,11 +643,10 @@ def main():
 
                             with gr.Row():
                                 task = gr.Dropdown(
-                                    choices=["Image-to-Video", "Text-to-Video"],
-                                    value="Image-to-Video",
+                                    choices=["Image to Video", "Text to Video"],
+                                    value="Image to Video",
                                     label="Task Type",
                                 )
-
                                 model_type = gr.Dropdown(
                                     choices=["Wan2.1 14B"],
                                     value="Wan2.1 14B",
@@ -368,7 +664,7 @@ def main():
                                     type="filepath",
                                     height=300,
                                     interactive=True,
-                                    visible=True,
+                                    visible=True,  # Initially visible
                                 )
 
                                 task.change(
@@ -389,9 +685,9 @@ def main():
                                     negative_prompt = gr.Textbox(
                                         label="Negative Prompt",
                                         lines=3,
-                                        placeholder="Content you don't want in the video...",
+                                        placeholder="What you don't want to appear in the video...",
                                         max_lines=5,
-                                        value="camera shake, garish colors, overexposure, static, blurry details, subtitles, style, work, painting, image, still, overall gray, worst quality, low quality, JPEG compression artifacts, ugly, mutilated, extra fingers, poorly drawn hands, poorly drawn face, deformed, disfigured, deformed limbs, finger fusion, static frame, cluttered background, three legs, crowded background, walking backwards",
+                                        value="镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
                                     )
                                 with gr.Column():
                                     resolution = gr.Dropdown(
@@ -399,7 +695,6 @@ def main():
                                             # 720p
                                             ("1280x720 (16:9, 720p)", "1280x720"),
                                             ("720x1280 (9:16, 720p)", "720x1280"),
-                                            ("1024x1024 (1:1, 720p)", "1024x1024"),
                                             ("1280x544 (21:9, 720p)", "1280x544"),
                                             ("544x1280 (9:21, 720p)", "544x1280"),
                                             ("1104x832 (4:3, 720p)", "1104x832"),
@@ -415,8 +710,8 @@ def main():
                                             ("720x720 (1:1, 480p)", "720x720"),
                                             ("512x512 (1:1, 480p)", "512x512"),
                                         ],
-                                        value="480x832",
-                                        label="Max Resolution",
+                                        value="832x480",
+                                        label="Maximum Resolution",
                                     )
                                 with gr.Column():
                                     seed = gr.Slider(
@@ -425,50 +720,60 @@ def main():
                                         maximum=10000000,
                                         step=1,
                                         value=42,
-                                        info="Fix the random seed for reproducible results",
                                     )
                                     infer_steps = gr.Slider(
                                         label="Inference Steps",
                                         minimum=1,
                                         maximum=100,
                                         step=1,
-                                        value=20,
-                                        info="Inference steps for video generation. More steps may improve quality but reduce speed",
-                                    )
-                                    sample_shift = gr.Slider(
-                                        label="Distribution Shift",
-                                        value=5,
-                                        minimum=0,
-                                        maximum=10,
-                                        step=1,
-                                        info="Controls the distribution shift of samples. Larger values mean more obvious shifts",
+                                        value=40,
+                                        info="Number of inference steps for video generation. Increasing steps may improve quality but reduce speed.",
                                     )
 
-                                fps = gr.Slider(
-                                    label="Frame Rate (FPS)",
-                                    minimum=8,
-                                    maximum=30,
-                                    step=1,
-                                    value=16,
-                                    info="Frames per second. Higher FPS produces smoother video",
-                                )
-                                num_frames = gr.Slider(
-                                    label="Total Frames",
-                                    minimum=16,
-                                    maximum=120,
-                                    step=1,
-                                    value=81,
-                                    info="Total number of frames. More frames produce longer video",
-                                )
-
-                            save_video_path = gr.Textbox(
-                                label="Output Video Path",
-                                value=generate_unique_filename(),
-                                info="Must include .mp4 suffix. If left empty or using default, a unique filename will be automatically generated",
+                            enable_cfg = gr.Checkbox(
+                                label="Enable Classifier-Free Guidance",
+                                value=True,
+                                info="Enable classifier-free guidance to control prompt strength",
+                            )
+                            cfg_scale = gr.Slider(
+                                label="CFG Scale Factor",
+                                minimum=1,
+                                maximum=10,
+                                step=1,
+                                value=5,
+                                info="Controls the influence strength of the prompt. Higher values give more influence to the prompt.",
+                            )
+                            sample_shift = gr.Slider(
+                                label="Distribution Shift",
+                                value=5,
+                                minimum=0,
+                                maximum=10,
+                                step=1,
+                                info="Controls the degree of distribution shift for samples. Larger values indicate more significant shifts.",
                             )
 
-                            infer_btn = gr.Button("Generate Video", variant="primary", size="lg")
+                            fps = gr.Slider(
+                                label="Frames Per Second (FPS)",
+                                minimum=8,
+                                maximum=30,
+                                step=1,
+                                value=16,
+                                info="Frames per second of the video. Higher FPS results in smoother videos.",
+                            )
+                            num_frames = gr.Slider(
+                                label="Total Frames",
+                                minimum=16,
+                                maximum=120,
+                                step=1,
+                                value=81,
+                                info="Total number of frames in the video. More frames result in longer videos.",
+                            )
 
+                        save_video_path = gr.Textbox(
+                            label="Output Video Path",
+                            value=generate_unique_filename(),
+                            info="Must include .mp4 extension. If left blank or using the default value, a unique filename will be automatically generated.",
+                        )
                     with gr.Column(scale=6):
                         gr.Markdown("## 📤 Generated Video")
                         output_video = gr.Video(
@@ -479,133 +784,139 @@ def main():
                             elem_classes=["output-video"],
                         )
 
+                infer_btn = gr.Button("Generate Video", variant="primary", size="lg")
+
             with gr.Tab("⚙️ Advanced Options", id=2):
                 with gr.Group(elem_classes="advanced-options"):
-                    gr.Markdown("### Classifier-Free Guidance (CFG)")
+                    gr.Markdown("### Auto configuration")
                     with gr.Row():
-                        enable_cfg = gr.Checkbox(
-                            label="Enable Classifier-Free Guidance",
+                        enable_auto_config = gr.Checkbox(
+                            label="Auto configuration",
                             value=False,
-                            info="Enable classifier guidance to control prompt strength",
-                        )
-                        cfg_scale = gr.Slider(
-                            label="CFG Scale",
-                            minimum=1,
-                            maximum=100,
-                            step=1,
-                            value=5,
-                            info="Controls the influence strength of the prompt. Higher values mean stronger influence",
+                            info="Auto-tune optimization settings for your GPU",
                         )
 
-                    gr.Markdown("### Memory Optimization")
+                    gr.Markdown("### GPU Memory Optimization")
                     with gr.Row():
-                        lazy_load = gr.Checkbox(
-                            label="Enable Lazy Loading",
-                            value=False,
-                            info="Lazily load model components during inference, suitable for memory-constrained environments",
-                        )
-
-                        torch_compile = gr.Checkbox(
-                            label="Enable Torch Compile",
-                            value=False,
-                            info="Use torch.compile to accelerate the inference process",
-                        )
-
-                        use_expandable_alloc = gr.Checkbox(
-                            label="Enable Expandable Memory Allocation",
-                            value=False,
-                            info="Helps reduce memory fragmentation",
-                        )
-
                         rotary_chunk = gr.Checkbox(
-                            label="Chunked Rotary Position Encoding",
+                            label="Chunked Rotary Position Embedding",
                             value=False,
-                            info="When enabled, uses chunked processing for rotary position encoding to save memory.",
+                            info="When enabled, processes rotary position embeddings in chunks to save GPU memory.",
+                        )
+
+                        rotary_chunk_size = gr.Slider(
+                            label="Rotary Embedding Chunk Size",
+                            value=100,
+                            minimum=100,
+                            maximum=10000,
+                            step=100,
+                            info="Controls the chunk size for applying rotary embeddings. Larger values may improve performance but increase memory usage. Only effective if 'rotary_chunk' is checked.",
                         )
 
                         clean_cuda_cache = gr.Checkbox(
                             label="Clean CUDA Memory Cache",
                             value=False,
-                            info="When enabled, frees up memory in a timely manner but slows down inference.",
+                            info="When enabled, frees up GPU memory promptly but slows down inference.",
                         )
 
+                    gr.Markdown("### Asynchronous Offloading")
                     with gr.Row():
                         cpu_offload = gr.Checkbox(
-                            label="CPU Offload",
+                            label="CPU Offloading",
                             value=False,
-                            info="Offload part of the model computation from GPU to CPU to reduce video memory usage",
+                            info="Offload parts of the model computation from GPU to CPU to reduce GPU memory usage",
                         )
+
+                        lazy_load = gr.Checkbox(
+                            label="Enable Lazy Loading",
+                            value=False,
+                            info="Lazy load model components during inference. Requires CPU loading and DIT quantization.",
+                        )
+
                         offload_granularity = gr.Dropdown(
                             label="Dit Offload Granularity",
                             choices=["block", "phase"],
-                            value="block",
-                            info="Controls the granularity of Dit model offloading to CPU",
+                            value="phase",
+                            info="Sets Dit model offloading granularity: blocks or computational phases",
+                        )
+                        offload_ratio = gr.Slider(
+                            label="Offload ratio for Dit model",
+                            minimum=0.0,
+                            maximum=1.0,
+                            step=0.1,
+                            value=1.0,
+                            info="Controls how much of the Dit model is offloaded to the CPU",
                         )
                         t5_offload_granularity = gr.Dropdown(
                             label="T5 Encoder Offload Granularity",
                             choices=["model", "block"],
-                            value="block",
-                            info="Controls the granularity of T5 Encoder model offloading to CPU",
+                            value="model",
+                            info="Controls the granularity when offloading the T5 Encoder model to CPU",
                         )
 
                     gr.Markdown("### Low-Precision Quantization")
                     with gr.Row():
+                        torch_compile = gr.Checkbox(
+                            label="Torch Compile",
+                            value=False,
+                            info="Use torch.compile to accelerate the inference process",
+                        )
+
                         attention_type = gr.Dropdown(
                             label="Attention Operator",
-                            choices=["flash_attn2", "flash_attn3", "sage_attn2"],
-                            value="flash_attn2",
-                            info="Using a suitable attention operator can accelerate inference",
+                            choices=[op[1] for op in attn_op_choices],
+                            value=attn_op_choices[0][1],
+                            info="Use appropriate attention operators to accelerate inference",
                         )
-
                         quant_op = gr.Dropdown(
-                            label="Quantization Operator",
-                            choices=["vllm", "sgl", "q8f"],
-                            value="vllm",
-                            info="Using a suitable quantization operator can accelerate inference",
+                            label="Quantization Matmul Operator",
+                            choices=[op[1] for op in quant_op_choices],
+                            value=quant_op_choices[0][1],
+                            info="Select the quantization matrix multiplication operator to accelerate inference",
+                            interactive=True,
                         )
-
                         dit_quant_scheme = gr.Dropdown(
                             label="Dit",
                             choices=["fp8", "int8", "bf16"],
                             value="bf16",
-                            info="Quantization precision for Dit model",
+                            info="Quantization precision for the Dit model",
                         )
                         t5_quant_scheme = gr.Dropdown(
                             label="T5 Encoder",
                             choices=["fp8", "int8", "bf16"],
                             value="bf16",
-                            info="Quantization precision for T5 Encoder model",
+                            info="Quantization precision for the T5 Encoder model",
                         )
                         clip_quant_scheme = gr.Dropdown(
                             label="Clip Encoder",
                             choices=["fp8", "int8", "fp16"],
                             value="fp16",
-                            info="Quantization precision for Clip Encoder",
+                            info="Quantization precision for the Clip Encoder",
                         )
                         precision_mode = gr.Dropdown(
-                            label="Sensitive Layer Precision",
+                            label="Precision Mode",
                             choices=["fp32", "bf16"],
-                            value="bf16",
-                            info="Select the numerical precision for sensitive layer calculations.",
+                            value="fp32",
+                            info="Select the numerical precision used for sensitive layers.",
                         )
 
                     gr.Markdown("### Variational Autoencoder (VAE)")
                     with gr.Row():
                         use_tiny_vae = gr.Checkbox(
-                            label="Use Lightweight VAE",
+                            label="Use Tiny VAE",
                             value=False,
                             info="Use a lightweight VAE model to accelerate the decoding process",
                         )
                         use_tiling_vae = gr.Checkbox(
-                            label="Enable VAE Tiling Inference",
+                            label="VAE Tiling Inference",
                             value=False,
-                            info="Use VAE tiling inference to reduce video memory usage",
+                            info="Use VAE tiling inference to reduce GPU memory usage",
                         )
 
                     gr.Markdown("### Feature Caching")
                     with gr.Row():
                         enable_teacache = gr.Checkbox(
-                            label="Enable Tea Cache",
+                            label="Tea Cache",
                             value=False,
                             info="Cache features during inference to reduce the number of inference steps",
                         )
@@ -614,8 +925,40 @@ def main():
                             value=0.26,
                             minimum=0,
                             maximum=1,
-                            info="Higher acceleration may lead to lower quality - setting to 0.1 gives about 2.0x acceleration, setting to 0.2 gives about 3.0x acceleration",
+                            info="Higher acceleration may result in lower quality —— Setting to 0.1 provides ~2.0x acceleration, setting to 0.2 provides ~3.0x acceleration",
                         )
+                        use_ret_steps = gr.Checkbox(
+                            label="Cache Only Key Steps",
+                            value=False,
+                            info="When checked, cache is written only at key steps where the scheduler returns results; when unchecked, cache is written at all steps to ensure the highest quality",
+                        )
+
+                enable_auto_config.change(
+                    fn=auto_configure,
+                    inputs=[enable_auto_config, model_type, resolution],
+                    outputs=[
+                        torch_compile,
+                        lazy_load,
+                        rotary_chunk,
+                        rotary_chunk_size,
+                        clean_cuda_cache,
+                        cpu_offload,
+                        offload_granularity,
+                        offload_ratio,
+                        t5_offload_granularity,
+                        attention_type,
+                        quant_op,
+                        dit_quant_scheme,
+                        t5_quant_scheme,
+                        clip_quant_scheme,
+                        precision_mode,
+                        use_tiny_vae,
+                        use_tiling_vae,
+                        enable_teacache,
+                        teacache_thresh,
+                        use_ret_steps,
+                    ],
+                )
 
         infer_btn.click(
             fn=run_inference,
@@ -634,6 +977,7 @@ def main():
                 sample_shift,
                 enable_teacache,
                 teacache_thresh,
+                use_ret_steps,
                 enable_cfg,
                 cfg_scale,
                 dit_quant_scheme,
@@ -644,13 +988,14 @@ def main():
                 use_tiling_vae,
                 lazy_load,
                 precision_mode,
-                use_expandable_alloc,
                 cpu_offload,
                 offload_granularity,
+                offload_ratio,
                 t5_offload_granularity,
                 attention_type,
                 quant_op,
                 rotary_chunk,
+                rotary_chunk_size,
                 clean_cuda_cache,
             ],
             outputs=output_video,
@@ -660,4 +1005,21 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Light Video Generation")
+    parser.add_argument("--model_path", type=str, required=True, help="Model folder path")
+    parser.add_argument(
+        "--model_cls",
+        type=str,
+        choices=["wan2.1"],
+        default="wan2.1",
+        help="Model class to use",
+    )
+    parser.add_argument("--server_port", type=int, default=7862, help="Server port")
+    parser.add_argument("--server_name", type=str, default="0.0.0.0", help="Server ip")
+    args = parser.parse_args()
+
+    global model_path, model_cls
+    model_path = args.model_path
+    model_cls = args.model_cls
+
     main()
