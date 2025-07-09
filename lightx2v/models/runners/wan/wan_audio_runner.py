@@ -243,8 +243,8 @@ def save_audio(
     if os.path.exists(out_video):
         os.remove(out_video)
 
-    cmd = f"/usr/bin/ffmpeg -y -i {video_name} -i {audio_name} {out_video}"
-    subprocess.call(cmd, shell=True)
+    subprocess.call(["/usr/bin/ffmpeg", "-y", "-i", video_name, "-i", audio_name, out_video])
+
     return out_video
 
 
