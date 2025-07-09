@@ -12,15 +12,15 @@ from lightx2v.server.utils import ProcessManager
 
 
 def create_signal_handler(inference_service: DistributedInferenceService):
-    """创建统一的信号处理函数"""
+    """Create unified signal handler function"""
 
     def signal_handler(signum, frame):
-        logger.info(f"接收到信号 {signum}，正在优雅关闭...")
+        logger.info(f"Received signal {signum}, gracefully shutting down...")
         try:
             if inference_service.is_running:
                 inference_service.stop_distributed_inference()
         except Exception as e:
-            logger.error(f"关闭分布式推理服务时发生错误: {str(e)}")
+            logger.error(f"Error occurred while shutting down distributed inference service: {str(e)}")
         finally:
             sys.exit(0)
 
@@ -50,7 +50,7 @@ def main():
     parser.add_argument("--lora_path", type=str, required=False, default=None)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--nproc_per_node", type=int, default=1, help="分布式推理时每个节点的进程数")
+    parser.add_argument("--nproc_per_node", type=int, default=1, help="Number of processes per node for distributed inference")
 
     args = parser.parse_args()
     logger.info(f"args: {args}")
@@ -65,16 +65,16 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    logger.info("正在启动分布式推理服务...")
+    logger.info("Starting distributed inference service...")
     success = inference_service.start_distributed_inference(args)
     if not success:
-        logger.error("分布式推理服务启动失败，退出程序")
+        logger.error("Failed to start distributed inference service, exiting program")
         sys.exit(1)
 
     atexit.register(inference_service.stop_distributed_inference)
 
     try:
-        logger.info(f"正在启动FastAPI服务器，端口: {args.port}")
+        logger.info(f"Starting FastAPI server on port: {args.port}")
         uvicorn.run(
             api_server.get_app(),
             host="0.0.0.0",
@@ -83,9 +83,9 @@ def main():
             workers=1,
         )
     except KeyboardInterrupt:
-        logger.info("接收到KeyboardInterrupt，正在关闭服务...")
+        logger.info("Received KeyboardInterrupt, shutting down service...")
     except Exception as e:
-        logger.error(f"FastAPI服务器运行时发生错误: {str(e)}")
+        logger.error(f"Error occurred while running FastAPI server: {str(e)}")
     finally:
         inference_service.stop_distributed_inference()
 

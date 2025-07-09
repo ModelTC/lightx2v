@@ -1,8 +1,3 @@
-"""
-分布式推理工具类
-提供简化的分布式推理管理功能，遵循torch.dist规范
-"""
-
 import os
 import torch
 import torch.distributed as dist
@@ -31,20 +26,20 @@ class DistributedManager:
             self.rank = rank
             self.world_size = world_size
 
-            logger.info(f"Rank {rank}/{world_size - 1} 分布式环境初始化成功")
+            logger.info(f"Rank {rank}/{world_size - 1} distributed environment initialized successfully")
             return True
 
         except Exception as e:
-            logger.error(f"Rank {rank} 分布式环境初始化失败: {str(e)}")
+            logger.error(f"Rank {rank} distributed environment initialization failed: {str(e)}")
             return False
 
     def cleanup(self):
         try:
             if dist.is_initialized():
                 dist.destroy_process_group()
-                logger.info(f"Rank {self.rank} 分布式环境已清理")
+                logger.info(f"Rank {self.rank} distributed environment cleaned up")
         except Exception as e:
-            logger.error(f"Rank {self.rank} 清理分布式环境时发生错误: {str(e)}")
+            logger.error(f"Rank {self.rank} error occurred while cleaning up distributed environment: {str(e)}")
         finally:
             self.is_initialized = False
 
@@ -117,13 +112,13 @@ class DistributedWorker:
         self.dist_manager.cleanup()
 
     def sync_and_report(self, task_id: str, status: str, result_queue, **kwargs):
-        # 同步所有进程
+        # Synchronize all processes
         self.dist_manager.barrier()
 
         if self.dist_manager.is_rank_zero():
             result = {"task_id": task_id, "status": status, **kwargs}
             result_queue.put(result)
-            logger.info(f"任务 {task_id} {status}")
+            logger.info(f"Task {task_id} {status}")
 
 
 def create_distributed_worker(rank: int, world_size: int, master_addr: str, master_port: str) -> DistributedWorker:

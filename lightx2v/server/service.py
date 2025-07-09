@@ -13,7 +13,7 @@ from loguru import logger
 from ..utils.set_config import set_config
 from ..infer import init_runner
 from .utils import ServiceStatus
-from .schema import TaskRequest, TaskResponse, TaskResultResponse
+from .schema import TaskRequest, TaskResponse
 from .distributed_utils import create_distributed_worker
 
 
@@ -27,7 +27,7 @@ class FileService:
         self.input_audio_dir = cache_dir / "inputs" / "audios"
         self.output_video_dir = cache_dir / "outputs"
 
-        # 创建目录
+        # Create directories
         for directory in [
             self.input_image_dir,
             self.output_video_dir,
@@ -55,7 +55,7 @@ class FileService:
 
             return image_path
         except Exception as e:
-            logger.error(f"下载图片失败: {e}")
+            logger.error(f"Failed to download image: {e}")
             raise
 
     def save_uploaded_file(self, file_content: bytes, filename: str) -> Path:
@@ -81,90 +81,90 @@ def _distributed_inference_worker(rank, world_size, master_addr, master_port, ar
     worker = None
 
     try:
-        logger.info(f"进程 {rank}/{world_size - 1} 正在初始化分布式推理服务...")
+        logger.info(f"Process {rank}/{world_size - 1} initializing distributed inference service...")
 
-        # 创建并初始化分布式工作进程
+        # Create and initialize distributed worker process
         worker = create_distributed_worker(rank, world_size, master_addr, master_port)
         if not worker.init():
-            raise RuntimeError(f"Rank {rank} 分布式环境初始化失败")
+            raise RuntimeError(f"Rank {rank} distributed environment initialization failed")
 
-        # 初始化配置和模型
+        # Initialize configuration and model
         config = set_config(args)
         config["mode"] = "server"
         logger.info(f"Rank {rank} config: {config}")
 
         runner = init_runner(config)
-        logger.info(f"进程 {rank}/{world_size - 1} 分布式推理服务初始化完成")
+        logger.info(f"Process {rank}/{world_size - 1} distributed inference service initialization completed")
 
-        # 创建事件循环
+        # Create event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         while True:
-            # 只有rank=0从队列读取任务
+            # Only rank=0 reads tasks from queue
             if rank == 0:
                 try:
                     task_data = task_queue.get(timeout=1.0)
-                    if task_data is None:  # 停止信号
-                        logger.info(f"进程 {rank} 收到停止信号，退出推理服务")
-                        # 广播停止信号给其他进程
+                    if task_data is None:  # Stop signal
+                        logger.info(f"Process {rank} received stop signal, exiting inference service")
+                        # Broadcast stop signal to other processes
                         worker.dist_manager.broadcast_task_data(None)
                         break
-                    # 广播任务数据给其他进程
+                    # Broadcast task data to other processes
                     worker.dist_manager.broadcast_task_data(task_data)
                 except queue.Empty:
-                    # 队列为空，继续等待
+                    # Queue is empty, continue waiting
                     continue
             else:
-                # 非rank=0进程从rank=0接收任务数据
+                # Non-rank=0 processes receive task data from rank=0
                 task_data = worker.dist_manager.broadcast_task_data()
-                if task_data is None:  # 停止信号
-                    logger.info(f"进程 {rank} 收到停止信号，退出推理服务")
+                if task_data is None:  # Stop signal
+                    logger.info(f"Process {rank} received stop signal, exiting inference service")
                     break
 
-            # 所有进程都处理任务
+            # All processes handle the task
             if task_data is not None:
-                logger.info(f"进程 {rank} 收到推理任务: {task_data['task_id']}")
+                logger.info(f"Process {rank} received inference task: {task_data['task_id']}")
 
                 try:
-                    # 设置输入并运行推理
+                    # Set inputs and run inference
                     runner.set_inputs(task_data)  # type: ignore
                     loop.run_until_complete(runner.run_pipeline())
 
-                    # 同步并报告结果
+                    # Synchronize and report results
                     worker.sync_and_report(
                         task_data["task_id"],
                         "success",
                         result_queue,
                         save_video_path=task_data["save_video_path"],
-                        message="推理完成",
+                        message="Inference completed",
                     )
                 except Exception as e:
-                    logger.error(f"进程 {rank} 处理任务时发生错误: {str(e)}")
+                    logger.error(f"Process {rank} error occurred while processing task: {str(e)}")
 
-                    # 同步并报告错误
+                    # Synchronize and report error
                     worker.sync_and_report(
                         task_data.get("task_id", "unknown"),
                         "failed",
                         result_queue,
                         error=str(e),
-                        message=f"推理失败: {str(e)}",
+                        message=f"Inference failed: {str(e)}",
                     )
 
     except KeyboardInterrupt:
-        logger.info(f"进程 {rank} 收到 KeyboardInterrupt，优雅退出")
+        logger.info(f"Process {rank} received KeyboardInterrupt, gracefully exiting")
     except Exception as e:
-        logger.error(f"分布式推理服务进程 {rank} 启动失败: {str(e)}")
+        logger.error(f"Distributed inference service process {rank} startup failed: {str(e)}")
         if rank == 0:
             error_result = {
                 "task_id": "startup",
                 "status": "startup_failed",
                 "error": str(e),
-                "message": f"推理服务启动失败: {str(e)}",
+                "message": f"Inference service startup failed: {str(e)}",
             }
             result_queue.put(error_result)
     finally:
-        # 清理资源
+        # Clean up resources
         try:
             if loop and not loop.is_closed():
                 loop.close()
@@ -187,12 +187,12 @@ class DistributedInferenceService:
 
     def start_distributed_inference(self, args) -> bool:
         if self.is_running:
-            logger.warning("分布式推理服务已在运行")
+            logger.warning("Distributed inference service is already running")
             return True
 
         nproc_per_node = args.nproc_per_node
         if nproc_per_node <= 0:
-            logger.error("nproc_per_node 必须大于0")
+            logger.error("nproc_per_node must be greater than 0")
             return False
 
         try:
@@ -200,13 +200,13 @@ class DistributedInferenceService:
 
             master_addr = "127.0.0.1"
             master_port = str(random.randint(20000, 29999))
-            logger.info(f"分布式推理服务 Master Addr: {master_addr}, Master Port: {master_port}")
+            logger.info(f"Distributed inference service Master Addr: {master_addr}, Master Port: {master_port}")
 
-            # 创建共享队列
+            # Create shared queues
             self.task_queue = mp.Queue()
             self.result_queue = mp.Queue()
 
-            # 启动进程
+            # Start processes
             for rank in range(nproc_per_node):
                 p = mp.Process(
                     target=_distributed_inference_worker,
@@ -225,11 +225,11 @@ class DistributedInferenceService:
                 self.processes.append(p)
 
             self.is_running = True
-            logger.info(f"分布式推理服务启动成功，共 {nproc_per_node} 个进程")
+            logger.info(f"Distributed inference service started successfully with {nproc_per_node} processes")
             return True
 
         except Exception as e:
-            logger.exception(f"启动分布式推理服务时发生错误: {str(e)}")
+            logger.exception(f"Error occurred while starting distributed inference service: {str(e)}")
             self.stop_distributed_inference()
             return False
 
@@ -238,30 +238,30 @@ class DistributedInferenceService:
             return
 
         try:
-            logger.info(f"正在停止 {len(self.processes)} 个分布式推理服务进程...")
+            logger.info(f"Stopping {len(self.processes)} distributed inference service processes...")
 
-            # 发送停止信号
+            # Send stop signal
             if self.task_queue:
                 for _ in self.processes:
                     self.task_queue.put(None)
 
-            # 等待进程结束
+            # Wait for processes to end
             for p in self.processes:
                 try:
                     p.join(timeout=10)
                     if p.is_alive():
-                        logger.warning(f"进程 {p.pid} 未在规定时间内结束，强制终止...")
+                        logger.warning(f"Process {p.pid} did not end within the specified time, forcing termination...")
                         p.terminate()
                         p.join(timeout=5)
                 except:  # noqa: E722
                     pass
 
-            logger.info("所有分布式推理服务进程已停止")
+            logger.info("All distributed inference service processes have stopped")
 
         except Exception as e:
-            logger.error(f"停止分布式推理服务时发生错误: {str(e)}")
+            logger.error(f"Error occurred while stopping distributed inference service: {str(e)}")
         finally:
-            # 清理资源
+            # Clean up resources
             self._clean_queues()
             self.processes = []
             self.task_queue = None
@@ -279,14 +279,14 @@ class DistributedInferenceService:
 
     def submit_task(self, task_data: dict) -> bool:
         if not self.is_running or not self.task_queue:
-            logger.error("分布式推理服务未启动")
+            logger.error("Distributed inference service is not started")
             return False
 
         try:
             self.task_queue.put(task_data)
             return True
         except Exception as e:
-            logger.error(f"提交任务失败: {str(e)}")
+            logger.error(f"Failed to submit task: {str(e)}")
             return False
 
     def wait_for_result(self, task_id: str, timeout: int = 300) -> Optional[dict]:
@@ -302,7 +302,7 @@ class DistributedInferenceService:
                 if result.get("task_id") == task_id:
                     return result
                 else:
-                    # 不是当前任务的结果，放回队列
+                    # Not the result for current task, put back in queue
                     self.result_queue.put(result)
                     time.sleep(0.1)
 
@@ -319,7 +319,7 @@ class VideoGenerationService:
 
     async def generate_video(self, message: TaskRequest) -> TaskResponse:
         try:
-            # 处理图片路径
+            # Process image path
             task_data = {
                 "task_id": message.task_id,
                 "prompt": message.prompt,
@@ -335,24 +335,24 @@ class VideoGenerationService:
                 "video_duration": message.video_duration,
             }
 
-            # 处理网络图片
+            # Process network image
             if message.image_path.startswith("http"):
                 image_path = await self.file_service.download_image(message.image_path)
                 task_data["image_path"] = str(image_path)
 
-            # 处理输出路径
+            # Process output path
             save_video_path = self.file_service.get_output_path(message.save_video_path)
             task_data["save_video_path"] = str(save_video_path)
 
-            # 提交任务到分布式推理服务
+            # Submit task to distributed inference service
             if not self.inference_service.submit_task(task_data):
-                raise RuntimeError("分布式推理服务未启动")
+                raise RuntimeError("Distributed inference service is not started")
 
-            # 等待结果
+            # Wait for result
             result = self.inference_service.wait_for_result(message.task_id)
 
             if result is None:
-                raise RuntimeError("任务处理超时")
+                raise RuntimeError("Task processing timeout")
 
             if result.get("status") == "success":
                 ServiceStatus.complete_task(message)
@@ -362,34 +362,11 @@ class VideoGenerationService:
                     save_video_path=str(save_video_path),
                 )
             else:
-                error_msg = result.get("error", "推理失败")
+                error_msg = result.get("error", "Inference failed")
                 ServiceStatus.record_failed_task(message, error=error_msg)
                 raise RuntimeError(error_msg)
 
         except Exception as e:
-            logger.error(f"任务 {message.task_id} 处理失败: {str(e)}")
+            logger.error(f"Task {message.task_id} processing failed: {str(e)}")
             ServiceStatus.record_failed_task(message, error=str(e))
             raise
-
-    def get_task_result(self, task_id: str) -> TaskResultResponse:
-        result = ServiceStatus.get_status_task_id(task_id)
-        save_video_path = result.get("save_video_path")
-
-        if save_video_path:
-            file_path = Path(save_video_path)
-            relative_path = file_path.relative_to(self.file_service.output_video_dir.resolve()) if str(file_path).startswith(str(self.file_service.output_video_dir.resolve())) else file_path.name
-
-            return TaskResultResponse(
-                status="success",
-                task_status=result.get("status", "unknown"),
-                filename=file_path.name,
-                file_size=file_path.stat().st_size,
-                download_url=f"/v1/file/download/{relative_path}",
-                message="任务结果已准备就绪",
-            )
-
-        return TaskResultResponse(
-            status="not_found",
-            task_status=result.get("status", "unknown"),
-            message="Task result not found",
-        )

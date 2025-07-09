@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# 设置路径
+# Set paths
 lightx2v_path=
 model_path=
 
-# 检查参数
+# Check parameters
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
     cuda_devices=0
     echo "Warn: CUDA_VISIBLE_DEVICES is not set, using default value: ${cuda_devices}"
@@ -21,7 +21,7 @@ if [ -z "${model_path}" ]; then
     exit 1
 fi
 
-# 设置环境变量
+# Set environment variables
 export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH=${lightx2v_path}:$PYTHONPATH
 export ENABLE_PROFILING_DEBUG=true
@@ -29,13 +29,13 @@ export ENABLE_GRAPH_MODE=false
 export DTYPE=BF16
 
 echo "=========================================="
-echo "启动分布式推理API服务器"
-echo "模型路径: $model_path"
-echo "CUDA设备: $CUDA_VISIBLE_DEVICES"
-echo "API端口: 8000"
+echo "Starting distributed inference API server"
+echo "Model path: $model_path"
+echo "CUDA devices: $CUDA_VISIBLE_DEVICES"
+echo "API port: 8000"
 echo "=========================================="
 
-# 启动API服务器，同时启动分布式推理服务
+# Start API server with distributed inference service
 python -m lightx2v.api_server \
 --model_cls wan2.1 \
 --task i2v \
@@ -45,4 +45,4 @@ python -m lightx2v.api_server \
 --start_inference \
 --nproc_per_node 1
 
-echo "服务已停止"
+echo "Service stopped"

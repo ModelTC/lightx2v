@@ -27,7 +27,7 @@ class ApiServer:
         self.thread = None
         self.stop_generation_event = threading.Event()
 
-        # 创建路由器
+        # Create routers
         self.tasks_router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
         self.files_router = APIRouter(prefix="/v1/files", tags=["files"])
         self.service_router = APIRouter(prefix="/v1/service", tags=["service"])
@@ -35,34 +35,34 @@ class ApiServer:
         self._setup_routes()
 
     def _setup_routes(self):
-        """设置路由"""
+        """Setup routes"""
         self._setup_task_routes()
         self._setup_file_routes()
         self._setup_service_routes()
 
-        # 注册路由器
+        # Register routers
         self.app.include_router(self.tasks_router)
         self.app.include_router(self.files_router)
         self.app.include_router(self.service_router)
 
     def _stream_file_response(self, file_path: Path, filename: str | None = None) -> StreamingResponse:
-        """公共的文件流响应方法"""
+        """Common file streaming response method"""
         assert self.file_service is not None, "File service is not initialized"
 
         try:
             resolved_path = file_path.resolve()
 
-            # 安全检查：确保文件在允许的目录内
+            # Security check: ensure file is within allowed directory
             if not str(resolved_path).startswith(str(self.file_service.output_video_dir.resolve())):
-                raise HTTPException(status_code=403, detail="不允许访问该文件")
+                raise HTTPException(status_code=403, detail="Access to this file is not allowed")
 
             if not resolved_path.exists() or not resolved_path.is_file():
-                raise HTTPException(status_code=404, detail=f"文件未找到: {file_path}")
+                raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 
             file_size = resolved_path.stat().st_size
             actual_filename = filename or resolved_path.name
 
-            # 设置适当的 MIME 类型
+            # Set appropriate MIME type
             mime_type = "application/octet-stream"
             if actual_filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
                 mime_type = "video/mp4"
@@ -88,17 +88,17 @@ class ApiServer:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"处理文件流响应时发生错误: {e}")
-            raise HTTPException(status_code=500, detail="文件传输失败")
+            logger.error(f"Error occurred while processing file stream response: {e}")
+            raise HTTPException(status_code=500, detail="File transfer failed")
 
     def _setup_task_routes(self):
         @self.tasks_router.post("/", response_model=TaskResponse)
         async def create_task(message: TaskRequest):
-            """创建视频生成任务"""
+            """Create video generation task"""
             try:
                 task_id = ServiceStatus.start_task(message)
 
-                # 使用后台线程处理长时间运行的任务
+                # Use background thread to handle long-running tasks
                 self.stop_generation_event.clear()
                 self.thread = threading.Thread(
                     target=self._process_video_generation,
@@ -129,8 +129,8 @@ class ApiServer:
             audio_file: Optional[UploadFile] = File(default=None),
             video_duration: int = Form(default=5),
         ):
-            """通过表单创建视频生成任务"""
-            # 处理上传的图片文件
+            """Create video generation task via form"""
+            # Process uploaded image file
             image_path = ""
             assert self.file_service is not None, "File service is not initialized"
 
@@ -191,17 +191,17 @@ class ApiServer:
 
         @self.tasks_router.get("/", response_model=list)
         async def list_tasks():
-            """获取所有任务列表"""
+            """Get all task list"""
             return ServiceStatus.get_all_tasks()
 
         @self.tasks_router.get("/{task_id}/status")
         async def get_task_status(task_id: str):
-            """获取指定任务的状态"""
+            """Get status of specified task"""
             return ServiceStatus.get_status_task_id(task_id)
 
         @self.tasks_router.get("/{task_id}/result")
         async def get_task_result(task_id: str):
-            """获取指定任务的结果视频文件"""
+            """Get result video file of specified task"""
             assert self.video_service is not None, "Video service is not initialized"
             assert self.file_service is not None, "File service is not initialized"
 
@@ -209,11 +209,11 @@ class ApiServer:
                 task_status = ServiceStatus.get_status_task_id(task_id)
 
                 if not task_status or task_status.get("status") != "completed":
-                    raise HTTPException(status_code=404, detail="任务未完成或不存在")
+                    raise HTTPException(status_code=404, detail="Task not completed or does not exist")
 
                 save_video_path = task_status.get("save_video_path")
                 if not save_video_path:
-                    raise HTTPException(status_code=404, detail="任务结果文件不存在")
+                    raise HTTPException(status_code=404, detail="Task result file does not exist")
 
                 full_path = Path(save_video_path)
                 if not full_path.is_absolute():
@@ -224,33 +224,33 @@ class ApiServer:
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"获取任务结果时发生错误: {e}")
-                raise HTTPException(status_code=500, detail="获取任务结果失败")
+                logger.error(f"Error occurred while getting task result: {e}")
+                raise HTTPException(status_code=500, detail="Failed to get task result")
 
         @self.tasks_router.delete("/running", response_model=StopTaskResponse)
         async def stop_running_task():
-            """停止当前运行的任务"""
+            """Stop currently running task"""
             if self.thread and self.thread.is_alive():
                 try:
-                    logger.info("正在发送停止信号给运行中的任务线程...")
+                    logger.info("Sending stop signal to running task thread...")
                     self.stop_generation_event.set()
                     self.thread.join(timeout=5)
 
                     if self.thread.is_alive():
-                        logger.warning("任务线程未在规定时间内停止，可能需要手动干预。")
+                        logger.warning("Task thread did not stop within the specified time, manual intervention may be required.")
                         return StopTaskResponse(
                             stop_status="warning",
-                            reason="任务线程未在规定时间内停止，可能需要手动干预。",
+                            reason="Task thread did not stop within the specified time, manual intervention may be required.",
                         )
                     else:
                         self.thread = None
                         ServiceStatus.clean_stopped_task()
                         gc.collect()
                         torch.cuda.empty_cache()
-                        logger.info("任务已成功停止。")
+                        logger.info("Task stopped successfully.")
                         return StopTaskResponse(stop_status="success", reason="Task stopped successfully.")
                 except Exception as e:
-                    logger.error(f"停止任务时发生错误: {str(e)}")
+                    logger.error(f"Error occurred while stopping task: {str(e)}")
                     return StopTaskResponse(stop_status="error", reason=str(e))
             else:
                 return StopTaskResponse(stop_status="do_nothing", reason="No running task found.")
@@ -258,7 +258,7 @@ class ApiServer:
     def _setup_file_routes(self):
         @self.files_router.get("/download/{file_path:path}")
         async def download_file(file_path: str):
-            """下载文件"""
+            """Download file"""
             assert self.file_service is not None, "File service is not initialized"
 
             try:
@@ -267,28 +267,28 @@ class ApiServer:
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"处理文件下载请求时发生错误: {e}")
-                raise HTTPException(status_code=500, detail="文件下载失败")
+                logger.error(f"Error occurred while processing file download request: {e}")
+                raise HTTPException(status_code=500, detail="File download failed")
 
     def _setup_service_routes(self):
         @self.service_router.get("/status", response_model=ServiceStatusResponse)
         async def get_service_status():
-            """获取服务状态"""
+            """Get service status"""
             return ServiceStatus.get_status_service()
 
     def _process_video_generation(self, message: TaskRequest, stop_event: threading.Event):
         assert self.video_service is not None, "Video service is not initialized"
         try:
             if stop_event.is_set():
-                logger.info(f"任务 {message.task_id} 收到停止信号，正在终止")
-                ServiceStatus.record_failed_task(message, error="任务被停止")
+                logger.info(f"Task {message.task_id} received stop signal, terminating")
+                ServiceStatus.record_failed_task(message, error="Task stopped")
                 return
 
-            # 使用视频生成服务处理任务
+            # Use video generation service to process task
             result = asyncio.run(self.video_service.generate_video(message))
 
         except Exception as e:
-            logger.error(f"任务 {message.task_id} 处理失败: {str(e)}")
+            logger.error(f"Task {message.task_id} processing failed: {str(e)}")
             ServiceStatus.record_failed_task(message, error=str(e))
 
     def initialize_services(self, cache_dir: Path, inference_service: DistributedInferenceService):
