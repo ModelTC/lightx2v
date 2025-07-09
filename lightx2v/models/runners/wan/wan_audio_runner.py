@@ -219,8 +219,9 @@ def save_to_video(gen_lvideo, out_path, target_fps):
 def save_audio(
     audio_array,
     audio_name: str,
-    video_name: str = None,
+    video_name: str,
     sr: int = 16000,
+    output_path: Optional[str] = None,
 ):
     logger.info(f"Saving audio to {audio_name} type: {type(audio_array)}")
 
@@ -230,18 +231,21 @@ def save_audio(
         sample_rate=sr,
     )
 
-    out_video = f"{video_name[:-4]}_with_audio.mp4"
-    # 确保父目录存在
+    if output_path is None:
+        out_video = f"{video_name[:-4]}_with_audio.mp4"
+    else:
+        out_video = output_path
+
     parent_dir = os.path.dirname(out_video)
     if parent_dir and not os.path.exists(parent_dir):
         os.makedirs(parent_dir, exist_ok=True)
 
-    # 如果输出视频已存在，先删除
     if os.path.exists(out_video):
         os.remove(out_video)
 
-    cmd = f"/usr/bin/ffmpeg -i {video_name} -i {audio_name} {out_video}"
+    cmd = f"/usr/bin/ffmpeg -y -i {video_name} -i {audio_name} {out_video}"
     subprocess.call(cmd, shell=True)
+    return out_video
 
 
 @RUNNER_REGISTER("wan2.1_audio")
@@ -323,17 +327,16 @@ class WanAudioRunner(WanRunner):
                     "vae_encode_out": vae_encode_out,
                 }
                 logger.info(f"clip_encoder_out:{clip_encoder_out.shape} vae_encode_out:{vae_encode_out.shape}")
+
         with ProfilingContext("Run Text Encoder"):
-            with open(self.config["prompt_path"], "r", encoding="utf-8") as f:
-                prompt = f.readline().strip()
-                logger.info(f"Prompt: {prompt}")
-                img = Image.open(self.config["image_path"]).convert("RGB")
-                text_encoder_output = self.run_text_encoder(prompt, img)
+            logger.info(f"Prompt: {self.config['prompt']}")
+            img = Image.open(self.config["image_path"]).convert("RGB")
+            text_encoder_output = self.run_text_encoder(self.config["prompt"], img)
 
         self.set_target_shape()
         self.inputs = {"text_encoder_output": text_encoder_output, "image_encoder_output": image_encoder_output}
 
-        del self.image_encoder  # 删除ref的clip模型，只使用一次
+        # del self.image_encoder  # 删除ref的clip模型，只使用一次
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -491,7 +494,7 @@ class WanAudioRunner(WanRunner):
         out_path = self.config.save_video_path
         audio_file = os.path.join("./", "audio_merge.wav")
         save_to_video(gen_lvideo, out_path, target_fps)
-        save_audio(merge_audio, audio_file, out_path)
+        save_audio(merge_audio, audio_file, out_path, output_path=self.config.get("save_video_path", None))
         os.remove(out_path)
         os.remove(audio_file)
 

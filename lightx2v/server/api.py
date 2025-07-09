@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import FastAPI, UploadFile, HTTPException, Form, APIRouter
+from fastapi import FastAPI, UploadFile, HTTPException, Form, File, APIRouter
 from fastapi.responses import StreamingResponse
 from loguru import logger
 import threading
@@ -7,7 +7,7 @@ import gc
 import torch
 from pathlib import Path
 import uuid
-
+from typing import Optional
 from .schema import TaskRequest, TaskResponse, TaskResultResponse, ServiceStatusResponse, StopTaskResponse
 from .service import FileService, DistributedInferenceService, VideoGenerationService
 from .utils import ServiceStatus
@@ -100,7 +100,7 @@ class ApiServer:
 
         @self.tasks_router.post("/form", response_model=TaskResponse)
         async def create_task_form(
-            image_file: UploadFile,
+            image_file: UploadFile = File(...),
             prompt: str = Form(default=""),
             save_video_path: str = Form(default=""),
             use_prompt_enhancer: bool = Form(default=False),
@@ -109,6 +109,8 @@ class ApiServer:
             infer_steps: int = Form(default=5),
             target_video_length: int = Form(default=81),
             seed: int = Form(default=42),
+            audio_file: Optional[UploadFile] = File(default=None),
+            video_duration: int = Form(default=5),
         ):
             """通过表单创建视频生成任务"""
             # 处理上传的图片文件
@@ -126,6 +128,16 @@ class ApiServer:
 
                 image_path = str(image_path)
 
+            audio_path = ""
+            if audio_file and audio_file.filename:
+                file_extension = Path(audio_file.filename).suffix
+                unique_filename = f"{uuid.uuid4()}{file_extension}"
+                audio_path = self.file_service.input_audio_dir / unique_filename
+
+                with open(audio_path, "wb") as buffer:
+                    content = await audio_file.read()
+                    buffer.write(content)
+
             message = TaskRequest(
                 prompt=prompt,
                 use_prompt_enhancer=use_prompt_enhancer,
@@ -136,6 +148,8 @@ class ApiServer:
                 infer_steps=infer_steps,
                 target_video_length=target_video_length,
                 seed=seed,
+                audio_path=audio_path,
+                video_duration=video_duration,
             )
 
             try:

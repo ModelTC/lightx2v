@@ -24,6 +24,7 @@ class FileService:
     def __init__(self, cache_dir: Path):
         self.cache_dir = cache_dir
         self.input_image_dir = cache_dir / "inputs" / "imgs"
+        self.input_audio_dir = cache_dir / "inputs" / "audios"
         self.output_video_dir = cache_dir / "outputs"
 
         # 创建目录
@@ -297,6 +298,8 @@ class VideoGenerationService:
                 "infer_steps": message.infer_steps,
                 "target_video_length": message.target_video_length,
                 "seed": message.seed,
+                "audio_path": message.audio_path,
+                "video_duration": message.video_duration,
             }
 
             # 处理网络图片

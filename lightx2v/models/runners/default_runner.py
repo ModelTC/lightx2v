@@ -104,6 +104,9 @@ class DefaultRunner:
         self.config["infer_steps"] = inputs.get("infer_steps", self.config.get("infer_steps", 5))
         self.config["target_video_length"] = inputs.get("target_video_length", self.config.get("target_video_length", 81))
         self.config["seed"] = inputs.get("seed", self.config.get("seed", 42))
+        self.config["audio_path"] = inputs.get("audio_path", "")  # for wan-audio
+        self.config["video_duration"] = inputs.get("video_duration", 5)  # for wan-audio
+
         # self.config["sample_shift"] = inputs.get("sample_shift", self.config.get("sample_shift", 5))
         # self.config["sample_guide_scale"] = inputs.get("sample_guide_scale", self.config.get("sample_guide_scale", 5))
 

@@ -6,7 +6,7 @@ from ..utils.generate_task_id import generate_task_id
 
 class TaskRequest(BaseModel):
     task_id: str = Field(default_factory=generate_task_id, description="任务ID（自动生成）")
-    prompt: str = Field(..., description="生成提示词")
+    prompt: str = Field("", description="生成提示词")
     use_prompt_enhancer: bool = Field(False, description="是否使用提示词增强")
     negative_prompt: str = Field("", description="负面提示词")
     image_path: str = Field("", description="输入图片路径")
@@ -15,6 +15,8 @@ class TaskRequest(BaseModel):
     infer_steps: int = Field(5, description="推理步数")
     target_video_length: int = Field(81, description="目标视频长度")
     seed: int = Field(42, description="随机种子")
+    audio_path: str = Field("", description="输入音频路径（Wan-Audio）")
+    video_duration: int = Field(5, description="视频时长（Wan-Audio）")
 
     def __init__(self, **data):
         super().__init__(**data)
