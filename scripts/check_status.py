@@ -2,13 +2,13 @@ import requests
 from loguru import logger
 
 
-response = requests.get("http://localhost:8000/v1/local/video/generate/service_status")
+response = requests.get("http://localhost:8000/v1/service/status")
 logger.info(response.json())
 
 
-response = requests.get("http://localhost:8000/v1/local/video/generate/get_all_tasks")
+response = requests.get("http://localhost:8000/v1/tasks/")
 logger.info(response.json())
 
 
-response = requests.post("http://localhost:8000/v1/local/video/generate/task_status", json={"task_id": "test_task_001"})
+response = requests.get("http://localhost:8000/v1/tasks/test_task_001/status")
 logger.info(response.json())
