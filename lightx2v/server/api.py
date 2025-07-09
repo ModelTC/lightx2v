@@ -189,7 +189,7 @@ class ApiServer:
             except RuntimeError as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
-        @self.tasks_router.get("/", response_model=list)
+        @self.tasks_router.get("/", response_model=dict)
         async def list_tasks():
             """Get all task list"""
             return ServiceStatus.get_all_tasks()
