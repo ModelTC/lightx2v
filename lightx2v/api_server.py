@@ -11,9 +11,23 @@ from lightx2v.server.service import DistributedInferenceService
 from lightx2v.server.utils import ProcessManager
 
 
-def main():
-    ProcessManager.register_signal_handler()
+def create_signal_handler(inference_service: DistributedInferenceService):
+    """创建统一的信号处理函数"""
 
+    def signal_handler(signum, frame):
+        logger.info(f"接收到信号 {signum}，正在优雅关闭...")
+        try:
+            if inference_service.is_running:
+                inference_service.stop_distributed_inference()
+        except Exception as e:
+            logger.error(f"关闭分布式推理服务时发生错误: {str(e)}")
+        finally:
+            sys.exit(0)
+
+    return signal_handler
+
+
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_cls", type=str, required=True, choices=["wan2.1", "hunyuan", "wan2.1_causvid", "wan2.1_skyreels_v2_df"], default="hunyuan")
     parser.add_argument("--task", type=str, choices=["t2v", "i2v"], default="t2v")
@@ -36,6 +50,11 @@ def main():
     api_server = ApiServer()
     api_server.initialize_services(cache_dir, inference_service)
 
+    # 创建统一的信号处理器
+    signal_handler = create_signal_handler(inference_service)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
     # 启动分布式推理服务
     if args.start_inference:
         logger.info("正在启动分布式推理服务...")
@@ -46,19 +65,6 @@ def main():
 
         # 注册清理函数
         atexit.register(inference_service.stop_distributed_inference)
-
-        # 注册信号处理器
-        def signal_handler(signum, frame):
-            logger.info(f"接收到信号 {signum}，正在优雅关闭...")
-            try:
-                inference_service.stop_distributed_inference()
-            except Exception as e:
-                logger.error(f"关闭分布式推理服务时发生错误: {str(e)}")
-            finally:
-                sys.exit(0)
-
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
 
     # 启动FastAPI服务器
     try:

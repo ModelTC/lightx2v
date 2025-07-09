@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # 设置路径
-lightx2v_path=/mnt/aigc/users/gaopeng1/ComfyUI-Lightx2vWrapper/lightx2v
-model_path=/mnt/aigc/users/lijiaqi2/wan_model/Wan2.1-I2V-14B-720P-cfg
+lightx2v_path=
+model_path=
 
 # 检查参数
 if [ -z "${CUDA_VISIBLE_DEVICES}" ]; then
-    cuda_devices=2,3
+    cuda_devices=0
     echo "Warn: CUDA_VISIBLE_DEVICES is not set, using default value: ${cuda_devices}"
     export CUDA_VISIBLE_DEVICES=${cuda_devices}
 fi
@@ -43,6 +43,6 @@ python -m lightx2v.api_server \
 --config_json ${lightx2v_path}/configs/wan/wan_i2v_dist.json \
 --port 8000 \
 --start_inference \
---nproc_per_node 2
+--nproc_per_node 1
 
 echo "服务已停止"
