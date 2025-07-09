@@ -28,7 +28,11 @@ class FileService:
         self.output_video_dir = cache_dir / "outputs"
 
         # 创建目录
-        for directory in [self.input_image_dir, self.output_video_dir]:
+        for directory in [
+            self.input_image_dir,
+            self.output_video_dir,
+            self.input_audio_dir,
+        ]:
             directory.mkdir(parents=True, exist_ok=True)
 
     async def download_image(self, image_url: str) -> Path:
@@ -128,19 +132,36 @@ def _distributed_inference_worker(rank, world_size, master_addr, master_port, ar
                     loop.run_until_complete(runner.run_pipeline())
 
                     # 同步并报告结果
-                    worker.sync_and_report(task_data["task_id"], "success", result_queue, save_video_path=task_data["save_video_path"], message="推理完成")
+                    worker.sync_and_report(
+                        task_data["task_id"],
+                        "success",
+                        result_queue,
+                        save_video_path=task_data["save_video_path"],
+                        message="推理完成",
+                    )
                 except Exception as e:
                     logger.error(f"进程 {rank} 处理任务时发生错误: {str(e)}")
 
                     # 同步并报告错误
-                    worker.sync_and_report(task_data.get("task_id", "unknown"), "failed", result_queue, error=str(e), message=f"推理失败: {str(e)}")
+                    worker.sync_and_report(
+                        task_data.get("task_id", "unknown"),
+                        "failed",
+                        result_queue,
+                        error=str(e),
+                        message=f"推理失败: {str(e)}",
+                    )
 
     except KeyboardInterrupt:
         logger.info(f"进程 {rank} 收到 KeyboardInterrupt，优雅退出")
     except Exception as e:
         logger.error(f"分布式推理服务进程 {rank} 启动失败: {str(e)}")
         if rank == 0:
-            error_result = {"task_id": "startup", "status": "startup_failed", "error": str(e), "message": f"推理服务启动失败: {str(e)}"}
+            error_result = {
+                "task_id": "startup",
+                "status": "startup_failed",
+                "error": str(e),
+                "message": f"推理服务启动失败: {str(e)}",
+            }
             result_queue.put(error_result)
     finally:
         # 清理资源
@@ -187,7 +208,19 @@ class DistributedInferenceService:
 
             # 启动进程
             for rank in range(nproc_per_node):
-                p = mp.Process(target=_distributed_inference_worker, args=(rank, nproc_per_node, master_addr, master_port, args, self.task_queue, self.result_queue), daemon=True)
+                p = mp.Process(
+                    target=_distributed_inference_worker,
+                    args=(
+                        rank,
+                        nproc_per_node,
+                        master_addr,
+                        master_port,
+                        args,
+                        self.task_queue,
+                        self.result_queue,
+                    ),
+                    daemon=True,
+                )
                 p.start()
                 self.processes.append(p)
 
@@ -323,7 +356,11 @@ class VideoGenerationService:
 
             if result.get("status") == "success":
                 ServiceStatus.complete_task(message)
-                return TaskResponse(task_id=message.task_id, task_status="completed", save_video_path=str(save_video_path))
+                return TaskResponse(
+                    task_id=message.task_id,
+                    task_status="completed",
+                    save_video_path=str(save_video_path),
+                )
             else:
                 error_msg = result.get("error", "推理失败")
                 ServiceStatus.record_failed_task(message, error=error_msg)
@@ -351,4 +388,8 @@ class VideoGenerationService:
                 message="任务结果已准备就绪",
             )
 
-        return TaskResultResponse(status="not_found", task_status=result.get("status", "unknown"), message="Task result not found")
+        return TaskResultResponse(
+            status="not_found",
+            task_status=result.get("status", "unknown"),
+            message="Task result not found",
+        )

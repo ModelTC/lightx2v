@@ -8,7 +8,12 @@ import torch
 from pathlib import Path
 import uuid
 from typing import Optional
-from .schema import TaskRequest, TaskResponse, TaskResultResponse, ServiceStatusResponse, StopTaskResponse
+from .schema import (
+    TaskRequest,
+    TaskResponse,
+    ServiceStatusResponse,
+    StopTaskResponse,
+)
 from .service import FileService, DistributedInferenceService, VideoGenerationService
 from .utils import ServiceStatus
 
@@ -75,7 +80,11 @@ class ApiServer:
                     while chunk := file.read(chunk_size):
                         yield chunk
 
-            return StreamingResponse(file_stream_generator(str(resolved_path)), media_type=mime_type, headers=headers)
+            return StreamingResponse(
+                file_stream_generator(str(resolved_path)),
+                media_type=mime_type,
+                headers=headers,
+            )
         except HTTPException:
             raise
         except Exception as e:
@@ -91,10 +100,18 @@ class ApiServer:
 
                 # 使用后台线程处理长时间运行的任务
                 self.stop_generation_event.clear()
-                self.thread = threading.Thread(target=self._process_video_generation, args=(message, self.stop_generation_event), daemon=True)
+                self.thread = threading.Thread(
+                    target=self._process_video_generation,
+                    args=(message, self.stop_generation_event),
+                    daemon=True,
+                )
                 self.thread.start()
 
-                return TaskResponse(task_id=task_id, task_status="processing", save_video_path=message.save_video_path)
+                return TaskResponse(
+                    task_id=task_id,
+                    task_status="processing",
+                    save_video_path=message.save_video_path,
+                )
             except RuntimeError as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -138,6 +155,8 @@ class ApiServer:
                     content = await audio_file.read()
                     buffer.write(content)
 
+                audio_path = str(audio_path)
+
             message = TaskRequest(
                 prompt=prompt,
                 use_prompt_enhancer=use_prompt_enhancer,
@@ -155,10 +174,18 @@ class ApiServer:
             try:
                 task_id = ServiceStatus.start_task(message)
                 self.stop_generation_event.clear()
-                self.thread = threading.Thread(target=self._process_video_generation, args=(message, self.stop_generation_event), daemon=True)
+                self.thread = threading.Thread(
+                    target=self._process_video_generation,
+                    args=(message, self.stop_generation_event),
+                    daemon=True,
+                )
                 self.thread.start()
 
-                return TaskResponse(task_id=task_id, task_status="processing", save_video_path=message.save_video_path)
+                return TaskResponse(
+                    task_id=task_id,
+                    task_status="processing",
+                    save_video_path=message.save_video_path,
+                )
             except RuntimeError as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -211,7 +238,10 @@ class ApiServer:
 
                     if self.thread.is_alive():
                         logger.warning("任务线程未在规定时间内停止，可能需要手动干预。")
-                        return StopTaskResponse(stop_status="warning", reason="任务线程未在规定时间内停止，可能需要手动干预。")
+                        return StopTaskResponse(
+                            stop_status="warning",
+                            reason="任务线程未在规定时间内停止，可能需要手动干预。",
+                        )
                     else:
                         self.thread = None
                         ServiceStatus.clean_stopped_task()

@@ -491,7 +491,7 @@ class WanAudioRunner(WanRunner):
 
         gen_lvideo = torch.cat(gen_video_list, dim=2).float()
         merge_audio = np.concatenate(cut_audio_list, axis=0).astype(np.float32)
-        out_path = self.config.save_video_path
+        out_path = os.path.join("./", "video_merge.mp4")
         audio_file = os.path.join("./", "audio_merge.wav")
         save_to_video(gen_lvideo, out_path, target_fps)
         save_audio(merge_audio, audio_file, out_path, output_path=self.config.get("save_video_path", None))
