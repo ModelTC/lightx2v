@@ -186,6 +186,7 @@ class DistributedInferenceService:
         self.is_running = False
 
     def start_distributed_inference(self, args) -> bool:
+        self.args = args
         if self.is_running:
             logger.warning("Distributed inference service is already running")
             return True
@@ -310,6 +311,10 @@ class DistributedInferenceService:
                 continue
 
         return None
+
+    def server_metadata(self):
+        assert hasattr(self, "args"), "Distributed inference service is not initialized"
+        return {"nproc_per_node": self.args.nproc_per_node, "model_cls": self.args.model_cls, "model_path": self.args.model_path}
 
 
 class VideoGenerationService:
