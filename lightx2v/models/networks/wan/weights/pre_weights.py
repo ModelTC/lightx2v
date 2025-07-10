@@ -56,3 +56,9 @@ class WanPreWeights(WeightModule):
                 "proj_4",
                 LN_WEIGHT_REGISTER["Default"]("img_emb.proj.4.weight", "img_emb.proj.4.bias"),
             )
+
+        if config.model_cls == "wan2.1_distill" and config.get("enable_dynamic_cfg", False):
+            self.add_module(
+                "cfg_cond_proj",
+                MM_WEIGHT_REGISTER["Default"]("cfg_cond_proj.weight", "cfg_cond_proj.bias"),
+            )

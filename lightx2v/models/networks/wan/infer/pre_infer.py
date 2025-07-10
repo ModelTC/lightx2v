@@ -1,5 +1,5 @@
 import torch
-from .utils import rope_params, sinusoidal_embedding_1d
+from .utils import rope_params, sinusoidal_embedding_1d, guidance_scale_embedding
 from lightx2v.utils.envs import *
 
 
@@ -20,6 +20,8 @@ class WanPreInfer:
         self.freq_dim = config["freq_dim"]
         self.dim = config["dim"]
         self.text_len = config["text_len"]
+        self.enable_dynamic_cfg = config.get("enable_dynamic_cfg", False)
+        self.cfg_scale = config.get("cfg_scale", 4.0)
 
     def set_scheduler(self, scheduler):
         self.scheduler = scheduler
@@ -60,6 +62,11 @@ class WanPreInfer:
         x = torch.cat([torch.cat([u, u.new_zeros(1, seq_len - u.size(1), u.size(2))], dim=1) for u in x])
 
         embed = sinusoidal_embedding_1d(self.freq_dim, t.flatten())
+        if self.enable_dynamic_cfg:
+            s = torch.tensor([self.cfg_scale], dtype=torch.float32).to(x.device)
+            cfg_embed = guidance_scale_embedding(s, embedding_dim=256, cfg_range=(0.0, 8.0), target_range=1000.0, dtype=torch.float32).type_as(x)
+            cfg_embed = weights.cfg_cond_proj.apply(cfg_embed)
+            embed = embed + cfg_embed
         if GET_DTYPE() != "BF16":
             embed = weights.time_embedding_0.apply(embed.float())
         else:

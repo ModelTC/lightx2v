@@ -67,7 +67,7 @@ if __name__ == "__main__":
         {
             "task_id": generate_task_id(),  # task_id also can be string you like, such as "test_task_001"
             "task_id_must_unique": True,  # If True, the task_id must be unique, otherwise, it will raise an error. Default is False.
-            "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+            "prompt": "A cat walks on the grass, realistic style.",
             "negative_prompt": "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
             "image_path": "",
             "save_video_path": "./output_lightx2v_wan_t2v_t01.mp4",  # It is best to set it to an absolute path.
@@ -75,7 +75,7 @@ if __name__ == "__main__":
         {
             "task_id": generate_task_id(),  # task_id also can be string you like, such as "test_task_001"
             "task_id_must_unique": True,  # If True, the task_id must be unique, otherwise, it will raise an error. Default is False.
-            "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+            "prompt": "A person is riding a bike. Realistic, Natural lighting, Casual.",
             "negative_prompt": "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
             "image_path": "",
             "save_video_path": "./output_lightx2v_wan_t2v_t02.mp4",  # It is best to set it to an absolute path.
@@ -83,7 +83,7 @@ if __name__ == "__main__":
         {
             "task_id": generate_task_id(),  # task_id also can be string you like, such as "test_task_001"
             "task_id_must_unique": True,  # If True, the task_id must be unique, otherwise, it will raise an error. Default is False.
-            "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+            "prompt": "A car turns a corner. Realistic, Natural lighting, Casual.",
             "negative_prompt": "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
             "image_path": "",
             "save_video_path": "./output_lightx2v_wan_t2v_t03.mp4",  # It is best to set it to an absolute path.
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         {
             "task_id": generate_task_id(),  # task_id also can be string you like, such as "test_task_001"
             "task_id_must_unique": True,  # If True, the task_id must be unique, otherwise, it will raise an error. Default is False.
-            "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+            "prompt": "An astronaut is flying in space, Van Gogh style. Dark, Mysterious.",
             "negative_prompt": "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
             "image_path": "",
             "save_video_path": "./output_lightx2v_wan_t2v_t04.mp4",  # It is best to set it to an absolute path.
@@ -99,10 +99,18 @@ if __name__ == "__main__":
         {
             "task_id": generate_task_id(),  # task_id also can be string you like, such as "test_task_001"
             "task_id_must_unique": True,  # If True, the task_id must be unique, otherwise, it will raise an error. Default is False.
-            "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+            "prompt": "A beautiful coastal beach in spring, waves gently lapping on the sand, the camera movement is Zoom In. Realistic, Natural lighting, Peaceful.",
             "negative_prompt": "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
             "image_path": "",
             "save_video_path": "./output_lightx2v_wan_t2v_t05.mp4",  # It is best to set it to an absolute path.
+        },
+        {
+            "task_id": generate_task_id(),  # task_id also can be string you like, such as "test_task_001"
+            "task_id_must_unique": True,  # If True, the task_id must be unique, otherwise, it will raise an error. Default is False.
+            "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+            "negative_prompt": "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+            "image_path": "",
+            "save_video_path": "./output_lightx2v_wan_t2v_t06.mp4",  # It is best to set it to an absolute path.
         },
     ]
 

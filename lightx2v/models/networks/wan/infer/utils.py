@@ -170,3 +170,28 @@ def sinusoidal_embedding_1d(dim, position):
     if GET_DTYPE() == "BF16":
         x = x.to(torch.bfloat16)
     return x
+
+
+def guidance_scale_embedding(w, embedding_dim=256, cfg_range=(0.0, 8.0), target_range=1000.0, dtype=torch.float32):
+    """
+    Args:
+    timesteps: torch.Tensor: generate embedding vectors at these timesteps
+    embedding_dim: int: dimension of the embeddings to generate
+    dtype: data type of the generated embeddings
+
+    Returns:
+    embedding vectors with shape `(len(timesteps), embedding_dim)`
+    """
+    assert len(w.shape) == 1
+    cfg_min, cfg_max = cfg_range
+    w = (w - cfg_min) / (cfg_max - cfg_min)  # [0, 1]
+    w = w * target_range
+    half_dim = embedding_dim // 2
+    emb = torch.log(torch.tensor(10000.)) / (half_dim - 1)
+    emb = torch.exp(torch.arange(half_dim, dtype=dtype).to(w.device) * -emb).to(w.device)
+    emb = w.to(dtype)[:, None] * emb[None, :]
+    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
+    if embedding_dim % 2 == 1:  # zero pad
+        emb = torch.nn.functional.pad(emb, (0, 1).to(w.device))
+    assert emb.shape == (w.shape[0], embedding_dim)
+    return emb
