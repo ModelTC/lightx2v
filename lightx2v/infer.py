@@ -58,6 +58,19 @@ async def main():
     parser.add_argument("--image_path", type=str, default="", help="The path to input image file or path for image-to-video (i2v) task")
     parser.add_argument("--save_video_path", type=str, default="./output_lightx2v.mp4", help="The path to save video path/file")
     args = parser.parse_args()
+
+    if args.prompt_path:
+        try:
+            with open(args.prompt_path, "r", encoding="utf-8") as f:
+                args.prompt = f.read().strip()
+            logger.info(f"从文件 {args.prompt_path} 读取到prompt: {args.prompt}")
+        except FileNotFoundError:
+            logger.error(f"找不到prompt文件: {args.prompt_path}")
+            raise
+        except Exception as e:
+            logger.error(f"读取prompt文件时出错: {e}")
+            raise
+
     logger.info(f"args: {args}")
 
     with ProfilingContext("Total Cost"):

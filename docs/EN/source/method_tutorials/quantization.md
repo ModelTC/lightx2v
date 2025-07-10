@@ -1,4 +1,4 @@
-# Quantization
+# Model Quantization
 
 lightx2v supports quantized inference for linear layers in **Dit**, enabling `w8a8-int8` and `w8a8-fp8` matrix multiplication.
 

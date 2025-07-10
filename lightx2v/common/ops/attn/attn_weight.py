@@ -131,7 +131,18 @@ class SageAttn2Weight(AttnWeightTemplate):
     def __init__(self):
         self.config = {}
 
-    def apply(self, q, k, v, cu_seqlens_q=None, cu_seqlens_kv=None, max_seqlen_q=None, max_seqlen_kv=None, model_cls=None):
+    def apply(
+        self,
+        q,
+        k,
+        v,
+        cu_seqlens_q=None,
+        cu_seqlens_kv=None,
+        max_seqlen_q=None,
+        max_seqlen_kv=None,
+        model_cls=None,
+        mask_map=None,
+    ):
         q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
         if model_cls == "hunyuan":
             x1 = sageattn(

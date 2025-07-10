@@ -1,4 +1,6 @@
-# Prepare Environment
+# Quick Start
+
+## Prepare Environment
 
 We recommend using a docker environment. Here is the [dockerhub](https://hub.docker.com/r/lightx2v/lightx2v/tags) for lightx2v. Please select the tag with the latest date, for example, 25061301.
 
@@ -28,7 +30,7 @@ cd flash-attention && python setup.py install
 cd flash-attention/hopper && python setup.py install
 ```
 
-# Infer
+## Infer
 
 ```shell
 # Modify the path in the script

@@ -572,7 +572,7 @@ def convert_weights(args):
             json.dump(index, f, indent=2)
         logger.info(f"Index file written to: {index_path}")
 
-    if os.path.isdir(args.source):
+    if os.path.isdir(args.source) and args.copy_no_weight_files:
         copy_non_weight_files(args.source, args.output)
 
 
@@ -650,6 +650,7 @@ def main():
         default=[1.0],
         help="Alpha for LoRA weight scaling",
     )
+    parser.add_argument("--copy_no_weight_files", action="store_true")
     args = parser.parse_args()
 
     if args.quantized:

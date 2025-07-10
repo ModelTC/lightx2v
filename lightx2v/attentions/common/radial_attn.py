@@ -1,5 +1,9 @@
 import torch
-import flashinfer
+
+try:
+    import flashinfer
+except ImportError:
+    flashinfer = None
 
 ###
 ###  Code from radial-attention
@@ -37,7 +41,6 @@ def radial_attn(
         head_dim=hidden_dim,
         q_data_type=query.dtype,
         kv_data_type=key.dtype,
-        o_data_type=query.dtype,
         use_fp16_qk_reduction=True,
     )
 

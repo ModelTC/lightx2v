@@ -1,4 +1,6 @@
-# 准备环境
+# 快速入门
+
+## 准备环境
 
 我们推荐使用docker环境，这是lightx2v的[dockerhub](https://hub.docker.com/r/lightx2v/lightx2v/tags)，请选择一个最新日期的tag，比如25061301
 
@@ -35,7 +37,7 @@ cd flash-attention && python setup.py install
 cd flash-attention/hopper && python setup.py install
 ```
 
-# 推理
+## 推理
 
 ```shell
 # 修改脚本中的路径

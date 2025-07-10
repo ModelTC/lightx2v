@@ -10,7 +10,8 @@ Facilitates mutual conversion between diffusers architecture and lightx2v archit
 python converter.py \
        --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P \
        --output /Path/To/Wan2.1-I2V-14B-480P-Diffusers \
-       --direction forward
+       --direction forward \
+       --save_by_block
 ```
 
 ### Diffusers->Lightx2v
@@ -18,7 +19,8 @@ python converter.py \
 python converter.py \
        --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P-Diffusers \
        --output /Path/To/Wan2.1-I2V-14B-480P \
-       --direction backward
+       --direction backward \
+       --save_by_block
 ```
 
 
@@ -30,31 +32,32 @@ This tool supports converting fp32/fp16/bf16 model weights to INT8、FP8 type.
 
 ```bash
 python converter.py \
-    --quantized \
     --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P/ \
     --output /Path/To/output \
     --output_ext .safetensors \
     --output_name wan_int8 \
     --dtype torch.int8 \
-    --model_type wan_dit
+    --model_type wan_dit \
+    --quantized \
+    --save_by_block
 ```
 
 ```bash
 python converter.py \
-    --quantized \
     --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P/ \
     --output /Path/To/output \
     --output_ext .safetensors \
     --output_name wan_fp8 \
     --dtype torch.float8_e4m3fn \
-    --model_type wan_dit
+    --model_type wan_dit \
+    --quantized \
+    --save_by_block
 ```
 
 ### Wan DiT + LoRA
 
 ```bash
 python converter.py \
-    --quantized \
     --source /Path/To/Wan-AI/Wan2.1-T2V-14B/ \
     --output /Path/To/output \
     --output_ext .safetensors \
@@ -62,31 +65,33 @@ python converter.py \
     --dtype torch.int8 \
     --model_type wan_dit \
     --lora_path /Path/To/LoRA1/ /Path/To/LoRA2/ \
-    --lora_alpha 1.0 1.0
+    --lora_alpha 1.0 1.0 \
+    --quantized \
+    --save_by_block
 ```
 
 ### Hunyuan DIT
 
 ```bash
 python converter.py \
-    --quantized \
     --source /Path/To/hunyuan/lightx2v_format/i2v/ \
     --output /Path/To/output \
-    --output_ext .safetensors \
+    --output_ext ..safetensors \
     --output_name hunyuan_int8 \
     --dtype torch.int8 \
-    --model_type hunyuan_dit
+    --model_type hunyuan_dit \
+    --quantized
 ```
 
 ```bash
 python converter.py \
-    --quantized \
     --source /Path/To/hunyuan/lightx2v_format/i2v/ \
     --output /Path/To/output \
     --output_ext .safetensors \
     --output_name hunyuan_fp8 \
     --dtype torch.float8_e4m3fn \
-    --model_type hunyuan_dit
+    --model_type hunyuan_dit \
+    --quantized
 ```
 
 
@@ -94,24 +99,24 @@ python converter.py \
 
 ```bash
 python converter.py \
-    --quantized \
     --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P/models_t5_umt5-xxl-enc-bf16.pth \
     --output /Path/To/output \
     --output_ext .pth\
     --output_name models_t5_umt5-xxl-enc-int8 \
     --dtype torch.int8 \
-    --model_type wan_t5
+    --model_type wan_t5 \
+    --quantized
 ```
 
 ```bash
 python converter.py \
-    --quantized \
     --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P/models_t5_umt5-xxl-enc-bf16.pth \
     --output /Path/To/output \
     --output_ext .pth\
     --output_name models_t5_umt5-xxl-enc-fp8 \
     --dtype torch.float8_e4m3fn \
-    --model_type wan_t5
+    --model_type wan_t5 \
+    --quantized
 ```
 
 
@@ -120,21 +125,21 @@ python converter.py \
 ```bash
 python converter.py \
   --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P/models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth \
-  --quantized \
   --output /Path/To/output \
   --output_ext .pth \
-  --output_name clip_int8 \
+  --output_name clip-int8 \
   --dtype torch.int8 \
-  --model_type wan_clip
+  --model_type wan_clip \
+  --quantized
 
 ```
 ```bash
 python converter.py \
   --source /Path/To/Wan-AI/Wan2.1-I2V-14B-480P/models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth \
-  --quantized \
   --output /Path/To/output \
   --output_ext .pth \
-  --output_name clip_fp8 \
+  --output_name clip-fp8 \
   --dtype torch.float8_e4m3fn \
-  --model_type wan_clip
+  --model_type wan_clip \
+  --quantized
 ```

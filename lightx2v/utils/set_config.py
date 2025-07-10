@@ -39,6 +39,13 @@ def set_config(args):
             model_config = json.load(f)
         config.update(model_config)
 
+    if config.get("dit_quantized_ckpt", None) is not None:
+        config_path = os.path.join(config.dit_quantized_ckpt, "config.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                model_config = json.load(f)
+            config.update(model_config)
+
     if config.task == "i2v":
         if config.target_video_length % config.vae_stride[0] != 1:
             logger.warning(f"`num_frames - 1` has to be divisible by {config.vae_stride[0]}. Rounding to the nearest number.")

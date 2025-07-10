@@ -5,8 +5,8 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ModelTC/lightx2v)
-[![Doc](https://img.shields.io/badge/docs-English-99cc2)](https://github.com/ModelTC/lightx2v/tree/main/docs/en_US)
-[![Doc](https://img.shields.io/badge/文档-中文-99cc2)](https://github.com/ModelTC/lightx2v/tree/main/docs/zh_CN)
+[![Doc](https://img.shields.io/badge/docs-English-99cc2)](https://lightx2v-en.readthedocs.io/en/latest)
+[![Doc](https://img.shields.io/badge/文档-中文-99cc2)](https://lightx2v-zhcn.readthedocs.io/zh-cn/latest)
 [![Docker](https://badgen.net/badge/icon/docker?icon=docker&label)](https://hub.docker.com/r/lightx2v/lightx2v/tags)
 
 </div>

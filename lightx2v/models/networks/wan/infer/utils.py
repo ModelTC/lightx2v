@@ -115,7 +115,7 @@ def apply_rotary_emb(x, freqs_i):
     return x_i.to(torch.bfloat16)
 
 
-def apply_rotary_emb_chunk(x, freqs_i, chunk_size=100, remaining_chunk_size=100):
+def apply_rotary_emb_chunk(x, freqs_i, chunk_size, remaining_chunk_size=100):
     n = x.size(1)
     seq_len = freqs_i.size(0)
 
