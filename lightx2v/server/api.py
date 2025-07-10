@@ -135,8 +135,6 @@ class ApiServer:
             video_duration: int = Form(default=5),
         ):
             """Create video generation task via form"""
-            # Process uploaded image file
-            image_path = ""
             assert self.file_service is not None, "File service is not initialized"
 
             async def save_file_async(file: UploadFile, target_dir: Path) -> str:
@@ -148,19 +146,16 @@ class ApiServer:
                 unique_filename = f"{uuid.uuid4()}{file_extension}"
                 file_path = target_dir / unique_filename
 
-                # 异步读取文件内容
                 content = await file.read()
 
-                # 使用 asyncio.to_thread 异步写入文件
                 await asyncio.to_thread(self._write_file_sync, file_path, content)
 
                 return str(file_path)
 
-            # 异步保存图片文件
+            image_path = ""
             if image_file and image_file.filename:
                 image_path = await save_file_async(image_file, self.file_service.input_image_dir)
 
-            # 异步保存音频文件
             audio_path = ""
             if audio_file and audio_file.filename:
                 audio_path = await save_file_async(audio_file, self.file_service.input_audio_dir)

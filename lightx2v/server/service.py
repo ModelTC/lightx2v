@@ -313,7 +313,7 @@ class DistributedInferenceService:
         return None
 
     def server_metadata(self):
-        assert hasattr(self, "args"), "Distributed inference service is not initialized"
+        assert hasattr(self, "args"), "Distributed inference service has not been started. Call start_distributed_inference() first."
         return {"nproc_per_node": self.args.nproc_per_node, "model_cls": self.args.model_cls, "model_path": self.args.model_path}
 
 
