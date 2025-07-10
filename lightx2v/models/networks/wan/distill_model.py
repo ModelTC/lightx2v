@@ -33,7 +33,9 @@ class WanDistillModel(WanModel):
         ckpt_path = os.path.join(self.model_path, f"{ckpt_folder}/distill_model.pt")
         if os.path.exists(ckpt_path):
             weight_dict = torch.load(ckpt_path, map_location="cpu", weights_only=True)
-            weight_dict = {key: (weight_dict[key].to(torch.bfloat16) if use_bf16 or all(s not in key for s in skip_bf16) else weight_dict[key]).pin_memory().to(self.device) for key in weight_dict.keys()}
+            weight_dict = {
+                key: (weight_dict[key].to(torch.bfloat16) if use_bf16 or all(s not in key for s in skip_bf16) else weight_dict[key]).pin_memory().to(self.device) for key in weight_dict.keys()
+            }
             return weight_dict
 
         return super()._load_ckpt(use_bf16, skip_bf16)

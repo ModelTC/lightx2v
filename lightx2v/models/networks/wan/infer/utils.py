@@ -187,7 +187,7 @@ def guidance_scale_embedding(w, embedding_dim=256, cfg_range=(0.0, 8.0), target_
     w = (w - cfg_min) / (cfg_max - cfg_min)  # [0, 1]
     w = w * target_range
     half_dim = embedding_dim // 2
-    emb = torch.log(torch.tensor(10000.)) / (half_dim - 1)
+    emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
     emb = torch.exp(torch.arange(half_dim, dtype=dtype).to(w.device) * -emb).to(w.device)
     emb = w.to(dtype)[:, None] * emb[None, :]
     emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
