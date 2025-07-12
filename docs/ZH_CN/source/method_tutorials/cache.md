@@ -13,10 +13,18 @@
 
 实际效果上，TeaCache 在保证生成质量的前提下，实现了明显的加速。加速前后的视频对比如下：  
 
-| 加速前 | 加速后 |
-|:------:|:------:|
-| 单卡H200推理耗时：58s | 单卡H200推理耗时：17.9s |
-| ![加速前效果](../../../../assets/gifs/1.gif) | ![加速后效果](../../../../assets/gifs/2.gif) |
+- 加速前：
+  - 单卡H200推理耗时：58s  
+
+https://github.com/user-attachments/assets/1781df9b-04df-4586-b22f-5d15f8e1bff6
+
+
+- 加速后：
+  - 单卡H200推理耗时：17.9s
+
+https://github.com/user-attachments/assets/e93f91eb-3825-4866-90c2-351176263a2f
+
+
 - 加速比为：**3.24**
 - config：[wan_t2v_1_3b_tea_480p.json](https://github.com/ModelTC/lightx2v/tree/main/configs/caching/teacache/wan_t2v_1_3b_tea_480p.json)
 - 参考论文：[https://arxiv.org/abs/2411.19108](https://arxiv.org/abs/2411.19108)
@@ -28,10 +36,18 @@
 
 `TaylorSeer Cache`适用于对输出精度要求较高的场景，能够在缓存复用的基础上进一步提升模型推理的表现。
 
-| 加速前 | 加速后 |
-|:------:|:------:|
-| 单卡H200推理耗时：57.7s | 单卡H200推理耗时：41.3s |
-| ![加速前效果](../../../../assets/gifs/3.gif) | ![加速后效果](../../../../assets/gifs/4.gif) |
+- 加速前：
+  - 单卡H200推理耗时：57.7s
+
+https://github.com/user-attachments/assets/2d04005c-853b-4752-884b-29f8ea5717d2
+
+
+ - 加速后：
+  - 单卡H200推理耗时：41.3s
+
+https://github.com/user-attachments/assets/270e3624-c904-468c-813e-0c65daf1594d
+
+
 - 加速比为：**1.39**
 - config：[wan_t2v_taylorseer](https://github.com/ModelTC/lightx2v/tree/main/configs/caching/taylorseer/wan_t2v_taylorseer.json)
 - 参考论文：[https://arxiv.org/abs/2503.06923](https://arxiv.org/abs/2503.06923)
@@ -43,10 +59,18 @@
 
 这样可以根据实际推理过程中的动态变化，灵活调整缓存策略，实现更高效的加速和更优的生成效果。AdaCache 适合对推理速度和生成质量都有较高要求的应用场景。
 
-| 加速前 | 加速后 |
-|:------:|:------:|
-| 单卡H200推理耗时：227s | 单卡H200推理耗时：83s |
-| ![加速前效果](../../../../assets/gifs/5.gif) | ![加速后效果](../../../../assets/gifs/6.gif) |
+- 加速前：
+  - 单卡H200推理耗时：227s
+
+https://github.com/user-attachments/assets/33b2206d-17e6-4433-bed7-bfa890f9fa7d
+
+
+- 加速后：
+  - 单卡H200推理耗时：83s
+
+https://github.com/user-attachments/assets/084dbe3d-6ff3-4afc-9a7c-453ec53b3672
+
+
 - 加速比为：**2.73**
 - config：[wan_i2v_ada](https://github.com/ModelTC/lightx2v/tree/main/configs/caching/adacache/wan_i2v_ada.json)
 - 参考论文：[https://arxiv.org/abs/2411.02397](https://arxiv.org/abs/2411.02397)
@@ -58,10 +82,18 @@
 
 这样不仅能够高效地决定缓存复用的时机，还能最大程度地利用缓存内容，提升输出的准确性和生成质量。实际测试表明，`CustomCache`在多个内容生成任务上，生成的视频质量优于单独使用`TeaCache、TaylorSeer Cache`或`AdaCache`的方案，是目前综合性能最优的缓存加速算法之一。
 
-| 加速前 | 加速后 |
-|:------:|:------:|
-| 单卡H200推理耗时：57.9s | 单卡H200推理耗时：16.6s |
-| ![加速前效果](../../../../assets/gifs/7.gif) | ![加速后效果](../../../../assets/gifs/8.gif) |
+- 加速前：
+  - 单卡H200推理耗时：57.9s
+
+https://github.com/user-attachments/assets/304ff1e8-ad1c-4013-bcf1-959ac140f67f
+
+
+- 加速后
+  - 单卡H200推理耗时：16.6s
+
+https://github.com/user-attachments/assets/d3fb474a-79af-4f33-b965-23d402d3cf16
+
+
 - 加速比为：**3.49**
 - config：[wan_t2v_custom_1_3b](https://github.com/ModelTC/lightx2v/tree/main/configs/caching/custom/wan_t2v_custom_1_3b.json)
 
