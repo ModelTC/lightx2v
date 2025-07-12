@@ -14,7 +14,7 @@
 实际效果上，TeaCache 在保证生成质量的前提下，实现了明显的加速。加速前后的视频对比如下：  
 
 - 加速前：
-  - 单卡H200推理耗时：58s  
+  - 单卡H200推理耗时：58s
 
 https://github.com/user-attachments/assets/1781df9b-04df-4586-b22f-5d15f8e1bff6
 
