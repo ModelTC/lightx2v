@@ -434,7 +434,7 @@ class CLIPModel:
         logger.info(f"End Loading weights from {self.checkpoint_path}")
 
     def visual(self, videos, args):
-        if args.cpu_offload:
+        if hasattr(args, "cpu_offload") and args.cpu_offload:
             self.to_cuda()
         # preprocess
         size = (self.model.image_size,) * 2
@@ -445,7 +445,7 @@ class CLIPModel:
         with torch.amp.autocast("cuda", dtype=self.dtype):
             out = self.model.visual(videos, use_31_block=True)
 
-        if args.cpu_offload:
+        if hasattr(args, "cpu_offload") and args.cpu_offload:
             self.to_cpu()
         return out
 
