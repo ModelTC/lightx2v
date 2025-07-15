@@ -323,7 +323,7 @@ class DefaultRunner(BaseRunner):
         )
         return images
 
-    async def run_pipeline(self):
+    async def run_pipeline(self, save_video=True):
         async with AsyncWrapper(self) as wrapper:
             if self.config["use_prompt_enhancer"]:
                 self.config["prompt_enhanced"] = await wrapper.run_prompt_enhancer()
@@ -336,8 +336,12 @@ class DefaultRunner(BaseRunner):
 
             images = await wrapper.run_vae_decoder(latents, generator)
 
-            await wrapper.save_video(images)
+            if save_video:
+                await wrapper.save_video(images)
 
-            del latents, generator, images
+            del latents, generator, self.inputs
             torch.cuda.empty_cache()
             gc.collect()
+            
+            return images
+
