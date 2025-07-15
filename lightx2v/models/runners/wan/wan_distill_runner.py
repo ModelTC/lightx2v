@@ -31,6 +31,10 @@ class WanDistillRunner(WanRunner):
                 self.init_device,
             )
             lora_wrapper = WanLoraWrapper(model)
+
+            if isinstance(self.config.lora_path, str):
+                self.config.lora_path = [self.config.lora_path]
+
             for lora_path in self.config.lora_path:
                 lora_name = lora_wrapper.load_lora(lora_path)
                 lora_wrapper.apply_lora(lora_name, self.config.strength_model)

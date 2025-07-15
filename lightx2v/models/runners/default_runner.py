@@ -163,7 +163,10 @@ class DefaultRunner(BaseRunner):
         text_encoder_output = self.run_text_encoder(prompt, None)
         torch.cuda.empty_cache()
         gc.collect()
-        return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
+        return {
+            "text_encoder_output": text_encoder_output,
+            "image_encoder_output": None,
+        }
 
     @ProfilingContext("Run DiT")
     def _run_dit_local(self, kwargs):
@@ -242,7 +245,13 @@ class DefaultRunner(BaseRunner):
             for url in self.config["sub_servers"]["prompt_enhancer"]:
                 response = requests.get(f"{url}/v1/local/prompt_enhancer/generate/service_status").json()
                 if response["service_status"] == "idle":
-                    response = requests.post(f"{url}/v1/local/prompt_enhancer/generate", json={"task_id": generate_task_id(), "prompt": self.config["prompt"]})
+                    response = requests.post(
+                        f"{url}/v1/local/prompt_enhancer/generate",
+                        json={
+                            "task_id": generate_task_id(),
+                            "prompt": self.config["prompt"],
+                        },
+                    )
                     enhanced_prompt = response.json()["output"]
                     logger.info(f"Enhanced prompt: {enhanced_prompt}")
                     return enhanced_prompt
@@ -251,17 +260,36 @@ class DefaultRunner(BaseRunner):
         tasks = []
         img_byte = self.image_transporter.prepare_image(img)
         tasks.append(
-            asyncio.create_task(self.post_task(task_type="image_encoder", urls=self.config["sub_servers"]["image_encoder"], message={"task_id": generate_task_id(), "img": img_byte}, device="cuda"))
+            asyncio.create_task(
+                self.post_task(
+                    task_type="image_encoder",
+                    urls=self.config["sub_servers"]["image_encoder"],
+                    message={"task_id": generate_task_id(), "img": img_byte},
+                    device="cuda",
+                )
+            )
         )
         tasks.append(
-            asyncio.create_task(self.post_task(task_type="vae_model/encoder", urls=self.config["sub_servers"]["vae_model"], message={"task_id": generate_task_id(), "img": img_byte}, device="cuda"))
+            asyncio.create_task(
+                self.post_task(
+                    task_type="vae_model/encoder",
+                    urls=self.config["sub_servers"]["vae_model"],
+                    message={"task_id": generate_task_id(), "img": img_byte},
+                    device="cuda",
+                )
+            )
         )
         tasks.append(
             asyncio.create_task(
                 self.post_task(
                     task_type="text_encoders",
                     urls=self.config["sub_servers"]["text_encoders"],
-                    message={"task_id": generate_task_id(), "text": prompt, "img": img_byte, "n_prompt": n_prompt},
+                    message={
+                        "task_id": generate_task_id(),
+                        "text": prompt,
+                        "img": img_byte,
+                        "n_prompt": n_prompt,
+                    },
                     device="cuda",
                 )
             )
@@ -277,7 +305,12 @@ class DefaultRunner(BaseRunner):
                 self.post_task(
                     task_type="text_encoders",
                     urls=self.config["sub_servers"]["text_encoders"],
-                    message={"task_id": generate_task_id(), "text": prompt, "img": None, "n_prompt": n_prompt},
+                    message={
+                        "task_id": generate_task_id(),
+                        "text": prompt,
+                        "img": None,
+                        "n_prompt": n_prompt,
+                    },
                     device="cuda",
                 )
             )
@@ -290,7 +323,11 @@ class DefaultRunner(BaseRunner):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         n_prompt = self.config.get("negative_prompt", "")
         img = Image.open(self.config["image_path"]).convert("RGB")
-        clip_encoder_out, vae_encode_out, text_encoder_output = await self.post_encoders_i2v(prompt, img, n_prompt)
+        (
+            clip_encoder_out,
+            vae_encode_out,
+            text_encoder_output,
+        ) = await self.post_encoders_i2v(prompt, img, n_prompt)
         torch.cuda.empty_cache()
         gc.collect()
         return self.get_encoder_output_i2v(clip_encoder_out, vae_encode_out, text_encoder_output, img)
@@ -301,7 +338,10 @@ class DefaultRunner(BaseRunner):
         text_encoder_output = await self.post_encoders_t2v(prompt, n_prompt)
         torch.cuda.empty_cache()
         gc.collect()
-        return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
+        return {
+            "text_encoder_output": text_encoder_output,
+            "image_encoder_output": None,
+        }
 
     async def _run_dit_server(self, kwargs):
         if self.inputs.get("image_encoder_output", None) is not None:
@@ -309,7 +349,11 @@ class DefaultRunner(BaseRunner):
         dit_output = await self.post_task(
             task_type="dit",
             urls=self.config["sub_servers"]["dit"],
-            message={"task_id": generate_task_id(), "inputs": self.tensor_transporter.prepare_tensor(self.inputs), "kwargs": self.tensor_transporter.prepare_tensor(kwargs)},
+            message={
+                "task_id": generate_task_id(),
+                "inputs": self.tensor_transporter.prepare_tensor(self.inputs),
+                "kwargs": self.tensor_transporter.prepare_tensor(kwargs),
+            },
             device="cuda",
         )
         return dit_output, None
@@ -318,7 +362,10 @@ class DefaultRunner(BaseRunner):
         images = await self.post_task(
             task_type="vae_model/decoder",
             urls=self.config["sub_servers"]["vae_model"],
-            message={"task_id": generate_task_id(), "latents": self.tensor_transporter.prepare_tensor(latents)},
+            message={
+                "task_id": generate_task_id(),
+                "latents": self.tensor_transporter.prepare_tensor(latents),
+            },
             device="cpu",
         )
         return images
