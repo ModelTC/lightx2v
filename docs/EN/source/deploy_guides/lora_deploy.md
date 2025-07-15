@@ -55,7 +55,7 @@ To use multiple LoRAs with different strengths, specify them in the config JSON 
       "strength": 0.8
     },
     {
-      "path": "/path/to/second_lora.safetensors", 
+      "path": "/path/to/second_lora.safetensors",
       "strength": 0.5
     }
   ]

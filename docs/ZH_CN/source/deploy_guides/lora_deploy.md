@@ -54,7 +54,7 @@ python -m lightx2v.infer \
       "strength": 0.8
     },
     {
-      "path": "/path/to/second_lora.safetensors", 
+      "path": "/path/to/second_lora.safetensors",
       "strength": 0.5
     }
   ]
