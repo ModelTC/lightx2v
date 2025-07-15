@@ -19,8 +19,9 @@ from .base_runner import BaseRunner
 
 class DefaultRunner(BaseRunner):
     def __init__(self, config):
-        super().__init__(config)  # 调用父类构造函数
+        super().__init__(config)
         self.has_prompt_enhancer = False
+        self.progress_callback = None
         if self.config["task"] == "t2v" and self.config.get("sub_servers", {}).get("prompt_enhancer") is not None:
             self.has_prompt_enhancer = True
             if not self.check_sub_servers("prompt_enhancer"):
@@ -100,9 +101,13 @@ class DefaultRunner(BaseRunner):
         # self.config["sample_shift"] = inputs.get("sample_shift", self.config.get("sample_shift", 5))
         # self.config["sample_guide_scale"] = inputs.get("sample_guide_scale", self.config.get("sample_guide_scale", 5))
 
+    def set_progress_callback(self, callback):
+        self.progress_callback = callback
+
     def run(self):
-        for step_index in range(self.model.scheduler.infer_steps):
-            logger.info(f"==> step_index: {step_index + 1} / {self.model.scheduler.infer_steps}")
+        total_steps = self.model.scheduler.infer_steps
+        for step_index in range(total_steps):
+            logger.info(f"==> step_index: {step_index + 1} / {total_steps}")
 
             with ProfilingContext4Debug("step_pre"):
                 self.model.scheduler.step_pre(step_index=step_index)
@@ -112,6 +117,9 @@ class DefaultRunner(BaseRunner):
 
             with ProfilingContext4Debug("step_post"):
                 self.model.scheduler.step_post()
+
+            if self.progress_callback:
+                self.progress_callback(step_index + 1, total_steps)
 
         return self.model.scheduler.latents, self.model.scheduler.generator
 
@@ -184,12 +192,10 @@ class DefaultRunner(BaseRunner):
             self.save_video_func(images)
 
     async def post_task(self, task_type, urls, message, device="cuda", max_retries=3, timeout=30):
-        """改进的异步 HTTP 请求，包含重试逻辑和超时处理"""
         for attempt in range(max_retries):
             for url in urls:
                 try:
                     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-                        # 检查服务状态
                         try:
                             async with session.get(f"{url}/v1/local/{task_type}/generate/service_status") as response:
                                 if response.status != 200:
@@ -204,7 +210,6 @@ class DefaultRunner(BaseRunner):
                             continue
 
                         if status.get("service_status") == "idle":
-                            # 发送任务
                             try:
                                 async with session.post(f"{url}/v1/local/{task_type}/generate", json=message) as response:
                                     if response.status == 200:
@@ -225,7 +230,6 @@ class DefaultRunner(BaseRunner):
                 except Exception as e:
                     logger.error(f"Unexpected error for {url}: {e}")
 
-            # 等待后重试
             if attempt < max_retries - 1:
                 wait_time = min(2**attempt, 10)
                 logger.info(f"Retrying in {wait_time} seconds... (attempt {attempt + 1}/{max_retries})")
@@ -320,7 +324,6 @@ class DefaultRunner(BaseRunner):
         return images
 
     async def run_pipeline(self):
-        """主要的异步管道，使用 AsyncWrapper 统一处理"""
         async with AsyncWrapper(self) as wrapper:
             if self.config["use_prompt_enhancer"]:
                 self.config["prompt_enhanced"] = await wrapper.run_prompt_enhancer()
