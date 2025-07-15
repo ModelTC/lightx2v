@@ -13,11 +13,13 @@ from lightx2v.utils.generate_task_id import generate_task_id
 from lightx2v.utils.envs import *
 from lightx2v.utils.service_utils import TensorTransporter, ImageTransporter
 from loguru import logger
+from .async_wrapper import AsyncWrapper
+from .base_runner import BaseRunner
 
 
-class DefaultRunner:
+class DefaultRunner(BaseRunner):
     def __init__(self, config):
-        self.config = config
+        super().__init__(config)  # 调用父类构造函数
         self.has_prompt_enhancer = False
         if self.config["task"] == "t2v" and self.config.get("sub_servers", {}).get("prompt_enhancer") is not None:
             self.has_prompt_enhancer = True
@@ -42,21 +44,9 @@ class DefaultRunner:
                     raise ValueError("No image encoder server available")
             if not self.check_sub_servers("vae_model"):
                 raise ValueError("No vae server available")
-            self.run_dit = self.run_dit_server
-            self.run_vae_decoder = self.run_vae_decoder_server
-            if self.config["task"] == "i2v":
-                self.run_input_encoder = self.run_input_encoder_server_i2v
-            else:
-                self.run_input_encoder = self.run_input_encoder_server_t2v
         else:
             if not self.config.get("lazy_load", False) and not self.config.get("unload_modules", False):
                 self.load_model()
-            self.run_dit = self.run_dit_local
-            self.run_vae_decoder = self.run_vae_decoder_local
-            if self.config["task"] == "i2v":
-                self.run_input_encoder = self.run_input_encoder_local_i2v
-            else:
-                self.run_input_encoder = self.run_input_encoder_local_t2v
 
     def set_init_device(self):
         if self.config["parallel_attn_type"]:
@@ -126,12 +116,13 @@ class DefaultRunner:
         return self.model.scheduler.latents, self.model.scheduler.generator
 
     async def run_step(self, step_index=0):
-        self.init_scheduler()
-        await self.run_input_encoder()
-        self.model.scheduler.prepare(self.inputs["image_encoder_output"])
-        self.model.scheduler.step_pre(step_index=step_index)
-        self.model.infer(self.inputs)
-        self.model.scheduler.step_post()
+        async with AsyncWrapper(self) as wrapper:
+            self.init_scheduler()
+            self.inputs = await wrapper.run_input_encoder()
+            self.model.scheduler.prepare(self.inputs["image_encoder_output"])
+            self.model.scheduler.step_pre(step_index=step_index)
+            self.model.infer(self.inputs)
+            self.model.scheduler.step_post()
 
     def end_run(self):
         self.model.scheduler.clear()
@@ -148,7 +139,7 @@ class DefaultRunner:
         gc.collect()
 
     @ProfilingContext("Run Encoders")
-    async def run_input_encoder_local_i2v(self):
+    def _run_input_encoder_local_i2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         img = Image.open(self.config["image_path"]).convert("RGB")
         clip_encoder_out = self.run_image_encoder(img)
@@ -159,7 +150,7 @@ class DefaultRunner:
         return self.get_encoder_output_i2v(clip_encoder_out, vae_encode_out, text_encoder_output, img)
 
     @ProfilingContext("Run Encoders")
-    async def run_input_encoder_local_t2v(self):
+    def _run_input_encoder_local_t2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         text_encoder_output = self.run_text_encoder(prompt, None)
         torch.cuda.empty_cache()
@@ -167,7 +158,7 @@ class DefaultRunner:
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
 
     @ProfilingContext("Run DiT")
-    async def run_dit_local(self, kwargs):
+    def _run_dit_local(self, kwargs):
         if self.config.get("lazy_load", False) or self.config.get("unload_modules", False):
             self.model = self.load_transformer()
         self.init_scheduler()
@@ -177,7 +168,7 @@ class DefaultRunner:
         return latents, generator
 
     @ProfilingContext("Run VAE Decoder")
-    async def run_vae_decoder_local(self, latents, generator):
+    def _run_vae_decoder_local(self, latents, generator):
         if self.config.get("lazy_load", False) or self.config.get("unload_modules", False):
             self.vae_decoder = self.load_vae_decoder()
         images = self.vae_decoder.decode(latents, generator=generator, config=self.config)
@@ -192,20 +183,55 @@ class DefaultRunner:
         if not self.config.parallel_attn_type or (self.config.parallel_attn_type and dist.get_rank() == 0):
             self.save_video_func(images)
 
-    async def post_task(self, task_type, urls, message, device="cuda"):
-        while True:
+    async def post_task(self, task_type, urls, message, device="cuda", max_retries=3, timeout=30):
+        """改进的异步 HTTP 请求，包含重试逻辑和超时处理"""
+        for attempt in range(max_retries):
             for url in urls:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{url}/v1/local/{task_type}/generate/service_status") as response:
-                        status = await response.json()
-                    if status["service_status"] == "idle":
-                        async with session.post(f"{url}/v1/local/{task_type}/generate", json=message) as response:
-                            result = await response.json()
-                            if result["kwargs"] is not None:
-                                for k, v in result["kwargs"].items():
-                                    setattr(self.config, k, v)
-                            return self.tensor_transporter.load_tensor(result["output"], device)
-            await asyncio.sleep(0.1)
+                try:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+                        # 检查服务状态
+                        try:
+                            async with session.get(f"{url}/v1/local/{task_type}/generate/service_status") as response:
+                                if response.status != 200:
+                                    logger.warning(f"Service {url} returned status {response.status}")
+                                    continue
+                                status = await response.json()
+                        except asyncio.TimeoutError:
+                            logger.warning(f"Timeout checking status for {url}")
+                            continue
+                        except Exception as e:
+                            logger.warning(f"Error checking status for {url}: {e}")
+                            continue
+
+                        if status.get("service_status") == "idle":
+                            # 发送任务
+                            try:
+                                async with session.post(f"{url}/v1/local/{task_type}/generate", json=message) as response:
+                                    if response.status == 200:
+                                        result = await response.json()
+                                        if result.get("kwargs") is not None:
+                                            for k, v in result["kwargs"].items():
+                                                setattr(self.config, k, v)
+                                        return self.tensor_transporter.load_tensor(result["output"], device)
+                                    else:
+                                        logger.warning(f"Task failed with status {response.status} for {url}")
+                            except asyncio.TimeoutError:
+                                logger.warning(f"Timeout posting task to {url}")
+                            except Exception as e:
+                                logger.error(f"Error posting task to {url}: {e}")
+
+                except aiohttp.ClientError as e:
+                    logger.warning(f"Client error for {url}: {e}")
+                except Exception as e:
+                    logger.error(f"Unexpected error for {url}: {e}")
+
+            # 等待后重试
+            if attempt < max_retries - 1:
+                wait_time = min(2**attempt, 10)
+                logger.info(f"Retrying in {wait_time} seconds... (attempt {attempt + 1}/{max_retries})")
+                await asyncio.sleep(wait_time)
+
+        raise RuntimeError(f"Failed to complete task {task_type} after {max_retries} attempts")
 
     def post_prompt_enhancer(self):
         while True:
@@ -256,7 +282,7 @@ class DefaultRunner:
         # text_encoders
         return results[0]
 
-    async def run_input_encoder_server_i2v(self):
+    async def _run_input_encoder_server_i2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         n_prompt = self.config.get("negative_prompt", "")
         img = Image.open(self.config["image_path"]).convert("RGB")
@@ -265,7 +291,7 @@ class DefaultRunner:
         gc.collect()
         return self.get_encoder_output_i2v(clip_encoder_out, vae_encode_out, text_encoder_output, img)
 
-    async def run_input_encoder_server_t2v(self):
+    async def _run_input_encoder_server_t2v(self):
         prompt = self.config["prompt_enhanced"] if self.config["use_prompt_enhancer"] else self.config["prompt"]
         n_prompt = self.config.get("negative_prompt", "")
         text_encoder_output = await self.post_encoders_t2v(prompt, n_prompt)
@@ -273,7 +299,7 @@ class DefaultRunner:
         gc.collect()
         return {"text_encoder_output": text_encoder_output, "image_encoder_output": None}
 
-    async def run_dit_server(self, kwargs):
+    async def _run_dit_server(self, kwargs):
         if self.inputs.get("image_encoder_output", None) is not None:
             self.inputs["image_encoder_output"].pop("img", None)
         dit_output = await self.post_task(
@@ -284,7 +310,7 @@ class DefaultRunner:
         )
         return dit_output, None
 
-    async def run_vae_decoder_server(self, latents, generator):
+    async def _run_vae_decoder_server(self, latents, generator):
         images = await self.post_task(
             task_type="vae_model/decoder",
             urls=self.config["sub_servers"]["vae_model"],
@@ -294,13 +320,21 @@ class DefaultRunner:
         return images
 
     async def run_pipeline(self):
-        if self.config["use_prompt_enhancer"]:
-            self.config["prompt_enhanced"] = self.post_prompt_enhancer()
-        self.inputs = await self.run_input_encoder()
-        kwargs = self.set_target_shape()
-        latents, generator = await self.run_dit(kwargs)
-        images = await self.run_vae_decoder(latents, generator)
-        self.save_video(images)
-        del latents, generator, images
-        torch.cuda.empty_cache()
-        gc.collect()
+        """主要的异步管道，使用 AsyncWrapper 统一处理"""
+        async with AsyncWrapper(self) as wrapper:
+            if self.config["use_prompt_enhancer"]:
+                self.config["prompt_enhanced"] = await wrapper.run_prompt_enhancer()
+
+            self.inputs = await wrapper.run_input_encoder()
+
+            kwargs = self.set_target_shape()
+
+            latents, generator = await wrapper.run_dit(kwargs)
+
+            images = await wrapper.run_vae_decoder(latents, generator)
+
+            await wrapper.save_video(images)
+
+            del latents, generator, images
+            torch.cuda.empty_cache()
+            gc.collect()
