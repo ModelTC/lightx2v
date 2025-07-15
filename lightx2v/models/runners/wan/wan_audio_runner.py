@@ -278,12 +278,15 @@ class WanAudioRunner(WanRunner):
     def load_transformer(self):
         base_model = WanAudioModel(self.config.model_path, self.config, self.init_device)
 
-        if self.config.lora_path:
+        if self.config.get("lora_configs") and self.config.lora_configs:
             assert not self.config.get("dit_quantized", False) or self.config.mm_config.get("weight_auto_quant", False)
             lora_wrapper = WanLoraWrapper(base_model)
-            lora_name = lora_wrapper.load_lora(self.config.lora_path)
-            lora_wrapper.apply_lora(lora_name, self.config.strength_model)
-            logger.info(f"Loaded LoRA: {lora_name}")
+            for lora_config in self.config.lora_configs:
+                lora_path = lora_config["path"]
+                strength = lora_config.get("strength", 1.0)
+                lora_name = lora_wrapper.load_lora(lora_path)
+                lora_wrapper.apply_lora(lora_name, strength)
+                logger.info(f"Loaded LoRA: {lora_name} with strength: {strength}")
 
         return base_model
 

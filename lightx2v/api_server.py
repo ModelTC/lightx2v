@@ -49,6 +49,7 @@ def main():
 
     parser.add_argument("--split", action="store_true")
     parser.add_argument("--lora_path", type=str, required=False, default=None)
+    parser.add_argument("--lora_strength", type=float, default=1.0, help="The strength for the lora (default: 1.0)")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--nproc_per_node", type=int, default=1, help="Number of processes per node for distributed inference")

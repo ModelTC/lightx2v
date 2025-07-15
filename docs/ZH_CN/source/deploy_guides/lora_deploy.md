@@ -38,7 +38,27 @@ python -m lightx2v.infer \
   --model_path /path/to/model \
   --config_json /path/to/config.json \
   --lora_path /path/to/your/lora.safetensors \
+  --lora_strength 0.8 \
   --prompt "Your prompt here"
+```
+
+### 多LoRA配置
+
+要使用多个具有不同强度的LoRA，请在配置JSON文件中指定：
+
+```json
+{
+  "lora_configs": [
+    {
+      "path": "/path/to/first_lora.safetensors",
+      "strength": 0.8
+    },
+    {
+      "path": "/path/to/second_lora.safetensors", 
+      "strength": 0.5
+    }
+  ]
+}
 ```
 
 ### 支持的 LoRA 格式

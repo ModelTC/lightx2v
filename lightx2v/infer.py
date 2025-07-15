@@ -53,6 +53,7 @@ async def main():
     parser.add_argument("--prompt", type=str, default="", help="The input prompt for text-to-video generation")
     parser.add_argument("--negative_prompt", type=str, default="")
     parser.add_argument("--lora_path", type=str, default="", help="The lora file path")
+    parser.add_argument("--lora_strength", type=float, default=1.0, help="The strength for the lora (default: 1.0)")
     parser.add_argument("--prompt_path", type=str, default="", help="The path to input prompt file")
     parser.add_argument("--audio_path", type=str, default="", help="The path to input audio file")
     parser.add_argument("--image_path", type=str, default="", help="The path to input image file or path for image-to-video (i2v) task")
@@ -70,6 +71,11 @@ async def main():
         except Exception as e:
             logger.error(f"读取prompt文件时出错: {e}")
             raise
+
+    if args.lora_path:
+        args.lora_configs = [{"path": args.lora_path, "strength": args.lora_strength}]
+        delattr(args, "lora_path")
+        delattr(args, "lora_strength")
 
     logger.info(f"args: {args}")
 
