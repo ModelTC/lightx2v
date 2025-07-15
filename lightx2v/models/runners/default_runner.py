@@ -339,9 +339,8 @@ class DefaultRunner(BaseRunner):
             if save_video:
                 await wrapper.save_video(images)
 
-            del latents, generator, self.inputs
+            del latents, generator
             torch.cuda.empty_cache()
             gc.collect()
-            
-            return images
 
+            return images
