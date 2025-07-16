@@ -60,6 +60,8 @@ void scaled_fp4_quant_sm120(
 void scaled_fp8_quant_sm120(
     torch::Tensor& output, torch::Tensor const& input, torch::Tensor& output_sf);
 
+void scaled_fp6_quant_sm120(
+    torch::Tensor& output, torch::Tensor const& input, torch::Tensor& output_sf);
 
 void cutlass_scaled_mxfp6_mxfp8_mm_sm120(
     torch::Tensor& D,

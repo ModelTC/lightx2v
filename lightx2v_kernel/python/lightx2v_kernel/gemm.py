@@ -48,10 +48,23 @@ def scaled_fp4_quant(input: torch.Tensor, input_global_scale: torch.Tensor):
     # rounded_m = ((m + 128 - 1) // 128) * 128
     # scale_n = n // block_size
     # rounded_n = ((scale_n + 4 - 1) // 4) * 4
-    output_scale = torch.empty((((m + 128 - 1) // 128) * 128, (n // block_size + 4 - 1) // 4), device=device, dtype=torch.int32)
+    output_scale = torch.zeros((((m + 128 - 1) // 128) * 128, (n // block_size + 4 - 1) // 4), device=device, dtype=torch.int32)
 
     torch.ops.lightx2v_kernel.scaled_fp4_quant_sm120.default(output, input, output_scale, input_global_scale)
     output_scale = output_scale.view(torch.float8_e4m3fn)
+    return output, output_scale
+
+
+def scaled_fp6_quant(input: torch.Tensor):
+    m, n = input.shape
+    block_size = 32
+    device = input.device
+
+    output = torch.empty((m, 3 * n // 4), device=device, dtype=torch.uint8)
+    output_scale = torch.zeros(((m + 128 - 1) // 128 * 128, (n // block_size + 4 - 1) // 4), device=device, dtype=torch.int32)
+
+    torch.ops.lightx2v_kernel.scaled_fp6_quant_sm120.default(output, input, output_scale)
+    output_scale = output_scale.view(torch.float8_e8m0fnu)
     return output, output_scale
 
 

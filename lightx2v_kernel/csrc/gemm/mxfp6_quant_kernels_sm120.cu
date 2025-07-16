@@ -2,6 +2,7 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <cuda.h>
 #include <cuda_fp8.h>
+#include <cuda_fp6.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <torch/all.h>
@@ -36,12 +37,15 @@ struct TypeConverter<__nv_bfloat16> {
 
 #define ELTS_PER_THREAD 8
 
-constexpr int CVT_FP8_ELTS_PER_THREAD = 8;
-constexpr int CVT_FP8_SF_VEC_SIZE = 32;
+constexpr int CVT_FP6_ELTS_PER_THREAD = 8;
+constexpr int CVT_FP6_SF_VEC_SIZE = 32;
 
+struct uint8x6_t {
+  uint8_t elts[6];
+};
 
-// Convert 4 float2 values into 8 e4m3 values (represented as one uint64_t).
-inline __device__ uint64_t fp32_vec_to_e4m3(float2 (&array)[4]) {
+// Convert 4 float2 values into 8 e3m2 values (represented as one uint8x6_t).
+inline __device__ uint8x6_t fp32_vec_to_e3m2(float2 (&array)[4]) {
   uint64_t val;
   asm volatile(
       "{\n"
@@ -49,10 +53,10 @@ inline __device__ uint64_t fp32_vec_to_e4m3(float2 (&array)[4]) {
       ".reg .b16 pack1;\n"
       ".reg .b16 pack2;\n"
       ".reg .b16 pack3;\n"
-      "cvt.rn.satfinite.e4m3x2.f32   pack0, %2, %1;\n"
-      "cvt.rn.satfinite.e4m3x2.f32   pack1, %4, %3;\n"
-      "cvt.rn.satfinite.e4m3x2.f32   pack2, %6, %5;\n"
-      "cvt.rn.satfinite.e4m3x2.f32   pack3, %8, %7;\n"
+      "cvt.rn.satfinite.e3m2x2.f32   pack0, %2, %1;\n"
+      "cvt.rn.satfinite.e3m2x2.f32   pack1, %4, %3;\n"
+      "cvt.rn.satfinite.e3m2x2.f32   pack2, %6, %5;\n"
+      "cvt.rn.satfinite.e3m2x2.f32   pack3, %8, %7;\n"
       "mov.b64 %0, {pack0, pack1, pack2, pack3};\n"
       "}"
       : "=l"(val)
@@ -64,7 +68,37 @@ inline __device__ uint64_t fp32_vec_to_e4m3(float2 (&array)[4]) {
         "f"(array[2].y),
         "f"(array[3].x),
         "f"(array[3].y));
-  return val;
+
+  uint8x6_t result;
+
+  // pack 8 uint8_t into 6 uint8_t
+  // here is how to pack:
+  // 4个fp6 a b c d. a:[a5 a4 a3 a2 a1 a0], b..., c..., d...
+  // 3个unint8 pack0 pack1 pack2
+  // packed0: [b1 b0][a5 a4 a3 a2 a1 a0]
+  // packed1: [c3 c2 c1 c0][b5 b4 b3 b2]
+  // packed2: [d5 d4 d3 d2 d1 d0][c5 c4]
+
+  // lower 4 uint8_t
+  uint8_t l_val_0 = val & 0xFF;
+  uint8_t l_val_1 = (val >> 8) & 0xFF;
+  uint8_t l_val_2 = (val >> 16) & 0xFF;
+  uint8_t l_val_3 = (val >> 24) & 0xFF;
+  // higher 4 uint8_t
+  uint8_t h_val_0 = (val >> 32) & 0xFF;
+  uint8_t h_val_1 = (val >> 40) & 0xFF;
+  uint8_t h_val_2 = (val >> 48) & 0xFF;
+  uint8_t h_val_3 = (val >> 56) & 0xFF;
+
+  // pack result
+  result.elts[0] = (l_val_1 << 6) | l_val_0;
+  result.elts[1] = (l_val_2 << 4) | (l_val_1 >> 2);
+  result.elts[2] = (l_val_3 << 2) | (l_val_2 >> 4);
+  result.elts[3] = (h_val_1 << 6) | h_val_0;
+  result.elts[4] = (h_val_2 << 4) | (h_val_1 >> 2);
+  result.elts[5] = (h_val_3 << 2) | (h_val_2 >> 4);
+
+  return result;
 }
 
 // Fast reciprocal.
@@ -74,17 +108,17 @@ inline __device__ float reciprocal_approximate_ftz(float a) {
   return b;
 }
 
-template <class SFType, int CVT_FP8_NUM_THREADS_PER_SF>
+template <class SFType, int CVT_FP6_NUM_THREADS_PER_SF>
 __device__ uint8_t* get_sf_out_address(int rowIdx, int colIdx, int numCols, SFType* SFout) {
 // #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
-  static_assert(CVT_FP8_NUM_THREADS_PER_SF == 4);
+  static_assert(CVT_FP6_NUM_THREADS_PER_SF == 4);
 
   // one of 4 threads write one SF to global memory.
   // TODO: stage through smem for packed STG.32
   // is it better than STG.8 from 4 threads ?
-  if (threadIdx.x % CVT_FP8_NUM_THREADS_PER_SF == 0) {
-    // SF vector index (16 elements share one SF in the K dimension).
-    int32_t kIdx = colIdx / CVT_FP8_NUM_THREADS_PER_SF;
+  if (threadIdx.x % CVT_FP6_NUM_THREADS_PER_SF == 0) {
+    // SF vector index (32 elements share one SF in the K dimension).
+    int32_t kIdx = colIdx / CVT_FP6_NUM_THREADS_PER_SF;
     int32_t mIdx = rowIdx;
 
     // SF layout [numMTiles, numKTiles, 32 (mTile), 4 (mTile), 4(kTile)]
@@ -92,7 +126,7 @@ __device__ uint8_t* get_sf_out_address(int rowIdx, int colIdx, int numCols, SFTy
 
     int32_t mTileIdx = mIdx / (32 * 4);
     // SF vector size 32.
-    int factor = CVT_FP8_SF_VEC_SIZE * 4;
+    int factor = CVT_FP6_SF_VEC_SIZE * 4;
     int32_t numKTiles = (numCols + factor - 1) / factor;
     int64_t mTileStride = numKTiles * 32 * 4 * 4;
 
@@ -126,21 +160,20 @@ struct PackedVec {
   typename TypeConverter<Type>::Type elts[4];
 };
 
-template <>
-struct PackedVec<__nv_fp8_e4m3> {
-  __nv_fp8x2_e4m3 elts[8];
-};
+// template <>
+// struct PackedVec<__nv_fp8_e4m3> {
+//   __nv_fp8x2_e4m3 elts[8];
+// };
 
-// Quantizes the provided PackedVec into the uint64_t output
 template <class Type> // Type can be half or bfloat16
-__device__ uint64_t cvt_warp_fp16_to_fp8(PackedVec<Type>& vec, uint8_t* SFout) {
+__device__ uint8x6_t cvt_warp_fp16_to_fp6(PackedVec<Type>& vec, uint8_t* SFout) {
 // #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
   // Get absolute maximum values among the local 8 values.
   auto localMax = __habs2(vec.elts[0]);
 
 // Local maximum value.
 #pragma unroll
-  for (int i = 1; i < CVT_FP8_ELTS_PER_THREAD / 2; i++) {
+  for (int i = 1; i < CVT_FP6_ELTS_PER_THREAD / 2; i++) {
     localMax = __hmax2(localMax, __habs2(vec.elts[i]));
   }
 
@@ -150,10 +183,10 @@ __device__ uint64_t cvt_warp_fp16_to_fp8(PackedVec<Type>& vec, uint8_t* SFout) {
   // Get the final absolute maximum values.
   float vecMax = float(__hmax(localMax.x, localMax.y));
 
-  // Get the SF (max value of the vector / max value of e4m3).
-  // maximum value of e4m3 = 448.0.
+  // Get the SF (max value of the vector / max value of e3m2).
+  // maximum value of e3m2 = 28.0.
   // TODO: use half as compute data type.
-  float SFValue = (vecMax / 448.0f);
+  float SFValue = (vecMax / 28.0f);
   // 8 bits representation of the SF.
   uint8_t fp8SFVal;
   // Write the SF to global memory (STG.8).
@@ -172,10 +205,10 @@ __device__ uint64_t cvt_warp_fp16_to_fp8(PackedVec<Type>& vec, uint8_t* SFout) {
   }
 
   // Convert the input to float.
-  float2 fp2Vals[CVT_FP8_ELTS_PER_THREAD / 2];
+  float2 fp2Vals[CVT_FP6_ELTS_PER_THREAD / 2];
 
 #pragma unroll
-  for (int i = 0; i < CVT_FP8_ELTS_PER_THREAD / 2; i++) {
+  for (int i = 0; i < CVT_FP6_ELTS_PER_THREAD / 2; i++) {
     if constexpr (std::is_same_v<Type, half>) {
       fp2Vals[i] = __half22float2(vec.elts[i]);
     } else {
@@ -185,47 +218,47 @@ __device__ uint64_t cvt_warp_fp16_to_fp8(PackedVec<Type>& vec, uint8_t* SFout) {
     fp2Vals[i].y *= outputScale;
   }
 
-  // Convert to e4m3 values.
-  uint64_t e4m3Vec = fp32_vec_to_e4m3(fp2Vals);
+  // Convert to e3m2 values.
+  uint8x6_t e3m2Vec = fp32_vec_to_e3m2(fp2Vals);
 
-  return e4m3Vec;
+  return e3m2Vec;
 }
 
 
 template <class Type> // Type can be half or bfloat16
 __global__ void
 // #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
-__launch_bounds__(256, 6) cvt_fp16_to_fp8(
+__launch_bounds__(256, 6) cvt_fp16_to_fp6(
 // #else
-// cvt_fp16_to_fp8(
+// cvt_fp16_to_fp6(
 // #endif
-    int32_t numRows, int32_t numCols, Type const* in, uint64_t* out, uint32_t* SFout) {
+    int32_t numRows, int32_t numCols, Type const* in, uint8x6_t* out, uint32_t* SFout) {
 // #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
   using PackedVec = PackedVec<Type>;
-  static constexpr int CVT_FP8_NUM_THREADS_PER_SF = (CVT_FP8_SF_VEC_SIZE / CVT_FP8_ELTS_PER_THREAD);
-  static_assert(sizeof(PackedVec) == sizeof(Type) * CVT_FP8_ELTS_PER_THREAD, "Vec size is not matched.");
+  static constexpr int CVT_FP6_NUM_THREADS_PER_SF = (CVT_FP6_SF_VEC_SIZE / CVT_FP6_ELTS_PER_THREAD);
+  static_assert(sizeof(PackedVec) == sizeof(Type) * CVT_FP6_ELTS_PER_THREAD, "Vec size is not matched.");
 
   // Input tensor row/col loops.
   for (int rowIdx = blockIdx.x; rowIdx < numRows; rowIdx += gridDim.x) {
-    for (int colIdx = threadIdx.x; colIdx < numCols / CVT_FP8_ELTS_PER_THREAD; colIdx += blockDim.x) {
-      int64_t inOffset = rowIdx * (numCols / CVT_FP8_ELTS_PER_THREAD) + colIdx;
+    for (int colIdx = threadIdx.x; colIdx < numCols / CVT_FP6_ELTS_PER_THREAD; colIdx += blockDim.x) {
+      int64_t inOffset = rowIdx * (numCols / CVT_FP6_ELTS_PER_THREAD) + colIdx;
       PackedVec in_vec = reinterpret_cast<PackedVec const*>(in)[inOffset];
       // Get the output tensor offset.
-      // Same as inOffset because 8 elements(E4M3) are packed into one uint64_t.
+      // Same as inOffset because 8 elements(E3M2) are packed into one uint8x6_t.
       int64_t outOffset = inOffset;
       auto& out_pos = out[outOffset];
 
       auto sf_out =
-          get_sf_out_address<uint32_t, CVT_FP8_NUM_THREADS_PER_SF>(rowIdx, colIdx, numCols, SFout);
+          get_sf_out_address<uint32_t, CVT_FP6_NUM_THREADS_PER_SF>(rowIdx, colIdx, numCols, SFout);
 
-      out_pos = cvt_warp_fp16_to_fp8<Type>(in_vec, sf_out);
+      out_pos = cvt_warp_fp16_to_fp6<Type>(in_vec, sf_out);
     }
   }
 // #endif
 }
 
 template <typename T>
-void invokeFP8Quantization(
+void invokeFP6Quantization(
     int m,
     int n,
     T const* input,
@@ -241,13 +274,13 @@ void invokeFP8Quantization(
   dim3 grid(std::min(int(m), multiProcessorCount * numBlocksPerSM));
 
   // Launch the cvt kernel.
-    cvt_fp16_to_fp8<T>
+    cvt_fp16_to_fp6<T>
     <<<grid, block, 0, stream>>>(
-        m, n, input, reinterpret_cast<uint64_t*>(output), reinterpret_cast<uint32_t*>(SFOuput));
+        m, n, input, reinterpret_cast<uint8x6_t*>(output), reinterpret_cast<uint32_t*>(SFOuput));
 }
 
 // Instantiate the function.
-template void invokeFP8Quantization(
+template void invokeFP6Quantization(
     int m,
     int n,
     half const* input,
@@ -256,7 +289,7 @@ template void invokeFP8Quantization(
     int multiProcessorCount,
     cudaStream_t stream);
 
-template void invokeFP8Quantization(
+template void invokeFP6Quantization(
     int m,
     int n,
     __nv_bfloat16 const* input,
@@ -282,7 +315,7 @@ inline int getMultiProcessorCount() {
   return multi_processor_count;  // Return the cached value on subsequent calls
 }
 
-void scaled_fp8_quant_sm120(
+void scaled_fp6_quant_sm120(
     torch::Tensor& output, torch::Tensor const& input, torch::Tensor& output_sf) {
   int32_t m = input.size(0);
   int32_t n = input.size(1);
@@ -299,17 +332,17 @@ void scaled_fp8_quant_sm120(
   switch (input.scalar_type()) {
     case torch::kHalf: {
       auto input_ptr = reinterpret_cast<half const*>(input.data_ptr());
-      invokeFP8Quantization(m, n, input_ptr, output_ptr, sf_out, multiProcessorCount, stream);
+      invokeFP6Quantization(m, n, input_ptr, output_ptr, sf_out, multiProcessorCount, stream);
       break;
     }
     case torch::kBFloat16: {
       auto input_ptr = reinterpret_cast<__nv_bfloat16 const*>(input.data_ptr());
-      invokeFP8Quantization(m, n, input_ptr, output_ptr, sf_out, multiProcessorCount, stream);
+      invokeFP6Quantization(m, n, input_ptr, output_ptr, sf_out, multiProcessorCount, stream);
       break;
     }
     default: {
       std::cerr << "Observing: " << input.scalar_type() << " for the input datatype which is invalid";
-      throw std::runtime_error("Unsupported input data type for quantize_to_fp8.");
+      throw std::runtime_error("Unsupported input data type for quantize_to_fp6.");
     }
   }
 }
