@@ -24,3 +24,4 @@
 *.mp4
 build/
 dist/
+mgcdr_inputs

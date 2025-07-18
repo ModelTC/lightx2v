@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from vllm import _custom_ops as ops
+# from vllm import _custom_ops as ops
 
 try:
     import q8_kernels.functional as Q8F
@@ -23,8 +23,9 @@ class QuantLinearInt8(nn.Module):
             self.register_buffer("bias", None)
 
     def act_quant_func(self, x):
-        input_tensor_quant, input_tensor_scale, _ = ops.scaled_int8_quant(x, scale=None, azp=None, symmetric=True)
-        return input_tensor_quant, input_tensor_scale
+        # input_tensor_quant, input_tensor_scale, _ = ops.scaled_int8_quant(x, scale=None, azp=None, symmetric=True)
+        # return input_tensor_quant, input_tensor_scale
+        pass
 
     def forward(self, x):
         input_tensor_quant, input_tensor_scale = self.act_quant_func(x)

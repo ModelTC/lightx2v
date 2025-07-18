@@ -1,0 +1,1 @@
+from ._cli import cli  # noqa
